@@ -1,0 +1,14 @@
+{
+  "name": "codeshot",
+  "version": "0.1.0",
+  "description": "Claude Code companion: click code blocks in your terminal to stage them in a new Windows Terminal or iTerm2 tab",
+  "main": "hook/hook.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node test/run.js"
+  },
+  "keywords": ["claude-code", "osc-8", "windows-terminal", "iterm2", "terminal", "developer-tools"],
+  "license": "MIT"
+}
