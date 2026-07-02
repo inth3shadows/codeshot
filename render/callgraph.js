@@ -71,8 +71,18 @@ function main() {
   let repoPath = '.';
   let outFile  = null;
   for (let i = 0; i < rest.length; i++) {
-    if (rest[i] === '--path') repoPath = rest[++i];
-    else if (rest[i] === '--out') outFile = rest[++i];
+    const isPath = rest[i] === '--path';
+    const isOut  = rest[i] === '--out';
+    if (!isPath && !isOut) continue;
+
+    const value = rest[i + 1];
+    if (value === undefined || value === '--path' || value === '--out') {
+      console.error(`codeshot: missing value for ${rest[i]}`);
+      console.error('Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>]');
+      process.exit(1);
+    }
+    if (isPath) repoPath = value; else outFile = value;
+    i++;
   }
   if (!outFile) {
     outFile = path.join(os.tmpdir(), `callgraph-${symbol}-${Date.now()}.png`);
