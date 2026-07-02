@@ -1,14 +1,17 @@
 {
   "name": "codeshot",
-  "version": "0.1.0",
-  "description": "Claude Code companion: click code blocks in your terminal to stage them in a new Windows Terminal or iTerm2 tab",
-  "main": "hook/hook.js",
+  "version": "0.2.0",
+  "description": "Render a symbol's CodeGraph call trail as an image — a picture of what calls what",
+  "main": "render/callgraph.js",
+  "bin": {
+    "codeshot": "./render/callgraph.js"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
   "scripts": {
     "test": "node test/run.js"
   },
-  "keywords": ["claude-code", "osc-8", "windows-terminal", "iterm2", "terminal", "developer-tools"],
+  "keywords": ["codegraph", "call-graph", "graphviz", "visualization", "developer-tools"],
   "license": "MIT"
 }
