@@ -27,7 +27,12 @@ function requireOnPath(bin, installHint) {
 
 function runCodegraph(args) {
   const out = execFileSync('codegraph', args, { encoding: 'utf8' });
-  return JSON.parse(out);
+  try {
+    return JSON.parse(out);
+  } catch {
+    console.error(`codeshot: 'codegraph ${args.join(' ')}' did not return JSON:\n${out.trim()}`);
+    process.exit(1);
+  }
 }
 
 function isTestRef(node) {
