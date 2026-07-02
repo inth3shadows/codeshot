@@ -8,13 +8,15 @@
  * --json`) and renders it through graphviz (`dot`). Requires both on PATH.
  *
  * Usage:
- *   node render/callgraph.js <symbol> [--path <repoPath>] [--out <file.png>]
+ *   node render/callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>]
  */
 
 const { execFileSync } = require('child_process');
 const fs   = require('fs');
 const os   = require('os');
 const path = require('path');
+
+const DEFAULT_LIMIT = 50;
 
 function requireOnPath(bin, installHint) {
   try {
@@ -58,6 +60,11 @@ function isTestRef(node) {
   return nameLooksLikeTest || inTestDir || testFilename;
 }
 
+function truncationWarning(kind, results, limit) {
+  if (!Array.isArray(results) || results.length < limit) return null;
+  return `codeshot: showing ${results.length} ${kind} — codegraph's --limit (${limit}) may have cut off more; rerun with --limit <n> to see additional ${kind}.`;
+}
+
 function buildDot(symbol, callers = [], callees = []) {
   const esc = s => String(s).replace(/"/g, '\\"');
   const lines = [
@@ -80,27 +87,36 @@ function buildDot(symbol, callers = [], callees = []) {
   return lines.join('\n');
 }
 
+const FLAGS = ['--path', '--out', '--limit'];
+
 function main() {
   const [, , symbol, ...rest] = process.argv;
   if (!symbol) {
-    console.error('Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>]');
+    console.error('Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>]');
     process.exit(1);
   }
 
   let repoPath = '.';
   let outFile  = null;
+  let limit    = DEFAULT_LIMIT;
   for (let i = 0; i < rest.length; i++) {
-    const isPath = rest[i] === '--path';
-    const isOut  = rest[i] === '--out';
-    if (!isPath && !isOut) continue;
+    if (!FLAGS.includes(rest[i])) continue;
 
     const value = rest[i + 1];
-    if (value === undefined || value === '--path' || value === '--out') {
+    if (value === undefined || FLAGS.includes(value)) {
       console.error(`codeshot: missing value for ${rest[i]}`);
-      console.error('Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>]');
+      console.error('Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>]');
       process.exit(1);
     }
-    if (isPath) repoPath = value; else outFile = value;
+    if (rest[i] === '--path') repoPath = value;
+    else if (rest[i] === '--out') outFile = value;
+    else {
+      limit = Number(value);
+      if (!Number.isInteger(limit) || limit <= 0) {
+        console.error(`codeshot: --limit must be a positive integer, got '${value}'`);
+        process.exit(1);
+      }
+    }
     i++;
   }
   const safeSymbol = sanitizeForFilename(symbol);
@@ -111,8 +127,13 @@ function main() {
   requireOnPath('codegraph', 'Install: https://github.com/colbymchenry/codegraph');
   requireOnPath('dot', 'Install graphviz (e.g. `brew install graphviz` or `apt install graphviz`).');
 
-  const { callers } = runCodegraph(['callers', symbol, '--path', repoPath, '--json']);
-  const { callees } = runCodegraph(['callees', symbol, '--path', repoPath, '--json']);
+  const { callers } = runCodegraph(['callers', symbol, '--path', repoPath, '--limit', String(limit), '--json']);
+  const { callees } = runCodegraph(['callees', symbol, '--path', repoPath, '--limit', String(limit), '--json']);
+
+  for (const [kind, results] of [['callers', callers], ['callees', callees]]) {
+    const warning = truncationWarning(kind, results, limit);
+    if (warning) console.error(warning);
+  }
 
   const dot = buildDot(symbol, callers || [], callees || []);
   const dotFile = path.join(os.tmpdir(), `callgraph-${safeSymbol}-${Date.now()}.dot`);
@@ -128,4 +149,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { buildDot, isTestRef };
+module.exports = { buildDot, isTestRef, truncationWarning };

@@ -2,7 +2,7 @@
 'use strict';
 
 const assert = require('assert');
-const { buildDot, isTestRef } = require('../render/callgraph.js');
+const { buildDot, isTestRef, truncationWarning } = require('../render/callgraph.js');
 
 let passed = 0;
 let failed = 0;
@@ -61,6 +61,30 @@ test('buildDot dashes edges from test callers', () => {
 test('buildDot escapes double quotes in names', () => {
   const dot = buildDot('Weird"Name', [], []);
   assert.match(dot, /"Weird\\"Name"/);
+});
+
+test('truncationWarning fires when results hit the limit', () => {
+  const results = Array.from({ length: 20 }, (_, i) => ({ name: `Fn${i}` }));
+  assert.match(truncationWarning('callers', results, 20), /showing 20 callers/);
+});
+
+test('truncationWarning is null when under the limit', () => {
+  const results = Array.from({ length: 3 }, (_, i) => ({ name: `Fn${i}` }));
+  assert.strictEqual(truncationWarning('callers', results, 20), null);
+});
+
+test('--limit rejects non-positive-integer values before reaching codegraph', () => {
+  const { execFileSync } = require('child_process');
+  for (const bad of ['abc', '0', '-5', '3.5', 'NaN']) {
+    let threw = false;
+    try {
+      execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--limit', bad], { encoding: 'utf8', stdio: 'pipe' });
+    } catch (err) {
+      threw = true;
+      assert.match(err.stderr, /--limit must be a positive integer/);
+    }
+    assert.strictEqual(threw, true, `expected --limit ${bad} to be rejected`);
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

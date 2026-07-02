@@ -5,15 +5,18 @@
 Codeshot is a single-file CLI (`render/callgraph.js`) with no server, no persistent state, and no dependencies beyond two external binaries it shells out to.
 
 ```
-argv (symbol, --path, --out)
+argv (symbol, --path, --out, --limit)
         |
         v
 requireOnPath('codegraph')  --- exits with an install hint if missing
 requireOnPath('dot')        --- exits with an install hint if missing
         |
         v
-runCodegraph(['callers', symbol, '--path', repoPath, '--json'])
-runCodegraph(['callees', symbol, '--path', repoPath, '--json'])
+runCodegraph(['callers', symbol, '--path', repoPath, '--limit', limit, '--json'])
+runCodegraph(['callees', symbol, '--path', repoPath, '--limit', limit, '--json'])
+        |
+        v
+truncationWarning(...) --- warns on stderr if a result hit --limit exactly
         |
         v
 buildDot(symbol, callers, callees)  --- pure function, produces a DOT string
@@ -32,8 +35,8 @@ See [README.md](README.md#design-decisions)'s "Design decisions" section for why
 
 ## File Descriptions
 
-- **`render/callgraph.js`** — the entire tool. Exports `buildDot(symbol, callers, callees)` (pure: turns caller/callee arrays into a DOT digraph string) and `isTestRef(node)` (true if a node's name or filePath looks test-related, used to render those edges dashed). Everything else (`requireOnPath`, `runCodegraph`, `main`) is CLI plumbing, not exported.
-- **`test/run.js`** — assertion-based test suite (Node's built-in `assert`, no framework) covering `buildDot` and `isTestRef` directly. Run via `npm test`.
+- **`render/callgraph.js`** — the entire tool. Exports `buildDot(symbol, callers, callees)` (pure: turns caller/callee arrays into a DOT digraph string), `isTestRef(node)` (true if a node's name or filePath looks test-related, used to render those edges dashed), and `truncationWarning(kind, results, limit)` (pure: returns a warning string if `results.length` hit `limit` exactly, else `null`). Everything else (`requireOnPath`, `runCodegraph`, `main`) is CLI plumbing, not exported.
+- **`test/run.js`** — assertion-based test suite (Node's built-in `assert`, no framework) covering `buildDot`, `isTestRef`, and `truncationWarning` directly. Run via `npm test`.
 - **`package.json`** — declares the `codeshot` bin pointing at `render/callgraph.js`, and the `test` script.
 - **`.runechoguardignore`** — false-positive suppression list for the RunEcho pre-commit symbol-resolution guard (a local hook, not part of codeshot itself). Bare-call identifiers the guard can't resolve (e.g. Node builtins passed as function parameters) get listed here instead of disabling the guard.
 
@@ -53,11 +56,12 @@ No environment variables, no config file. All behavior is controlled by CLI argu
 | `<symbol>` (positional, required) | — | The symbol to graph |
 | `--path` | `.` (cwd) | Repo path passed through to `codegraph` |
 | `--out` | `<tmpdir>/callgraph-<symbol>-<timestamp>.png` | Output PNG path |
+| `--limit` | `50` | Max callers/callees fetched from `codegraph` (its own CLI default is 20). Must be a positive integer — rejected with an error otherwise, since `codegraph` silently returns an empty result for a malformed limit rather than erroring itself. `codegraph`'s JSON has no total/truncated field, so Codeshot's only signal that more may exist is the result count hitting `--limit` exactly — when it does, a warning is printed to stderr. That heuristic false-positives for a symbol with exactly `--limit` real results and no more; there's no way to distinguish "exactly complete" from "truncated" without a total field from `codegraph`. |
 
 ## Maintenance Commands
 
 ```bash
-npm test              # runs test/run.js — 7 assertions against buildDot/isTestRef
+npm test              # runs test/run.js — assertions against buildDot/isTestRef/truncationWarning
 node render/callgraph.js <symbol> --path <repo> --out /tmp/out.png   # manual smoke test
 ```
 
@@ -68,4 +72,4 @@ There is no service to restart, no rollback beyond `npm uninstall -g codeshot` /
 - No automated test covers the actual `dot`/`codegraph` shell-out path — `test/run.js` only exercises the pure `buildDot`/`isTestRef` logic. A missing or incompatible `codegraph`/`dot` binary is only caught by running the CLI itself.
 - `buildDot` does not deduplicate repeated caller/callee entries; if `codegraph`'s JSON contains duplicates, the rendered graph will show duplicate edges.
 - `isTestRef` is a naming-convention heuristic (word-boundary `Test`/`Spec` prefix or suffix in the name, or a `test`/`tests`/`spec`/`__tests__` directory or `.test.`/`.spec.` filename), not a semantic check — a production symbol that happens to follow test-like naming (e.g. a function literally named `Test`) would still be misclassified.
-- No handling for extremely large call graphs (hundreds of callers/callees) — `dot`'s default layout may become unreadable; there's no `--depth` or filtering flag.
+- No handling for extremely large call graphs — `--limit` controls how many results are *fetched*, but there's still no way to cap or filter how many are *rendered*; a symbol with hundreds of real callers produces a very tall, if technically complete-within-`--limit`, image. There's also no `--depth` flag for multi-hop traversal.

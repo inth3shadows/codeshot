@@ -17,6 +17,7 @@ Codeshot answers one question: "what exactly touches this one function?" Point i
 Optional flags:
 - Point at a different repo: `codeshot <SymbolName> --path /path/to/other/repo`
 - Choose where the image is saved: `codeshot <SymbolName> --out ~/Desktop/diagram.png`
+- Fetch more callers/callees for a heavily-used symbol: `codeshot <SymbolName> --limit 200` (default is 50)
 
 **Reading the diagram:** boxes are code symbols; the symbol you asked about is highlighted darker. Arrows point in call direction — an arrow into your symbol is a caller, an arrow out is something it calls. Dashed arrows mean the caller is test code, so you can tell "is this only exercised by tests" at a glance.
 
@@ -27,6 +28,7 @@ Optional flags:
 - **The command runs but the diagram is empty or missing edges** — The repo probably hasn't been indexed yet, or the index is stale. Run `codegraph init` (or re-run indexing) in the target repo first.
 - **"Symbol not found" or an empty diagram for a symbol you know exists** — Double-check the exact spelling/casing of the symbol name, and confirm `--path` points at the repo that actually contains it.
 - **The PNG looks unreadable / too cluttered** — This usually means the symbol has a very large number of callers or callees. There's currently no way to filter or limit depth; try graphing a more specific, less-central symbol instead.
+- **"codeshot: showing N callers/callees — ... may have cut off more"** — The symbol has at least as many callers/callees as `--limit` (default 50), so there may be more Codeshot didn't fetch or draw. Rerun with a higher `--limit` if you need the full picture; be aware a very high limit can produce a very tall, hard-to-read image.
 
 For anything not covered here, check `TECHNICAL.md` or open an issue on the GitHub repo.
 
