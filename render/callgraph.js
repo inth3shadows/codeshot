@@ -89,4 +89,8 @@ function main() {
   console.log(outFile);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { buildDot, isTestRef };
