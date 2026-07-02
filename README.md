@@ -52,6 +52,8 @@ Zero new npm dependencies, and `dot` already produces clean, deterministic layou
 
 Early — actively used and maintained on real repos. Previous design (a terminal protocol-handler for staging Claude Code's suggested commands) was retired; see git history if you're curious what that looked like.
 
+**Ran the old installer?** If you installed the retired design (`install/install.ps1` or `install/install.sh`, no longer in this repo), run [`install/uninstall-legacy.ps1`](install/uninstall-legacy.ps1) (Windows) or [`install/uninstall-legacy.sh`](install/uninstall-legacy.sh) (macOS) once to remove the leftover protocol handler registration, Claude Code Stop hook entry, and `~/.codeshot` directory.
+
 ## Related Documentation
 
 - [Technical Reference](TECHNICAL.md) — architecture, file descriptions, configuration, maintenance
