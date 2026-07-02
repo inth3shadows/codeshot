@@ -35,6 +35,10 @@ function runCodegraph(args) {
   }
 }
 
+function sanitizeForFilename(s) {
+  return String(s).replace(/[\\/:*?"<>|]/g, '_');
+}
+
 function isTestRef(node) {
   return /test/i.test(node.name) || /test/i.test(node.filePath);
 }
@@ -84,8 +88,9 @@ function main() {
     if (isPath) repoPath = value; else outFile = value;
     i++;
   }
+  const safeSymbol = sanitizeForFilename(symbol);
   if (!outFile) {
-    outFile = path.join(os.tmpdir(), `callgraph-${symbol}-${Date.now()}.png`);
+    outFile = path.join(os.tmpdir(), `callgraph-${safeSymbol}-${Date.now()}.png`);
   }
 
   requireOnPath('codegraph', 'Install: https://github.com/colbymchenry/codegraph');
@@ -95,7 +100,7 @@ function main() {
   const { callees } = runCodegraph(['callees', symbol, '--path', repoPath, '--json']);
 
   const dot = buildDot(symbol, callers || [], callees || []);
-  const dotFile = path.join(os.tmpdir(), `callgraph-${symbol}-${Date.now()}.dot`);
+  const dotFile = path.join(os.tmpdir(), `callgraph-${safeSymbol}-${Date.now()}.dot`);
   fs.writeFileSync(dotFile, dot, 'utf8');
 
   execFileSync('dot', ['-Tpng', dotFile, '-o', outFile]);
