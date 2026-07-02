@@ -27,14 +27,38 @@ function requireOnPath(bin, installHint) {
 
 function runCodegraph(args) {
   const out = execFileSync('codegraph', args, { encoding: 'utf8' });
-  return JSON.parse(out);
+  try {
+    return JSON.parse(out);
+  } catch {
+    console.error(`codeshot: 'codegraph ${args.join(' ')}' did not return JSON:\n${out.trim()}`);
+    process.exit(1);
+  }
+}
+
+function sanitizeForFilename(s) {
+  return String(s).replace(/[\\/:*?"<>|]/g, '_');
+}
+
+function splitWords(s) {
+  return s.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[\s_-]+/).filter(Boolean);
 }
 
 function isTestRef(node) {
-  return /test/i.test(node.name) || /test/i.test(node.filePath);
+  const words = splitWords(String(node.name || ''));
+  const firstWord = words[0] || '';
+  const lastWord  = words[words.length - 1] || '';
+  const nameLooksLikeTest = /^test$/i.test(firstWord) || /^tests?$/i.test(lastWord) || /^specs?$/i.test(lastWord);
+
+  const filePath = String(node.filePath || '');
+  const segments = filePath.split(/[\\/]/);
+  const filename = segments[segments.length - 1] || '';
+  const inTestDir = segments.some(seg => /^(tests?|__tests__|spec)$/i.test(seg));
+  const testFilename = /[._-](tests?|specs?)\.[^.]+$/i.test(filename);
+
+  return nameLooksLikeTest || inTestDir || testFilename;
 }
 
-function buildDot(symbol, callers, callees) {
+function buildDot(symbol, callers = [], callees = []) {
   const esc = s => String(s).replace(/"/g, '\\"');
   const lines = [
     'digraph callgraph {',
@@ -66,11 +90,22 @@ function main() {
   let repoPath = '.';
   let outFile  = null;
   for (let i = 0; i < rest.length; i++) {
-    if (rest[i] === '--path') repoPath = rest[++i];
-    else if (rest[i] === '--out') outFile = rest[++i];
+    const isPath = rest[i] === '--path';
+    const isOut  = rest[i] === '--out';
+    if (!isPath && !isOut) continue;
+
+    const value = rest[i + 1];
+    if (value === undefined || value === '--path' || value === '--out') {
+      console.error(`codeshot: missing value for ${rest[i]}`);
+      console.error('Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>]');
+      process.exit(1);
+    }
+    if (isPath) repoPath = value; else outFile = value;
+    i++;
   }
+  const safeSymbol = sanitizeForFilename(symbol);
   if (!outFile) {
-    outFile = path.join(os.tmpdir(), `callgraph-${symbol}-${Date.now()}.png`);
+    outFile = path.join(os.tmpdir(), `callgraph-${safeSymbol}-${Date.now()}.png`);
   }
 
   requireOnPath('codegraph', 'Install: https://github.com/colbymchenry/codegraph');
@@ -80,7 +115,7 @@ function main() {
   const { callees } = runCodegraph(['callees', symbol, '--path', repoPath, '--json']);
 
   const dot = buildDot(symbol, callers || [], callees || []);
-  const dotFile = path.join(os.tmpdir(), `callgraph-${symbol}-${Date.now()}.dot`);
+  const dotFile = path.join(os.tmpdir(), `callgraph-${safeSymbol}-${Date.now()}.dot`);
   fs.writeFileSync(dotFile, dot, 'utf8');
 
   execFileSync('dot', ['-Tpng', dotFile, '-o', outFile]);
@@ -89,4 +124,8 @@ function main() {
   console.log(outFile);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { buildDot, isTestRef };
