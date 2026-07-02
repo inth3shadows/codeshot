@@ -5,11 +5,18 @@ const assert = require('assert');
 const { buildDot, isTestRef } = require('../render/callgraph.js');
 
 let passed = 0;
+let failed = 0;
 
 function test(name, fn) {
-  fn();
-  passed++;
-  console.log(`ok - ${name}`);
+  try {
+    fn();
+    passed++;
+    console.log(`ok - ${name}`);
+  } catch (err) {
+    failed++;
+    console.log(`not ok - ${name}`);
+    console.error(err);
+  }
 }
 
 test('isTestRef matches on name', () => {
@@ -46,4 +53,5 @@ test('buildDot escapes double quotes in names', () => {
   assert.match(dot, /"Weird\\"Name"/);
 });
 
-console.log(`\n${passed} passed`);
+console.log(`\n${passed} passed, ${failed} failed`);
+if (failed > 0) process.exit(1);

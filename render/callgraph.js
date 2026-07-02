@@ -34,7 +34,7 @@ function isTestRef(node) {
   return /test/i.test(node.name) || /test/i.test(node.filePath);
 }
 
-function buildDot(symbol, callers, callees) {
+function buildDot(symbol, callers = [], callees = []) {
   const esc = s => String(s).replace(/"/g, '\\"');
   const lines = [
     'digraph callgraph {',
