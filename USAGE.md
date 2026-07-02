@@ -6,13 +6,7 @@ Codeshot answers one question: "what exactly touches this one function?" Point i
 
 ## How to Use It
 
-**One-time setup, per machine:**
-
-1. Install Codeshot: `npm install -g github:inth3shadows/codeshot`
-2. Make sure `codegraph` is installed and the repo you want to graph has already been indexed (`codegraph init` inside that repo).
-3. Make sure `graphviz` is installed (provides the `dot` command).
-
-If either is missing, Codeshot will tell you exactly what's missing and how to install it — you don't need to guess.
+**One-time setup, per machine:** follow [README.md](README.md#install)'s "Install" section (installs Codeshot, `codegraph`, and `graphviz`, and indexes the repo you want to graph). If `codegraph` or `graphviz` is missing when you run Codeshot, it tells you exactly what's missing and how to install it — you don't need to guess.
 
 **Every time you want a diagram:**
 
