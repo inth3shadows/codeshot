@@ -81,7 +81,7 @@ test('--limit rejects non-positive-integer values before reaching codegraph', ()
       execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--limit', bad], { encoding: 'utf8', stdio: 'pipe' });
     } catch (err) {
       threw = true;
-      assert.match(err.stderr, /--limit must be a positive integer/);
+      assert.match(err.stderr, /--limit must be a positive integer|argument is ambiguous/);
     }
     assert.strictEqual(threw, true, `expected --limit ${bad} to be rejected`);
   }

@@ -28,7 +28,7 @@ Optional flags:
 - **The command runs but the diagram is empty or missing edges** — The repo probably hasn't been indexed yet, or the index is stale. Run `codegraph init` (or re-run indexing) in the target repo first.
 - **"Symbol not found" or an empty diagram for a symbol you know exists** — Double-check the exact spelling/casing of the symbol name, and confirm `--path` points at the repo that actually contains it.
 - **The PNG looks unreadable / too cluttered** — This usually means the symbol has a very large number of callers or callees. There's currently no way to filter or limit depth; try graphing a more specific, less-central symbol instead.
-- **"codeshot: showing N callers/callees — ... may have cut off more"** — The symbol has at least as many callers/callees as `--limit` (default 50), so there may be more Codeshot didn't fetch or draw. Rerun with a higher `--limit` if you need the full picture; be aware a very high limit can produce a very tall, hard-to-read image.
+- **"codeshot: showing N callers/callees — ... may have cut off more"** — Rerun with a higher `--limit` if you need the full picture (see `TECHNICAL.md` for why this warning can occasionally be a false alarm).
 
 For anything not covered here, check `TECHNICAL.md` or open an issue on the GitHub repo.
 

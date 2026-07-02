@@ -37,7 +37,7 @@ codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>]
 
 - `--path` — repo to query (defaults to cwd)
 - `--out` — output file (defaults to a temp PNG; path is printed on success)
-- `--limit` — max callers/callees to fetch from CodeGraph (defaults to 50). CodeGraph itself defaults to 20 and gives no "N of M" total, so if the result hits the limit, Codeshot prints a warning that more may exist — rerun with a higher `--limit` if so.
+- `--limit` — max callers/callees to fetch (defaults to 50; must be a positive integer). Codeshot warns on stderr if a result may be truncated — see [TECHNICAL.md](TECHNICAL.md#configuration) for why and its one known false-positive case.
 
 ## Design decisions
 
