@@ -73,5 +73,19 @@ test('truncationWarning is null when under the limit', () => {
   assert.strictEqual(truncationWarning('callers', results, 20), null);
 });
 
+test('--limit rejects non-positive-integer values before reaching codegraph', () => {
+  const { execFileSync } = require('child_process');
+  for (const bad of ['abc', '0', '-5', '3.5', 'NaN']) {
+    let threw = false;
+    try {
+      execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--limit', bad], { encoding: 'utf8', stdio: 'pipe' });
+    } catch (err) {
+      threw = true;
+      assert.match(err.stderr, /--limit must be a positive integer/);
+    }
+    assert.strictEqual(threw, true, `expected --limit ${bad} to be rejected`);
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

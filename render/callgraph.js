@@ -110,7 +110,13 @@ function main() {
     }
     if (rest[i] === '--path') repoPath = value;
     else if (rest[i] === '--out') outFile = value;
-    else limit = Number(value);
+    else {
+      limit = Number(value);
+      if (!Number.isInteger(limit) || limit <= 0) {
+        console.error(`codeshot: --limit must be a positive integer, got '${value}'`);
+        process.exit(1);
+      }
+    }
     i++;
   }
   const safeSymbol = sanitizeForFilename(symbol);
@@ -124,10 +130,10 @@ function main() {
   const { callers } = runCodegraph(['callers', symbol, '--path', repoPath, '--limit', String(limit), '--json']);
   const { callees } = runCodegraph(['callees', symbol, '--path', repoPath, '--limit', String(limit), '--json']);
 
-  const callersWarning = truncationWarning('callers', callers, limit);
-  if (callersWarning) console.error(callersWarning);
-  const calleesWarning = truncationWarning('callees', callees, limit);
-  if (calleesWarning) console.error(calleesWarning);
+  for (const [kind, results] of [['callers', callers], ['callees', callees]]) {
+    const warning = truncationWarning(kind, results, limit);
+    if (warning) console.error(warning);
+  }
 
   const dot = buildDot(symbol, callers || [], callees || []);
   const dotFile = path.join(os.tmpdir(), `callgraph-${safeSymbol}-${Date.now()}.dot`);

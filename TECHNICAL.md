@@ -56,7 +56,7 @@ No environment variables, no config file. All behavior is controlled by CLI argu
 | `<symbol>` (positional, required) | — | The symbol to graph |
 | `--path` | `.` (cwd) | Repo path passed through to `codegraph` |
 | `--out` | `<tmpdir>/callgraph-<symbol>-<timestamp>.png` | Output PNG path |
-| `--limit` | `50` | Max callers/callees fetched from `codegraph` (its own CLI default is 20). `codegraph`'s JSON has no total/truncated field, so Codeshot's only signal that more may exist is the result count hitting `--limit` exactly — when it does, a warning is printed to stderr. |
+| `--limit` | `50` | Max callers/callees fetched from `codegraph` (its own CLI default is 20). Must be a positive integer — rejected with an error otherwise, since `codegraph` silently returns an empty result for a malformed limit rather than erroring itself. `codegraph`'s JSON has no total/truncated field, so Codeshot's only signal that more may exist is the result count hitting `--limit` exactly — when it does, a warning is printed to stderr. That heuristic false-positives for a symbol with exactly `--limit` real results and no more; there's no way to distinguish "exactly complete" from "truncated" without a total field from `codegraph`. |
 
 ## Maintenance Commands
 
