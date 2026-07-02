@@ -39,8 +39,23 @@ function sanitizeForFilename(s) {
   return String(s).replace(/[\\/:*?"<>|]/g, '_');
 }
 
+function splitWords(s) {
+  return s.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[\s_-]+/).filter(Boolean);
+}
+
 function isTestRef(node) {
-  return /test/i.test(node.name) || /test/i.test(node.filePath);
+  const words = splitWords(String(node.name || ''));
+  const firstWord = words[0] || '';
+  const lastWord  = words[words.length - 1] || '';
+  const nameLooksLikeTest = /^test$/i.test(firstWord) || /^tests?$/i.test(lastWord) || /^specs?$/i.test(lastWord);
+
+  const filePath = String(node.filePath || '');
+  const segments = filePath.split(/[\\/]/);
+  const filename = segments[segments.length - 1] || '';
+  const inTestDir = segments.some(seg => /^(tests?|__tests__|spec)$/i.test(seg));
+  const testFilename = /[._-](tests?|specs?)\.[^.]+$/i.test(filename);
+
+  return nameLooksLikeTest || inTestDir || testFilename;
 }
 
 function buildDot(symbol, callers = [], callees = []) {

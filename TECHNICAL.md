@@ -67,5 +67,5 @@ There is no service to restart, no rollback beyond `npm uninstall -g codeshot` /
 
 - No automated test covers the actual `dot`/`codegraph` shell-out path — `test/run.js` only exercises the pure `buildDot`/`isTestRef` logic. A missing or incompatible `codegraph`/`dot` binary is only caught by running the CLI itself.
 - `buildDot` does not deduplicate repeated caller/callee entries; if `codegraph`'s JSON contains duplicates, the rendered graph will show duplicate edges.
-- `isTestRef` matches on the substring `test` (case-insensitive) in either the node name or file path — this will misfire on any production symbol or path that happens to contain "test" (e.g. `TestConnectionPool`, `src/attestation.js`).
+- `isTestRef` is a naming-convention heuristic (word-boundary `Test`/`Spec` prefix or suffix in the name, or a `test`/`tests`/`spec`/`__tests__` directory or `.test.`/`.spec.` filename), not a semantic check — a production symbol that happens to follow test-like naming (e.g. a function literally named `Test`) would still be misclassified.
 - No handling for extremely large call graphs (hundreds of callers/callees) — `dot`'s default layout may become unreadable; there's no `--depth` or filtering flag.

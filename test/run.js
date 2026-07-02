@@ -31,6 +31,16 @@ test('isTestRef false for production code', () => {
   assert.strictEqual(isTestRef({ name: 'doThing', filePath: 'src/thing.js' }), false);
 });
 
+test('isTestRef does not misfire on "test"/"contest" as a substring', () => {
+  assert.strictEqual(isTestRef({ name: 'AttestationService', filePath: 'src/attestation.js' }), false);
+  assert.strictEqual(isTestRef({ name: 'ContestWinner', filePath: 'src/contest.js' }), false);
+  assert.strictEqual(isTestRef({ name: 'Attest', filePath: 'src/attest.js' }), false);
+});
+
+test('isTestRef recognizes a spec/ directory layout', () => {
+  assert.strictEqual(isTestRef({ name: 'Thing', filePath: 'spec/thing.js' }), true);
+});
+
 test('buildDot emits digraph header and highlighted symbol node', () => {
   const dot = buildDot('RollAutoSnapshot', [], []);
   assert.match(dot, /^digraph callgraph \{/);
