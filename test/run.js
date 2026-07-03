@@ -81,10 +81,22 @@ test('--limit rejects non-positive-integer values before reaching codegraph', ()
       execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--limit', bad], { encoding: 'utf8', stdio: 'pipe' });
     } catch (err) {
       threw = true;
-      assert.match(err.stderr, /--limit must be a positive integer|argument is ambiguous/);
+      assert.match(err.stderr, /--limit must be a positive integer/);
     }
     assert.strictEqual(threw, true, `expected --limit ${bad} to be rejected`);
   }
+});
+
+test('missing symbol argument is rejected with a codeshot-prefixed message', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js')], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /^codeshot: missing required <symbol> argument/);
+  }
+  assert.strictEqual(threw, true, 'expected missing symbol to be rejected');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -109,13 +109,20 @@ async function main() {
       allowPositionals: true,
     }));
   } catch (err) {
-    console.error(`codeshot: ${err.message}`);
+    if (err.code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE' && /--limit/.test(err.message)) {
+      const flagIndex = process.argv.indexOf('--limit');
+      const badValue = flagIndex !== -1 ? process.argv[flagIndex + 1] : undefined;
+      console.error(`codeshot: --limit must be a positive integer, got '${badValue}'`);
+    } else {
+      console.error(`codeshot: ${err.message}`);
+    }
     console.error(USAGE);
     process.exit(1);
   }
 
   const symbol = positionals[0];
   if (!symbol) {
+    console.error('codeshot: missing required <symbol> argument');
     console.error(USAGE);
     process.exit(1);
   }
