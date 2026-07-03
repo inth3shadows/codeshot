@@ -388,5 +388,33 @@ test('CLI --depth traversal runs end-to-end against this repo\'s own real codegr
   }
 });
 
+test('CLI resolves a fuzzy/partial query to its canonical name for the rendered root label', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['query', '--path', repoRoot, '--json', '--limit', '1', '--', 'buildD'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const out = path.join(os.tmpdir(), `codeshot-resolve-${Date.now()}.dot`);
+  try {
+    // 'buildD' is a deliberate partial query -- codegraph fuzzy-resolves it to
+    // the real symbol 'buildDot'. The rendered root label must show the
+    // resolved canonical name, not the literal query string.
+    execFileSync('node', [callgraphJs, 'buildD', '--path', repoRoot, '--out', out, '--format', 'dot'], { encoding: 'utf8', stdio: 'pipe' });
+    const dot = fs.readFileSync(out, 'utf8');
+    assert.match(dot, /\bbuildDot\b\s*\[fillcolor="#c7d2fe"/, 'expected the root node to be labeled with the resolved name "buildDot", not the raw query "buildD"');
+  } finally {
+    fs.rmSync(out, { force: true });
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
