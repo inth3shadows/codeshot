@@ -99,5 +99,17 @@ test('missing symbol argument is rejected with a codeshot-prefixed message', () 
   assert.strictEqual(threw, true, 'expected missing symbol to be rejected');
 });
 
+test('explicit empty --out is rejected instead of silently falling back to a temp path', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--out='], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--out must not be empty/);
+  }
+  assert.strictEqual(threw, true, 'expected empty --out to be rejected');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

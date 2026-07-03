@@ -18,6 +18,7 @@ Optional flags:
 - Point at a different repo: `codeshot <SymbolName> --path /path/to/other/repo`
 - Choose where the image is saved: `codeshot <SymbolName> --out ~/Desktop/diagram.png`
 - Fetch more callers/callees for a heavily-used symbol: `codeshot <SymbolName> --limit 200` (default is 50)
+- If the symbol name itself starts with a dash (rare — e.g. a mangled/generated name), put flags first and separate the name with `--`: `codeshot --path /path/to/repo -- -MangledName`
 
 **Reading the diagram:** boxes are code symbols; the symbol you asked about is highlighted darker. Arrows point in call direction — an arrow into your symbol is a caller, an arrow out is something it calls. Dashed arrows mean the caller is test code, so you can tell "is this only exercised by tests" at a glance.
 

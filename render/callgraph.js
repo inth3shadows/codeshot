@@ -128,6 +128,10 @@ async function main() {
   }
 
   const repoPath = values.path;
+  if (values.out === '') {
+    console.error('codeshot: --out must not be empty');
+    process.exit(1);
+  }
   let   outFile  = values.out || null;
   const limit    = Number(values.limit);
   if (!Number.isInteger(limit) || limit <= 0) {
@@ -147,8 +151,10 @@ async function main() {
   // same SQLite index intermittently race on codegraph's own schema_versions
   // table ("UNIQUE constraint failed"), confirmed by running these calls in
   // parallel — codegraph is not safe to invoke concurrently against one index.
-  const { callers } = await runCodegraph(['callers', symbol, '--path', repoPath, '--limit', String(limit), '--json']);
-  const { callees } = await runCodegraph(['callees', symbol, '--path', repoPath, '--limit', String(limit), '--json']);
+  // '--' before the symbol: codegraph's own arg parser otherwise misreads a
+  // symbol starting with '-' (e.g. a mangled/generated name) as a flag.
+  const { callers } = await runCodegraph(['callers', '--path', repoPath, '--limit', String(limit), '--json', '--', symbol]);
+  const { callees } = await runCodegraph(['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', symbol]);
 
   for (const [kind, results] of [['callers', callers], ['callees', callees]]) {
     const warning = truncationWarning(kind, results, limit);
