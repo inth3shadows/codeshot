@@ -2,7 +2,7 @@
 'use strict';
 
 const assert = require('assert');
-const { buildDot, isTestRef, truncationWarning } = require('../render/callgraph.js');
+const { buildDot, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote } = require('../render/callgraph.js');
 
 let passed = 0;
 let failed = 0;
@@ -76,6 +76,40 @@ test('buildDot keeps distinct callers/callees with the same name but different f
   assert.strictEqual((dot.match(/"Caller" -> "Target"/g) || []).length, 2);
 });
 
+test('buildDot renders every caller/callee when maxRender is omitted', () => {
+  const many = Array.from({ length: 5 }, (_, i) => ({ name: `Fn${i}`, filePath: `src/fn${i}.js` }));
+  const dot = buildDot('Target', many, many);
+  assert.strictEqual((dot.match(/-> "Target"/g) || []).length, 5);
+  assert.strictEqual((dot.match(/"Target" ->/g) || []).length, 5);
+});
+
+test('buildDot caps rendered callers/callees at maxRender, keeping the first N distinct entries', () => {
+  const many = Array.from({ length: 5 }, (_, i) => ({ name: `Fn${i}`, filePath: `src/fn${i}.js` }));
+  const dot = buildDot('Target', many, many, { maxRender: 2 });
+  assert.strictEqual((dot.match(/-> "Target"/g) || []).length, 2);
+  assert.strictEqual((dot.match(/"Target" ->/g) || []).length, 2);
+  assert.match(dot, /"Fn0" -> "Target"/);
+  assert.match(dot, /"Fn1" -> "Target"/);
+  assert.doesNotMatch(dot, /"Fn2" -> "Target"/);
+});
+
+test('buildDot maxRender applies after dedup, not before', () => {
+  const dupe = { name: 'Caller', filePath: 'src/caller.js' };
+  const dot = buildDot('Target', [dupe, { ...dupe }, { name: 'Other', filePath: 'src/other.js' }], [], { maxRender: 2 });
+  assert.match(dot, /"Caller" -> "Target"/);
+  assert.match(dot, /"Other" -> "Target"/);
+});
+
+test('renderTruncationNote fires when distinct count exceeds maxRender', () => {
+  assert.match(renderTruncationNote('callers', 10, 5), /rendering 5 of 10 distinct callers/);
+});
+
+test('renderTruncationNote is null when maxRender is unset or not exceeded', () => {
+  assert.strictEqual(renderTruncationNote('callers', 10, undefined), null);
+  assert.strictEqual(renderTruncationNote('callers', 5, 5), null);
+  assert.strictEqual(renderTruncationNote('callers', 3, 5), null);
+});
+
 test('truncationWarning fires when results hit the limit', () => {
   const results = Array.from({ length: 20 }, (_, i) => ({ name: `Fn${i}` }));
   assert.match(truncationWarning('callers', results, 20), /showing 20 callers/);
@@ -97,6 +131,20 @@ test('--limit rejects non-positive-integer values before reaching codegraph', ()
       assert.match(err.stderr, /--limit must be a positive integer/);
     }
     assert.strictEqual(threw, true, `expected --limit ${bad} to be rejected`);
+  }
+});
+
+test('--max-render rejects non-positive-integer values before reaching codegraph', () => {
+  const { execFileSync } = require('child_process');
+  for (const bad of ['abc', '0', '-5', '3.5', 'NaN']) {
+    let threw = false;
+    try {
+      execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--max-render', bad], { encoding: 'utf8', stdio: 'pipe' });
+    } catch (err) {
+      threw = true;
+      assert.match(err.stderr, /--max-render must be a positive integer/);
+    }
+    assert.strictEqual(threw, true, `expected --max-render ${bad} to be rejected`);
   }
 });
 

@@ -32,12 +32,13 @@ Codeshot checks for both on startup and tells you exactly what's missing and how
 ## Usage
 
 ```bash
-codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>]
+codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>]
 ```
 
 - `--path` — repo to query (defaults to cwd)
 - `--out` — output file (defaults to a temp PNG; path is printed on success)
 - `--limit` — max callers/callees to fetch (defaults to 50; must be a positive integer). Codeshot warns on stderr if a result may be truncated — see [TECHNICAL.md](TECHNICAL.md#configuration) for why and its one known false-positive case.
+- `--max-render` — cap how many distinct callers/callees are drawn in the image, independent of `--limit` (unset by default: no cap). Useful for symbols with hundreds of callers, where a high `--limit` keeps the truncation warning accurate but would otherwise produce an unreadably tall image.
 
 ## Design decisions
 
