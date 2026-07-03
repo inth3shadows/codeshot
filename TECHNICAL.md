@@ -42,7 +42,7 @@ See [README.md](README.md#design-decisions)'s "Design decisions" section for why
 
 ## External Dependencies
 
-- **[`codegraph`](https://github.com/colbymchenry/codegraph) CLI** — must be on `PATH`; the target repo must already be indexed (`codegraph init`).
+- **[`codegraph`](https://github.com/colbymchenry/codegraph) CLI** — must be on `PATH`; the target repo must already be indexed (`codegraph init`). The `callers` and `callees` queries are run sequentially, not concurrently — running them in parallel intermittently triggers a `UNIQUE constraint failed: schema_versions.version` error from `codegraph` itself, so concurrent invocations against the same index aren't safe.
 - **`dot` (Graphviz)** — must be on `PATH`.
 
 Both are checked at startup via `which`/`where` (see the pipeline diagram above); a missing binary prints an install hint and exits 1 rather than failing deep in the call stack.

@@ -1,2 +1,5 @@
 execFileSync
 fn
+promisify
+execFileAsync
+parseArgs

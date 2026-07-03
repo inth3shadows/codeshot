@@ -11,10 +11,13 @@
  *   node render/callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>]
  */
 
-const { execFileSync } = require('child_process');
+const { execFileSync, execFile } = require('child_process');
+const { parseArgs, promisify } = require('util');
 const fs   = require('fs');
 const os   = require('os');
 const path = require('path');
+
+const execFileAsync = promisify(execFile);
 
 const DEFAULT_LIMIT = 50;
 
@@ -27,14 +30,18 @@ function requireOnPath(bin, installHint) {
   }
 }
 
-function runCodegraph(args) {
-  const out = execFileSync('codegraph', args, { encoding: 'utf8' });
+function parseCodegraphOutput(out, args) {
   try {
     return JSON.parse(out);
   } catch {
     console.error(`codeshot: 'codegraph ${args.join(' ')}' did not return JSON:\n${out.trim()}`);
     process.exit(1);
   }
+}
+
+async function runCodegraph(args) {
+  const { stdout } = await execFileAsync('codegraph', args, { encoding: 'utf8' });
+  return parseCodegraphOutput(stdout, args);
 }
 
 function sanitizeForFilename(s) {
@@ -87,38 +94,51 @@ function buildDot(symbol, callers = [], callees = []) {
   return lines.join('\n');
 }
 
-const FLAGS = ['--path', '--out', '--limit'];
+const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>]';
 
-function main() {
-  const [, , symbol, ...rest] = process.argv;
-  if (!symbol) {
-    console.error('Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>]');
+async function main() {
+  let values, positionals;
+  try {
+    ({ values, positionals } = parseArgs({
+      args: process.argv.slice(2),
+      options: {
+        path:  { type: 'string', default: '.' },
+        out:   { type: 'string' },
+        limit: { type: 'string', default: String(DEFAULT_LIMIT) },
+      },
+      allowPositionals: true,
+    }));
+  } catch (err) {
+    if (err.code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE' && /--limit/.test(err.message)) {
+      const flagIndex = process.argv.indexOf('--limit');
+      const badValue = flagIndex !== -1 ? process.argv[flagIndex + 1] : undefined;
+      console.error(`codeshot: --limit must be a positive integer, got '${badValue}'`);
+    } else {
+      console.error(`codeshot: ${err.message}`);
+    }
+    console.error(USAGE);
     process.exit(1);
   }
 
-  let repoPath = '.';
-  let outFile  = null;
-  let limit    = DEFAULT_LIMIT;
-  for (let i = 0; i < rest.length; i++) {
-    if (!FLAGS.includes(rest[i])) continue;
-
-    const value = rest[i + 1];
-    if (value === undefined || FLAGS.includes(value)) {
-      console.error(`codeshot: missing value for ${rest[i]}`);
-      console.error('Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>]');
-      process.exit(1);
-    }
-    if (rest[i] === '--path') repoPath = value;
-    else if (rest[i] === '--out') outFile = value;
-    else {
-      limit = Number(value);
-      if (!Number.isInteger(limit) || limit <= 0) {
-        console.error(`codeshot: --limit must be a positive integer, got '${value}'`);
-        process.exit(1);
-      }
-    }
-    i++;
+  const symbol = positionals[0];
+  if (!symbol) {
+    console.error('codeshot: missing required <symbol> argument');
+    console.error(USAGE);
+    process.exit(1);
   }
+
+  const repoPath = values.path;
+  if (values.out === '') {
+    console.error('codeshot: --out must not be empty');
+    process.exit(1);
+  }
+  let   outFile  = values.out || null;
+  const limit    = Number(values.limit);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    console.error(`codeshot: --limit must be a positive integer, got '${values.limit}'`);
+    process.exit(1);
+  }
+
   const safeSymbol = sanitizeForFilename(symbol);
   if (!outFile) {
     outFile = path.join(os.tmpdir(), `callgraph-${safeSymbol}-${Date.now()}.png`);
@@ -127,8 +147,14 @@ function main() {
   requireOnPath('codegraph', 'Install: https://github.com/colbymchenry/codegraph');
   requireOnPath('dot', 'Install graphviz (e.g. `brew install graphviz` or `apt install graphviz`).');
 
-  const { callers } = runCodegraph(['callers', symbol, '--path', repoPath, '--limit', String(limit), '--json']);
-  const { callees } = runCodegraph(['callees', symbol, '--path', repoPath, '--limit', String(limit), '--json']);
+  // Sequential, not Promise.all: concurrent codegraph invocations against the
+  // same SQLite index intermittently race on codegraph's own schema_versions
+  // table ("UNIQUE constraint failed"), confirmed by running these calls in
+  // parallel — codegraph is not safe to invoke concurrently against one index.
+  // '--' before the symbol: codegraph's own arg parser otherwise misreads a
+  // symbol starting with '-' (e.g. a mangled/generated name) as a flag.
+  const { callers } = await runCodegraph(['callers', '--path', repoPath, '--limit', String(limit), '--json', '--', symbol]);
+  const { callees } = await runCodegraph(['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', symbol]);
 
   for (const [kind, results] of [['callers', callers], ['callees', callees]]) {
     const warning = truncationWarning(kind, results, limit);
@@ -146,7 +172,10 @@ function main() {
 }
 
 if (require.main === module) {
-  main();
+  main().catch(err => {
+    console.error(`codeshot: ${err.message}`);
+    process.exit(1);
+  });
 }
 
 module.exports = { buildDot, isTestRef, truncationWarning };
