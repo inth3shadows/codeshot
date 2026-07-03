@@ -10,7 +10,7 @@
 codeshot RollAutoSnapshot --path ~/code/myrepo --out callgraph.png
 ```
 
-Pulls the symbol's callers/callees straight from CodeGraph's index (`codegraph callers`/`callees --json`) and renders them through [graphviz](https://graphviz.org/) — a real diagram, not hand-drawn ASCII. Test callers are shown dashed so production call paths stand out.
+Pulls the symbol's callers/callees straight from CodeGraph's index (`codegraph callers`/`callees --json`) and renders them through [graphviz](https://graphviz.org/) — a real diagram, not hand-drawn ASCII. Test callers are shown dashed so production call paths stand out; a module-level/import reference CodeGraph couldn't resolve to a real call site is shown dotted-gray instead of looking like a confirmed call.
 
 ## Why this exists
 
@@ -36,9 +36,9 @@ codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-re
 ```
 
 - `--path` — repo to query (defaults to cwd)
-- `--out` — output file (defaults to a temp file named after the chosen `--format`; path is printed on success)
+- `--out` — output file (defaults to a temp file named after the chosen `--format`; path is printed on success). If the extension doesn't match `--format` (e.g. `--out diagram.svg` without `--format svg`), Codeshot warns on stderr instead of silently writing the wrong data under that name.
 - `--limit` — max callers/callees to fetch (defaults to 50; must be a positive integer). Codeshot warns on stderr if a result may be truncated — see [TECHNICAL.md](TECHNICAL.md#configuration) for why and its one known false-positive case.
-- `--max-render` — cap how many distinct callers/callees are drawn in the image, independent of `--limit` (unset by default: no cap). Useful for symbols with hundreds of callers, where a high `--limit` keeps the truncation warning accurate but would otherwise produce an unreadably tall image.
+- `--max-render` — cap how many distinct nodes are drawn in the image, independent of `--limit` (unset by default: no cap). This is one shared budget across callers, callees, and `--depth`'s transitive edges combined — not a separate `N` for each. Useful for symbols with hundreds of callers, where a high `--limit` keeps the truncation warning accurate but would otherwise produce an unreadably tall image.
 - `--format` — output format, passed straight to `dot -T<fmt>` (defaults to `png`). `svg` is a good alternative for large graphs — it stays crisp at any zoom level and keeps text selectable, unlike a raster PNG. Any format `dot -T` supports works; an unsupported one fails with `dot`'s own error listing the valid ones.
 - `--depth` — how many hops of callers-of-callers / callees-of-callees to draw beyond the direct trail (defaults to `1`, i.e. today's direct-only behavior; must be a positive integer). Codeshot fetches this itself, one sequential `codegraph` call per newly discovered node — CodeGraph has no multi-hop traversal of its own for `callers`/`callees`. Each additional hop is drawn in a progressively lighter shade so you can tell how far a node is from the symbol at a glance. There's an internal, non-configurable safety cap on total nodes discovered (a well-connected symbol at `--depth 3`+ can otherwise mean hundreds of sequential `codegraph` calls); Codeshot warns on stderr if it hit that cap before finishing — see [TECHNICAL.md](TECHNICAL.md#configuration) for the exact number and rationale.
 
