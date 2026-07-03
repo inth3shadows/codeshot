@@ -18,6 +18,7 @@ Optional flags:
 - Point at a different repo: `codeshot <SymbolName> --path /path/to/other/repo`
 - Choose where the image is saved: `codeshot <SymbolName> --out ~/Desktop/diagram.png`
 - Fetch more callers/callees for a heavily-used symbol: `codeshot <SymbolName> --limit 200` (default is 50)
+- Keep the image readable for a heavily-used symbol: `codeshot <SymbolName> --limit 200 --max-render 30` — fetches up to 200 (so the truncation warning stays accurate) but only draws the first 30 distinct callers/callees, instead of a huge image
 - If the symbol name itself starts with a dash (rare — e.g. a mangled/generated name), put flags first and separate the name with `--`: `codeshot --path /path/to/repo -- -MangledName`
 
 **Reading the diagram:** boxes are code symbols; the symbol you asked about is highlighted darker. Arrows point in call direction — an arrow into your symbol is a caller, an arrow out is something it calls. Dashed arrows mean the caller is test code, so you can tell "is this only exercised by tests" at a glance.
@@ -28,7 +29,7 @@ Optional flags:
 - **"codeshot: 'dot' not found on PATH"** — Install Graphviz (`brew install graphviz` on Mac, `apt install graphviz` on Ubuntu/WSL), then try again.
 - **The command runs but the diagram is empty or missing edges** — The repo probably hasn't been indexed yet, or the index is stale. Run `codegraph init` (or re-run indexing) in the target repo first.
 - **"Symbol not found" or an empty diagram for a symbol you know exists** — Double-check the exact spelling/casing of the symbol name, and confirm `--path` points at the repo that actually contains it.
-- **The PNG looks unreadable / too cluttered** — This usually means the symbol has a very large number of callers or callees. There's currently no way to filter or limit depth; try graphing a more specific, less-central symbol instead.
+- **The PNG looks unreadable / too cluttered** — This usually means the symbol has a very large number of callers or callees. Rerun with `--max-render <n>` (e.g. `--max-render 30`) to cap how many are drawn — Codeshot will still tell you on stderr how many were left out. There's no way to limit traversal *depth* (multi-hop callers-of-callers); that's blocked by `codegraph` itself, which doesn't support it — try graphing a more specific, less-central symbol instead if depth is the issue.
 - **"codeshot: showing N callers/callees — ... may have cut off more"** — Rerun with a higher `--limit` if you need the full picture (see `TECHNICAL.md` for why this warning can occasionally be a false alarm).
 
 For anything not covered here, check `TECHNICAL.md` or open an issue on the GitHub repo.

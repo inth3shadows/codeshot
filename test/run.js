@@ -172,6 +172,18 @@ test('explicit empty --out is rejected instead of silently falling back to a tem
   assert.strictEqual(threw, true, 'expected empty --out to be rejected');
 });
 
+test('explicit empty --path is rejected instead of silently falling through to codegraph', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--path='], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--path must not be empty/);
+  }
+  assert.strictEqual(threw, true, 'expected empty --path to be rejected');
+});
+
 test('buildDot output is valid DOT that the real `dot` binary accepts', () => {
   const { execFileSync } = require('child_process');
   const dot = buildDot('Weird "Name" \\ <html>', [
