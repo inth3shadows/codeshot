@@ -184,6 +184,18 @@ test('explicit empty --path is rejected instead of silently falling through to c
   assert.strictEqual(threw, true, 'expected empty --path to be rejected');
 });
 
+test('explicit empty --format is rejected instead of silently defaulting to png', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--format='], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--format must not be empty/);
+  }
+  assert.strictEqual(threw, true, 'expected empty --format to be rejected');
+});
+
 test('buildDot output is valid DOT that the real `dot` binary accepts', () => {
   const { execFileSync } = require('child_process');
   const dot = buildDot('Weird "Name" \\ <html>', [
@@ -200,6 +212,42 @@ test('buildDot output is valid DOT that the real `dot` binary accepts', () => {
     throw new Error(`dot rejected buildDot's output: ${err.stderr || err.message}`);
   }
   assert.ok(out.length > 0, 'expected dot to produce non-empty PNG output');
+});
+
+test('CLI runs end-to-end against this repo\'s own real codegraph index', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  // This repo is only self-indexed by `codegraph` on machines that have run
+  // `codegraph init` against it (a dev-environment convenience, not something
+  // a fresh clone or CI has) — skip rather than fail when that's not the case,
+  // same as codeshot itself treats codegraph as an optional-at-test-time,
+  // required-at-run-time external dependency.
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const pngOut = path.join(os.tmpdir(), `codeshot-selftest-${Date.now()}.png`);
+  const svgOut = path.join(os.tmpdir(), `codeshot-selftest-${Date.now()}.svg`);
+  try {
+    execFileSync('node', [callgraphJs, 'buildDot', '--path', repoRoot, '--out', pngOut], { encoding: 'utf8', stdio: 'pipe' });
+    const png = fs.readFileSync(pngOut);
+    assert.ok(png.length > 0 && png[0] === 0x89 && png.toString('ascii', 1, 4) === 'PNG', 'expected a real PNG file from the default format');
+
+    execFileSync('node', [callgraphJs, 'buildDot', '--path', repoRoot, '--out', svgOut, '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
+    const svg = fs.readFileSync(svgOut, 'utf8');
+    assert.match(svg, /<svg/, 'expected --format svg to produce real SVG output through the same pipeline');
+  } finally {
+    fs.rmSync(pngOut, { force: true });
+    fs.rmSync(svgOut, { force: true });
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

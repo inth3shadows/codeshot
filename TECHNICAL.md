@@ -5,7 +5,7 @@
 Codeshot is a single-file CLI (`render/callgraph.js`) with no server, no persistent state, and no dependencies beyond two external binaries it shells out to.
 
 ```
-argv (symbol, --path, --out, --limit, --max-render)
+argv (symbol, --path, --out, --limit, --max-render, --format)
         |
         v
 requireOnPath('codegraph')  --- exits with an install hint if missing
@@ -23,7 +23,7 @@ renderTruncationNote(...) --- warns on stderr if distinct results exceed --max-r
 buildDot(symbol, callers, callees, { maxRender })  --- pure function, produces a DOT string
         |
         v
-write DOT to a tempfile -> `dot -Tpng <tempfile> -o <outFile>` -> delete tempfile
+write DOT to a tempfile -> `dot -T<format> <tempfile> -o <outFile>` -> delete tempfile
         |
         v
 print outFile path to stdout
@@ -56,14 +56,15 @@ No environment variables, no config file. All behavior is controlled by CLI argu
 |---|---|---|
 | `<symbol>` (positional, required) | — | The symbol to graph |
 | `--path` | `.` (cwd) | Repo path passed through to `codegraph`. An explicit empty value (`--path=`) is rejected with an error rather than silently falling through to `codegraph` as an empty string. |
-| `--out` | `<tmpdir>/callgraph-<symbol>-<timestamp>.png` | Output PNG path |
+| `--out` | `<tmpdir>/callgraph-<symbol>-<timestamp>.<format>` | Output file path |
 | `--limit` | `50` | Max callers/callees fetched from `codegraph` (its own CLI default is 20). Must be a positive integer — rejected with an error otherwise, since `codegraph` silently returns an empty result for a malformed limit rather than erroring itself. `codegraph`'s JSON has no total/truncated field, so Codeshot's only signal that more may exist is the result count hitting `--limit` exactly — when it does, a warning is printed to stderr. That heuristic false-positives for a symbol with exactly `--limit` real results and no more; there's no way to distinguish "exactly complete" from "truncated" without a total field from `codegraph`. |
 | `--max-render` | unset (no cap) | Caps how many *distinct* (post-dedup) callers/callees are actually drawn as nodes, independent of `--limit`. Exists because `--limit` controls what's fetched, not what's legible — a symbol with hundreds of real callers is still complete but produces an unusably tall image at a high `--limit`. Opt-in and orthogonal to `--limit`: fetch wide (to get an accurate truncation signal) while rendering narrow (to keep the image readable). Must be a positive integer if given. When it truncates, a stderr warning states how many of the distinct total were rendered. |
+| `--format` | `png` | Passed straight to `dot -T<format>` — no allowlist of its own, so any format `dot -T` supports works, and an unsupported one surfaces `dot`'s own error (which lists the valid ones) rather than a Codeshot-invented one. `svg` is the notable alternative: unlike a raster PNG it stays crisp at any zoom and keeps text selectable, which helps more than `--max-render` alone when a graph is dense but you still want to inspect all of it. |
 
 ## Maintenance Commands
 
 ```bash
-npm test              # runs test/run.js — assertions against buildDot/isTestRef/truncationWarning/dedupeNodes/renderTruncationNote
+npm test              # runs test/run.js — assertions against buildDot/isTestRef/truncationWarning/dedupeNodes/renderTruncationNote, plus a CLI-level test against this repo's own codegraph index (skips if not codegraph-indexed)
 node render/callgraph.js <symbol> --path <repo> --out /tmp/out.png   # manual smoke test
 ```
 
@@ -71,6 +72,6 @@ There is no service to restart, no rollback beyond `npm uninstall -g codeshot` /
 
 ## Known Limitations
 
-- `codegraph`/`codeshot`'s own JSON<->CLI contract is only covered indirectly — `test/run.js` exercises `buildDot`'s output against the real `dot` binary (catches malformed DOT syntax) but does not run against a real `codegraph` index; a `codegraph` output-shape change is only caught by running the CLI itself.
+- `test/run.js` includes one CLI-level test that runs the real `codeshot` binary against this repo's own `codegraph` index (querying a symbol from `render/callgraph.js` itself) to catch `codegraph` output-shape drift — but it skips itself (rather than failing) when `codegraph` isn't on `PATH` or this repo hasn't been `codegraph init`'d, since that's a dev-environment convenience a fresh clone or CI won't have. So the contract is only actually exercised on machines set up for it; elsewhere it's still only indirectly covered via `buildDot`'s output against the real `dot` binary.
 - `isTestRef` is a naming-convention heuristic (word-boundary `Test`/`Spec` prefix or suffix in the name, or a `test`/`tests`/`spec`/`__tests__` directory or `.test.`/`.spec.` filename), not a semantic check — a production symbol that happens to follow test-like naming (e.g. a function literally named `Test`) would still be misclassified.
-- No `--depth` flag for multi-hop traversal, and this is blocked upstream, not a Codeshot gap: `codegraph`'s `callers`/`callees`/`node`/`explore` subcommands have no depth or traversal option at all (checked via `--help` on each), so there's no data source for Codeshot to graph beyond one hop in either direction.
+- No `--depth` flag for multi-hop traversal yet, but this is **not** blocked upstream (a prior version of this doc claimed it was — corrected 2026-07-03). `codegraph`'s `callers`/`callees`/`node`/`explore` subcommands indeed have no depth option (checked via `--help` on each), but `codegraph impact <symbol> --json` does support `--depth` — it just returns a flat `affected: [...]` node list with no edges (only summary `nodeCount`/`edgeCount`), so it can't drive `buildDot` directly without discarding that shape and re-deriving edges. Multi-hop *is* achievable today, client-side, by having Codeshot itself call `callers`/`callees` recursively (sequentially, same concurrency-safety pattern already used for the depth-1 case) rather than depending on `impact`'s aggregate output. Not yet implemented — see the exploration write-up for the recursive-traversal design questions before building it.

@@ -32,13 +32,14 @@ Codeshot checks for both on startup and tells you exactly what's missing and how
 ## Usage
 
 ```bash
-codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>]
+codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>]
 ```
 
 - `--path` — repo to query (defaults to cwd)
-- `--out` — output file (defaults to a temp PNG; path is printed on success)
+- `--out` — output file (defaults to a temp file named after the chosen `--format`; path is printed on success)
 - `--limit` — max callers/callees to fetch (defaults to 50; must be a positive integer). Codeshot warns on stderr if a result may be truncated — see [TECHNICAL.md](TECHNICAL.md#configuration) for why and its one known false-positive case.
 - `--max-render` — cap how many distinct callers/callees are drawn in the image, independent of `--limit` (unset by default: no cap). Useful for symbols with hundreds of callers, where a high `--limit` keeps the truncation warning accurate but would otherwise produce an unreadably tall image.
+- `--format` — output format, passed straight to `dot -T<fmt>` (defaults to `png`). `svg` is a good alternative for large graphs — it stays crisp at any zoom level and keeps text selectable, unlike a raster PNG. Any format `dot -T` supports works; an unsupported one fails with `dot`'s own error listing the valid ones.
 
 ## Design decisions
 
