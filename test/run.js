@@ -63,6 +63,19 @@ test('buildDot escapes double quotes in names', () => {
   assert.match(dot, /"Weird\\"Name"/);
 });
 
+test('buildDot dedupes repeated caller/callee entries', () => {
+  const dupeCaller = { name: 'Caller', filePath: 'src/caller.js' };
+  const dupeCallee = { name: 'Callee', filePath: 'src/callee.js' };
+  const dot = buildDot('Target', [dupeCaller, { ...dupeCaller }], [dupeCallee, { ...dupeCallee }]);
+  assert.strictEqual((dot.match(/"Caller" -> "Target"/g) || []).length, 1);
+  assert.strictEqual((dot.match(/"Target" -> "Callee"/g) || []).length, 1);
+});
+
+test('buildDot keeps distinct callers/callees with the same name but different filePath', () => {
+  const dot = buildDot('Target', [{ name: 'Caller', filePath: 'a.js' }, { name: 'Caller', filePath: 'b.js' }], []);
+  assert.strictEqual((dot.match(/"Caller" -> "Target"/g) || []).length, 2);
+});
+
 test('truncationWarning fires when results hit the limit', () => {
   const results = Array.from({ length: 20 }, (_, i) => ({ name: `Fn${i}` }));
   assert.match(truncationWarning('callers', results, 20), /showing 20 callers/);
@@ -109,6 +122,24 @@ test('explicit empty --out is rejected instead of silently falling back to a tem
     assert.match(err.stderr, /--out must not be empty/);
   }
   assert.strictEqual(threw, true, 'expected empty --out to be rejected');
+});
+
+test('buildDot output is valid DOT that the real `dot` binary accepts', () => {
+  const { execFileSync } = require('child_process');
+  const dot = buildDot('Weird "Name" \\ <html>', [
+    { name: 'CallerTest', filePath: 'src/caller.test.js' },
+    { name: 'Unicode λ Caller', filePath: 'src/caller2.js' },
+  ], [
+    { name: 'Callee', filePath: 'src/callee.js' },
+  ]);
+  let out;
+  try {
+    out = execFileSync('dot', ['-Tpng'], { input: dot });
+  } catch (err) {
+    if (err.code === 'ENOENT') throw new Error('`dot` not found on PATH — codeshot requires graphviz to run at all, see README.md#install');
+    throw new Error(`dot rejected buildDot's output: ${err.stderr || err.message}`);
+  }
+  assert.ok(out.length > 0, 'expected dot to produce non-empty PNG output');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
