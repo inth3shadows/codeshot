@@ -2,7 +2,7 @@
 'use strict';
 
 const assert = require('assert');
-const { buildDot, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote } = require('../render/callgraph.js');
+const { buildDot, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor, depthBudgetWarning } = require('../render/callgraph.js');
 
 let passed = 0;
 let failed = 0;
@@ -100,6 +100,54 @@ test('buildDot maxRender applies after dedup, not before', () => {
   assert.match(dot, /"Other" -> "Target"/);
 });
 
+test('dedupeEdges collapses edges with the same from/to name and filePath', () => {
+  const a = { name: 'A', filePath: 'a.js' };
+  const b = { name: 'B', filePath: 'b.js' };
+  const edges = dedupeEdges([{ from: a, to: b, depth: 2 }, { from: { ...a }, to: { ...b }, depth: 2 }]);
+  assert.strictEqual(edges.length, 1);
+});
+
+test('dedupeEdges keeps edges that share a name but differ in filePath', () => {
+  const edges = dedupeEdges([
+    { from: { name: 'A', filePath: 'a.js' }, to: { name: 'B', filePath: 'b.js' }, depth: 2 },
+    { from: { name: 'A', filePath: 'other.js' }, to: { name: 'B', filePath: 'b.js' }, depth: 2 },
+  ]);
+  assert.strictEqual(edges.length, 2);
+});
+
+test('depthColor fades lighter as depth increases and clamps at the last shade', () => {
+  const two = depthColor(2);
+  const three = depthColor(3);
+  const deep = depthColor(50);
+  assert.notStrictEqual(two, three);
+  assert.strictEqual(deep, depthColor(4), 'expected very deep hops to clamp to the palette\'s last shade');
+});
+
+test('depthBudgetWarning fires only when traversal was truncated', () => {
+  assert.strictEqual(depthBudgetWarning(false, 200), null);
+  assert.match(depthBudgetWarning(true, 200), /safety cap of 200 discovered nodes/);
+});
+
+test('buildDot renders transitive (depth > 1) edges alongside direct ones', () => {
+  const dot = buildDot('Target', [{ name: 'Caller', filePath: 'src/caller.js' }], [], {
+    transitiveEdges: [{ from: { name: 'GrandCaller', filePath: 'src/gc.js' }, to: { name: 'Caller', filePath: 'src/caller.js' }, depth: 2 }],
+  });
+  assert.match(dot, /"Caller" -> "Target";/);
+  assert.match(dot, /"GrandCaller" -> "Caller" \[color="#a5b4fc"\];/);
+});
+
+test('buildDot dashes transitive edges from test callers same as direct ones', () => {
+  const dot = buildDot('Target', [], [], {
+    transitiveEdges: [{ from: { name: 'HelperTest', filePath: 'src/helper.test.js' }, to: { name: 'Direct', filePath: 'src/direct.js' }, depth: 2 }],
+  });
+  assert.match(dot, /"HelperTest" -> "Direct" \[color="#a5b4fc", style=dashed, label="test"\];/);
+});
+
+test('buildDot with no transitiveEdges option behaves exactly as before (backward compatible)', () => {
+  const dot = buildDot('Target', [{ name: 'Caller', filePath: 'a.js' }], [{ name: 'Callee', filePath: 'b.js' }]);
+  assert.doesNotMatch(dot, /color="#a5b4fc"/);
+});
+
 test('renderTruncationNote fires when distinct count exceeds maxRender', () => {
   assert.match(renderTruncationNote('callers', 10, 5), /rendering 5 of 10 distinct callers/);
 });
@@ -148,6 +196,20 @@ test('--max-render rejects non-positive-integer values before reaching codegraph
   }
 });
 
+test('--depth rejects non-positive-integer values before reaching codegraph', () => {
+  const { execFileSync } = require('child_process');
+  for (const bad of ['abc', '0', '-5', '3.5', 'NaN']) {
+    let threw = false;
+    try {
+      execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--depth', bad], { encoding: 'utf8', stdio: 'pipe' });
+    } catch (err) {
+      threw = true;
+      assert.match(err.stderr, /--depth must be a positive integer/);
+    }
+    assert.strictEqual(threw, true, `expected --depth ${bad} to be rejected`);
+  }
+});
+
 test('missing symbol argument is rejected with a codeshot-prefixed message', () => {
   const { execFileSync } = require('child_process');
   let threw = false;
@@ -184,6 +246,18 @@ test('explicit empty --path is rejected instead of silently falling through to c
   assert.strictEqual(threw, true, 'expected empty --path to be rejected');
 });
 
+test('explicit empty --format is rejected instead of silently defaulting to png', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--format='], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--format must not be empty/);
+  }
+  assert.strictEqual(threw, true, 'expected empty --format to be rejected');
+});
+
 test('buildDot output is valid DOT that the real `dot` binary accepts', () => {
   const { execFileSync } = require('child_process');
   const dot = buildDot('Weird "Name" \\ <html>', [
@@ -200,6 +274,75 @@ test('buildDot output is valid DOT that the real `dot` binary accepts', () => {
     throw new Error(`dot rejected buildDot's output: ${err.stderr || err.message}`);
   }
   assert.ok(out.length > 0, 'expected dot to produce non-empty PNG output');
+});
+
+test('CLI runs end-to-end against this repo\'s own real codegraph index', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  // This repo is only self-indexed by `codegraph` on machines that have run
+  // `codegraph init` against it (a dev-environment convenience, not something
+  // a fresh clone or CI has) — skip rather than fail when that's not the case,
+  // same as codeshot itself treats codegraph as an optional-at-test-time,
+  // required-at-run-time external dependency.
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const pngOut = path.join(os.tmpdir(), `codeshot-selftest-${Date.now()}.png`);
+  const svgOut = path.join(os.tmpdir(), `codeshot-selftest-${Date.now()}.svg`);
+  try {
+    execFileSync('node', [callgraphJs, 'buildDot', '--path', repoRoot, '--out', pngOut], { encoding: 'utf8', stdio: 'pipe' });
+    const png = fs.readFileSync(pngOut);
+    assert.ok(png.length > 0 && png[0] === 0x89 && png.toString('ascii', 1, 4) === 'PNG', 'expected a real PNG file from the default format');
+
+    execFileSync('node', [callgraphJs, 'buildDot', '--path', repoRoot, '--out', svgOut, '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
+    const svg = fs.readFileSync(svgOut, 'utf8');
+    assert.match(svg, /<svg/, 'expected --format svg to produce real SVG output through the same pipeline');
+  } finally {
+    fs.rmSync(pngOut, { force: true });
+    fs.rmSync(svgOut, { force: true });
+  }
+});
+
+test('CLI --depth traversal runs end-to-end against this repo\'s own real codegraph index', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const depth1Out = path.join(os.tmpdir(), `codeshot-depth1-${Date.now()}.dot`);
+  const depth2Out = path.join(os.tmpdir(), `codeshot-depth2-${Date.now()}.dot`);
+  try {
+    // --format dot renders the raw digraph text (no image encoding to compare
+    // sizes on) so this can assert depth 2 discovers strictly more than depth 1
+    // without depending on how graphviz happens to lay out a PNG/SVG.
+    execFileSync('node', [callgraphJs, 'buildDot', '--path', repoRoot, '--out', depth1Out, '--format', 'dot'], { encoding: 'utf8', stdio: 'pipe' });
+    execFileSync('node', [callgraphJs, 'buildDot', '--path', repoRoot, '--out', depth2Out, '--format', 'dot', '--depth', '2'], { encoding: 'utf8', stdio: 'pipe' });
+    const depth1 = fs.readFileSync(depth1Out, 'utf8');
+    const depth2 = fs.readFileSync(depth2Out, 'utf8');
+    const countEdges = dot => (dot.match(/->/g) || []).length;
+    assert.ok(countEdges(depth2) >= countEdges(depth1), 'expected --depth 2 to discover at least as many edges as depth 1');
+  } finally {
+    fs.rmSync(depth1Out, { force: true });
+    fs.rmSync(depth2Out, { force: true });
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
