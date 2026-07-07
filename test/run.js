@@ -2,7 +2,10 @@
 'use strict';
 
 const assert = require('assert');
-const { buildDot, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor, depthBudgetWarning } = require('../render/callgraph.js');
+const {
+  buildDot, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
+  depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
+} = require('../render/callgraph.js');
 
 let passed = 0;
 let failed = 0;
@@ -83,14 +86,24 @@ test('buildDot renders every caller/callee when maxRender is omitted', () => {
   assert.strictEqual((dot.match(/"Target" ->/g) || []).length, 5);
 });
 
-test('buildDot caps rendered callers/callees at maxRender, keeping the first N distinct entries', () => {
+test('buildDot treats maxRender as ONE shared budget across callers and callees, not an independent cap per direction', () => {
   const many = Array.from({ length: 5 }, (_, i) => ({ name: `Fn${i}`, filePath: `src/fn${i}.js` }));
   const dot = buildDot('Target', many, many, { maxRender: 2 });
+  // callers are spent first (priority order: direct trail before anything else),
+  // so with a shared budget of 2 the callees get none — NOT 2 callers + 2 callees.
   assert.strictEqual((dot.match(/-> "Target"/g) || []).length, 2);
-  assert.strictEqual((dot.match(/"Target" ->/g) || []).length, 2);
+  assert.strictEqual((dot.match(/"Target" ->/g) || []).length, 0);
   assert.match(dot, /"Fn0" -> "Target"/);
   assert.match(dot, /"Fn1" -> "Target"/);
   assert.doesNotMatch(dot, /"Fn2" -> "Target"/);
+});
+
+test('buildDot\'s shared maxRender budget spends what callers leave over on callees', () => {
+  const callers = Array.from({ length: 3 }, (_, i) => ({ name: `Caller${i}`, filePath: `src/c${i}.js` }));
+  const callees = Array.from({ length: 5 }, (_, i) => ({ name: `Callee${i}`, filePath: `src/e${i}.js` }));
+  const dot = buildDot('Target', callers, callees, { maxRender: 5 });
+  assert.strictEqual((dot.match(/-> "Target"/g) || []).length, 3, 'all 3 callers fit');
+  assert.strictEqual((dot.match(/"Target" ->/g) || []).length, 2, 'only 2 of 5 callees fit the remaining budget');
 });
 
 test('buildDot maxRender applies after dedup, not before', () => {
@@ -141,6 +154,36 @@ test('buildDot dashes transitive edges from test callers same as direct ones', (
     transitiveEdges: [{ from: { name: 'HelperTest', filePath: 'src/helper.test.js' }, to: { name: 'Direct', filePath: 'src/direct.js' }, depth: 2 }],
   });
   assert.match(dot, /"HelperTest" -> "Direct" \[color="#a5b4fc", style=dashed, label="test"\];/);
+});
+
+test('allocateRenderBudget spends a shared allowance in priority order across dimensions', () => {
+  assert.deepStrictEqual(allocateRenderBudget(5, [3, 4, 2]), [3, 2, 0]);
+  assert.deepStrictEqual(allocateRenderBudget(20, [3, 4, 2]), [3, 4, 2], 'a budget larger than the total should not truncate anything');
+  assert.deepStrictEqual(allocateRenderBudget(undefined, [3, 4, 2]), [3, 4, 2], 'no maxRender means no cap at all');
+});
+
+test('formatMismatchWarning fires when --out\'s extension is a real dot format that differs from --format', () => {
+  assert.match(formatMismatchWarning('diagram.svg', 'png'), /--out ends in '\.svg' but --format is 'png'/);
+  assert.strictEqual(formatMismatchWarning('diagram.svg', 'svg'), null, 'matching extension and format should not warn');
+  assert.strictEqual(formatMismatchWarning('diagram.dot.bak', 'png'), null, 'an unrecognized extension should not false-positive');
+  assert.strictEqual(formatMismatchWarning(null, 'png'), null, 'no --out (auto-generated path) can never mismatch');
+});
+
+test('matchSymbolNotFound extracts the symbol name from codegraph\'s plain-text not-found message', () => {
+  assert.strictEqual(matchSymbolNotFound('[34mℹ[0m Symbol "Foo" not found\n'), 'Foo');
+  assert.strictEqual(matchSymbolNotFound('{"symbol":"Foo","callers":[]}'), null, 'a real JSON response should never match');
+});
+
+test('buildDot styles a "kind":"file" caller/callee distinctly from a real function call', () => {
+  const dot = buildDot('Target', [{ name: 'some.js', kind: 'file', filePath: 'src/some.js' }], [{ name: 'other.js', kind: 'file', filePath: 'src/other.js' }]);
+  assert.match(dot, /"some\.js" -> "Target" \[style=dotted, color="#9ca3af", label="file"\];/);
+  assert.match(dot, /"Target" -> "other\.js" \[style=dotted, color="#9ca3af", label="file"\];/);
+});
+
+test('buildDot\'s file-kind styling takes precedence over test-dash styling on the same node', () => {
+  const dot = buildDot('Target', [{ name: 'weird.test.js', kind: 'file', filePath: 'src/weird.test.js' }], []);
+  assert.match(dot, /"weird\.test\.js" -> "Target" \[style=dotted, color="#9ca3af", label="file"\];/);
+  assert.doesNotMatch(dot, /label="test"/);
 });
 
 test('buildDot with no transitiveEdges option behaves exactly as before (backward compatible)', () => {
@@ -342,6 +385,34 @@ test('CLI --depth traversal runs end-to-end against this repo\'s own real codegr
   } finally {
     fs.rmSync(depth1Out, { force: true });
     fs.rmSync(depth2Out, { force: true });
+  }
+});
+
+test('CLI resolves a fuzzy/partial query to its canonical name for the rendered root label', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['query', '--path', repoRoot, '--json', '--limit', '1', '--', 'buildD'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const out = path.join(os.tmpdir(), `codeshot-resolve-${Date.now()}.dot`);
+  try {
+    // 'buildD' is a deliberate partial query -- codegraph fuzzy-resolves it to
+    // the real symbol 'buildDot'. The rendered root label must show the
+    // resolved canonical name, not the literal query string.
+    execFileSync('node', [callgraphJs, 'buildD', '--path', repoRoot, '--out', out, '--format', 'dot'], { encoding: 'utf8', stdio: 'pipe' });
+    const dot = fs.readFileSync(out, 'utf8');
+    assert.match(dot, /\bbuildDot\b\s*\[fillcolor="#c7d2fe"/, 'expected the root node to be labeled with the resolved name "buildDot", not the raw query "buildD"');
+  } finally {
+    fs.rmSync(out, { force: true });
   }
 });
 
