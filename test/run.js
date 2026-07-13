@@ -47,7 +47,7 @@ test('isTestRef recognizes a spec/ directory layout', () => {
 test('buildDot emits digraph header and highlighted symbol node', () => {
   const dot = buildDot('RollAutoSnapshot', [], []);
   assert.match(dot, /^digraph callgraph \{/);
-  assert.match(dot, /"RollAutoSnapshot" \[fillcolor="#c7d2fe"/);
+  assert.match(dot, /"RollAutoSnapshot" \[fillcolor="#e2e8f0"/);
 });
 
 test('buildDot draws caller -> symbol and symbol -> callee edges', () => {
@@ -146,14 +146,14 @@ test('buildDot renders transitive (depth > 1) edges alongside direct ones', () =
     transitiveEdges: [{ from: { name: 'GrandCaller', filePath: 'src/gc.js' }, to: { name: 'Caller', filePath: 'src/caller.js' }, depth: 2 }],
   });
   assert.match(dot, /"Caller" -> "Target";/);
-  assert.match(dot, /"GrandCaller" -> "Caller" \[color="#a5b4fc"\];/);
+  assert.match(dot, /"GrandCaller" -> "Caller" \[color="#b8c2d0"\];/);
 });
 
 test('buildDot dashes transitive edges from test callers same as direct ones', () => {
   const dot = buildDot('Target', [], [], {
     transitiveEdges: [{ from: { name: 'HelperTest', filePath: 'src/helper.test.js' }, to: { name: 'Direct', filePath: 'src/direct.js' }, depth: 2 }],
   });
-  assert.match(dot, /"HelperTest" -> "Direct" \[color="#a5b4fc", style=dashed, label="test"\];/);
+  assert.match(dot, /"HelperTest" -> "Direct" \[color="#b8c2d0", style=dashed, label="test"\];/);
 });
 
 test('allocateRenderBudget spends a shared allowance in priority order across dimensions', () => {
@@ -188,7 +188,7 @@ test('buildDot\'s file-kind styling takes precedence over test-dash styling on t
 
 test('buildDot with no transitiveEdges option behaves exactly as before (backward compatible)', () => {
   const dot = buildDot('Target', [{ name: 'Caller', filePath: 'a.js' }], [{ name: 'Callee', filePath: 'b.js' }]);
-  assert.doesNotMatch(dot, /color="#a5b4fc"/);
+  assert.doesNotMatch(dot, /color="#b8c2d0"/);
 });
 
 test('renderTruncationNote fires when distinct count exceeds maxRender', () => {
@@ -410,7 +410,10 @@ test('CLI resolves a fuzzy/partial query to its canonical name for the rendered 
     // resolved canonical name, not the literal query string.
     execFileSync('node', [callgraphJs, 'buildD', '--path', repoRoot, '--out', out, '--format', 'dot'], { encoding: 'utf8', stdio: 'pipe' });
     const dot = fs.readFileSync(out, 'utf8');
-    assert.match(dot, /\bbuildDot\b\s*\[fillcolor="#c7d2fe"/, 'expected the root node to be labeled with the resolved name "buildDot", not the raw query "buildD"');
+    // `dot -Tdot` reserializes and sorts node attributes alphabetically, so
+    // fillcolor is no longer guaranteed to be the first attribute on the node —
+    // match it anywhere within the buildDot node's attribute list.
+    assert.match(dot, /\bbuildDot\b\s*\[[^\]]*fillcolor="#e2e8f0"/, 'expected the root node to be labeled with the resolved name "buildDot", not the raw query "buildD"');
   } finally {
     fs.rmSync(out, { force: true });
   }
