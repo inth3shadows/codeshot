@@ -5,6 +5,8 @@ const assert = require('assert');
 const {
   buildDot, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
+  filterCallableSymbols, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
+  topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -414,6 +416,159 @@ test('CLI resolves a fuzzy/partial query to its canonical name for the rendered 
   } finally {
     fs.rmSync(out, { force: true });
   }
+});
+
+// --- --architecture mode ---------------------------------------------
+
+test('filterCallableSymbols unwraps .node and drops kind:file entries', () => {
+  const results = [
+    { node: { name: 'Foo', kind: 'function', filePath: 'a.js' } },
+    { node: { name: 'a.js', kind: 'file', filePath: 'a.js' } },
+    { node: { name: 'BAR', kind: 'constant', filePath: 'b.js' } },
+  ];
+  const symbols = filterCallableSymbols(results);
+  assert.strictEqual(symbols.length, 2);
+  assert.deepStrictEqual(symbols.map(s => s.name), ['Foo', 'BAR']);
+});
+
+test('symbolBudgetWarning fires only when enumeration was truncated', () => {
+  assert.strictEqual(symbolBudgetWarning(false, 500), null);
+  assert.match(symbolBudgetWarning(true, 500), /stopped enumerating after 500 symbols/);
+});
+
+test('duplicateNameWarning fires when a name appears in more than one file', () => {
+  const symbols = [
+    { name: 'render', filePath: 'a.js' },
+    { name: 'render', filePath: 'b.js' },
+    { name: 'unique', filePath: 'c.js' },
+  ];
+  assert.match(duplicateNameWarning(symbols), /render/);
+});
+
+test('duplicateNameWarning is null when every name is unique', () => {
+  const symbols = [{ name: 'A', filePath: 'a.js' }, { name: 'B', filePath: 'b.js' }];
+  assert.strictEqual(duplicateNameWarning(symbols), null);
+});
+
+test('aggregateFileEdges drops self-file edges', () => {
+  const edges = aggregateFileEdges([{ fromFile: 'a.js', toFile: 'a.js' }, { fromFile: 'a.js', toFile: 'b.js' }]);
+  assert.strictEqual(edges.length, 1);
+  assert.strictEqual(edges[0].to, 'b.js');
+});
+
+test('aggregateFileEdges drops edges missing a real from/to filePath', () => {
+  const edges = aggregateFileEdges([
+    { fromFile: 'a.js', toFile: '' },
+    { fromFile: '', toFile: 'b.js' },
+    { fromFile: 'a.js', toFile: 'b.js' },
+  ]);
+  assert.strictEqual(edges.length, 1);
+});
+
+test('aggregateFileEdges sums repeated pairs into edge weight', () => {
+  const edges = aggregateFileEdges([
+    { fromFile: 'a.js', toFile: 'b.js' },
+    { fromFile: 'a.js', toFile: 'b.js' },
+    { fromFile: 'a.js', toFile: 'b.js' },
+  ]);
+  assert.strictEqual(edges.length, 1);
+  assert.strictEqual(edges[0].weight, 3);
+});
+
+test('topFilesByWeight returns null (no cap) when maxRender is unset', () => {
+  const edges = aggregateFileEdges([{ fromFile: 'a.js', toFile: 'b.js' }]);
+  assert.strictEqual(topFilesByWeight(edges, undefined), null);
+});
+
+test('topFilesByWeight keeps only the top-N busiest files', () => {
+  const edges = [
+    { from: 'busy.js', to: 'a.js', weight: 5 },
+    { from: 'busy.js', to: 'b.js', weight: 5 },
+    { from: 'quiet.js', to: 'c.js', weight: 1 },
+  ];
+  const kept = topFilesByWeight(edges, 1);
+  assert.strictEqual(kept.size, 1);
+  assert.ok(kept.has('busy.js'));
+});
+
+test('buildArchitectureDot renders a file node per endpoint and a weighted edge', () => {
+  const dot = buildArchitectureDot([{ from: 'src/a.js', to: 'src/b.js', weight: 2 }]);
+  assert.match(dot, /^digraph architecture \{/);
+  assert.match(dot, /"src\/a\.js";/);
+  assert.match(dot, /"src\/b\.js";/);
+  assert.match(dot, /"src\/a\.js" -> "src\/b\.js" \[label="2"\];/);
+});
+
+test('buildArchitectureDot dashes file nodes that look like test files', () => {
+  const dot = buildArchitectureDot([{ from: 'test/a.spec.js', to: 'src/b.js', weight: 1 }]);
+  assert.match(dot, /"test\/a\.spec\.js" \[style="rounded,filled,dashed"\];/);
+});
+
+test('buildArchitectureDot respects maxRender by dropping edges outside the top-N files', () => {
+  const edges = [
+    { from: 'busy.js', to: 'a.js', weight: 5 },
+    { from: 'quiet.js', to: 'c.js', weight: 1 },
+  ];
+  const dot = buildArchitectureDot(edges, { maxRender: 2 });
+  assert.match(dot, /"busy\.js" -> "a\.js"/);
+  assert.doesNotMatch(dot, /"quiet\.js" -> "c\.js"/);
+});
+
+test('architectureOutputBaseName sanitizes a repo path down to its basename', () => {
+  assert.strictEqual(architectureOutputBaseName('/home/ericm/personal_projects/codeshot/master'), 'master');
+});
+
+test('CLI --architecture runs end-to-end against this repo\'s own real codegraph index', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const out = path.join(os.tmpdir(), `codeshot-arch-selftest-${Date.now()}.svg`);
+  try {
+    execFileSync('node', [callgraphJs, '--architecture', '--path', repoRoot, '--out', out, '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
+    const svg = fs.readFileSync(out, 'utf8');
+    assert.match(svg, /<svg/, 'expected --architecture to produce real SVG output');
+    // This repo has exactly two files (render/callgraph.js, test/run.js) that call
+    // into each other (test/run.js requires callgraph.js's exports) — the rendered
+    // graph should show at least one real cross-file edge, not an empty graph.
+    assert.match(svg, /callgraph\.js/);
+  } finally {
+    fs.rmSync(out, { force: true });
+  }
+});
+
+test('--architecture rejects a <symbol> argument', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--architecture'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--architecture cannot be combined with a <symbol> argument/);
+  }
+  assert.strictEqual(threw, true, 'expected --architecture + <symbol> to be rejected');
+});
+
+test('--architecture rejects --depth > 1', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), '--architecture', '--depth', '2'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--depth has no effect with --architecture/);
+  }
+  assert.strictEqual(threw, true, 'expected --architecture + --depth 2 to be rejected');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

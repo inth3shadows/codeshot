@@ -25,6 +25,29 @@ Optional flags:
 
 **Reading the diagram:** boxes are code symbols; the symbol you asked about is highlighted darker. Arrows point in call direction — an arrow into your symbol is a caller, an arrow out is something it calls. Dashed arrows mean the caller is test code, so you can tell "is this only exercised by tests" at a glance. A dotted gray arrow labeled "file" means CodeGraph could only trace a module-level/import reference, not an actual function call site (common with dependency-injection patterns) — treat it with more skepticism than a solid arrow.
 
+## Generating a whole-repo architecture diagram
+
+This is a different question from "what touches this symbol" — it's "how do
+the files in this repo depend on each other." Run:
+
+```bash
+codeshot --architecture --path /path/to/repo --out architecture.svg --format svg
+```
+
+Codeshot enumerates every symbol CodeGraph knows about in that repo, probes
+each one's callees, and rolls the results up into a file-to-file graph — a
+box per file, an arrow per pair of files with at least one call between
+them, labeled with how many calls. Boxes for test files render dashed, same
+as symbol mode. Unlike symbol mode, there's no `<SymbolName>` argument — the
+`--architecture` flag replaces it, and combining the two is rejected.
+
+This can genuinely take a few minutes on a mid-size-or-larger repo (one
+`codegraph` call per symbol, run sequentially) — `--max-symbols <n>`
+(default 500) trades completeness for speed if you want a faster, partial
+scan; Codeshot tells you on stderr if it stopped early. `--limit` and
+`--max-render` carry over from symbol mode (see above); `--depth` doesn't
+apply here and is rejected if you pass it.
+
 ## What to Do When Something Breaks
 
 - **"codeshot: 'codegraph' not found on PATH"** — Install CodeGraph and make sure it's on your PATH, then try again.
@@ -37,6 +60,8 @@ Optional flags:
 - **"codeshot: showing N callers/callees — ... may have cut off more"** — Rerun with a higher `--limit` if you need the full picture (see `TECHNICAL.md` for why this warning can occasionally be a false alarm).
 - **"codeshot: --depth traversal stopped early (internal safety cap of 200 discovered nodes)"** — The symbol is heavily connected enough that `--depth` hit an internal limit before finishing; the graph you got is real but incomplete beyond that point. Try a smaller `--depth` (2 instead of 3), a lower `--limit`, or a more specific, less-central symbol.
 - **`--depth` runs slowly** — Each additional hop makes one sequential `codegraph` call per newly discovered node (CodeGraph itself has no multi-hop traversal for `callers`/`callees`, so Codeshot does this client-side), so a well-connected symbol at `--depth 2` or higher can take noticeably longer than the default `--depth 1`. This is expected, not a bug.
+- **`--architecture` is taking a long time** — Expected on anything past a small repo: it's one sequential `codegraph` call per enumerated symbol, and there's no way to parallelize it (concurrent `codegraph` calls against one index race and fail). Rerun with a smaller `--max-symbols` (e.g. `--max-symbols 100`) for a faster, partial scan — Codeshot warns on stderr when the scan is cut short by the cap so you know the result is incomplete.
+- **`--architecture`'s diagram is a hairball / unreadable** — Same fix as symbol mode: `--max-render <n>` (e.g. `--max-render 20`) keeps only the busiest N files by total call-edge weight and drops the rest. Some remaining files can end up with no surviving edges if all their edges pointed at a dropped file — that's expected, not a bug, at aggressive `--max-render` values.
 
 For anything not covered here, check `TECHNICAL.md` or open an issue on the GitHub repo.
 
@@ -52,7 +77,7 @@ No. Codeshot only reads from CodeGraph's existing index and writes an image (and
 No — CodeGraph needs to index the repo first (`codegraph init`) before Codeshot has anything to query.
 
 **Where does the output file go if I don't specify `--out`?**
-Your system's temp directory, with a name like `callgraph-<Symbol>-<timestamp>.png` (or `.svg`, etc. if you passed `--format`). Codeshot always prints the exact path so you don't have to guess.
+Your system's temp directory, with a name like `callgraph-<Symbol>-<timestamp>.png` (or `arch-<repoName>-<timestamp>.png` for `--architecture`; either with `.svg` etc. if you passed `--format`). Codeshot always prints the exact path so you don't have to guess.
 
 **What output formats does `--format` support?**
 Anything the `dot` binary on your system supports via `-T<format>` — `png` (default), `svg`, `pdf`, and many more. Run `dot -T` with no argument to see the exact list your graphviz install supports.
