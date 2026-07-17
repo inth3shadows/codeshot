@@ -1,0 +1,45 @@
+name: Release
+# Fires when a version tag is pushed (e.g. `v0.2.0`). Publishes a GitHub Release
+# with auto-generated notes and an `npm pack` tarball attached.
+#
+# Version model (npm-native, approach A): package.json is the single source of the
+# version; a release is `npm version <x>` (bumps package.json AND creates the tag in
+# lockstep). The drift guard below asserts the pushed tag matches package.json, so the
+# two can never disagree — the JS analog of a tag/version match assert.
+#
+# Distribution is git-install-first: `npm i -g github:inth3shadows/codeshot#<tag>` or
+# `npx github:inth3shadows/codeshot`. No npm-registry publish (deferred, by design).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # create the GitHub Release + upload the tarball; nothing more
+
+jobs:
+  release:
+    name: Build + publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      - name: Drift guard — tag must match package.json version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${pkg} — bump with 'npm version' so the tag and package.json stay in lockstep"; exit 1
+          fi
+          echo "tag ${GITHUB_REF_NAME} matches package.json version ${pkg}"
+
+      - name: Pack tarball
+        run: npm pack
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" codeshot-*.tgz --generate-notes --title "${GITHUB_REF_NAME}"

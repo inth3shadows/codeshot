@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read # least privilege — the workflow only reads the repo
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor (engines >=18) through current LTS.
+        node-version: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      # `dot` is a hard runtime dependency (codeshot renders through graphviz); the
+      # DOT-validity test shells out to it and fails-hard if absent. The end-to-end
+      # `codegraph` tests instead SELF-SKIP when codegraph/its index aren't present —
+      # CI has neither — so no codegraph install is needed here.
+      - name: Install graphviz (codeshot renders via `dot`)
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+      - run: npm test
