@@ -92,6 +92,37 @@ async function runCodegraph(args, { fatal = true } = {}) {
   return parseCodegraphOutput(stdout, args, { fatal });
 }
 
+// `codegraph status` warns when an index was left mid-build ("N references from
+// an interrupted run are awaiting resolution") — a state where callers/callees
+// silently return incomplete/empty results. codeshot can't tell that apart from
+// a genuinely edge-free repo by node count alone, so it reads the count straight
+// from status. Pure: parses the plain-text status output, returns the integer or
+// null. Tolerates the thousands-separator commas and surrounding ANSI codes.
+function parseUnresolvedRefs(statusOutput) {
+  const m = String(statusOutput).match(/([\d,]+)\s+references?\s+from an interrupted run/i);
+  if (!m) return null;
+  const n = Number(m[1].replace(/,/g, ''));
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+// Preflight health check: an interrupted index yields a silently-partial (or
+// empty) diagram, so warn — with the actual fix — rather than draw a lie. Uses
+// `status`'s own count; failure to run status must never block rendering, so a
+// throw just means "no warning". A bare `codegraph sync` heals a wedged index
+// (it sweeps orphaned refs), though it can misleadingly print "Already up to
+// date" while doing so — so the advice is to fix, then re-confirm via status.
+function indexHealthWarning(repoPath) {
+  let out;
+  try {
+    out = execFileSync('codegraph', ['status', repoPath], { encoding: 'utf8', maxBuffer: MAX_CODEGRAPH_BUFFER });
+  } catch {
+    return null;
+  }
+  const n = parseUnresolvedRefs(out);
+  if (n === null) return null;
+  return `codeshot: codegraph's index has ${n} unresolved reference(s) from an interrupted run — callers/callees may be incomplete, so this diagram can be silently partial. Fix with 'codegraph sync ${repoPath}' (or 'codegraph index' for a full rebuild), then confirm 'codegraph status' shows 0 before trusting the diagram.`;
+}
+
 function sanitizeForFilename(s) {
   return String(s).replace(/[\\/:*?"<>|]/g, '_');
 }
@@ -766,6 +797,11 @@ async function main() {
   requireOnPath('codegraph', 'Install: https://github.com/colbymchenry/codegraph');
   requireOnPath('dot', 'Install graphviz (e.g. `brew install graphviz` or `apt install graphviz`).');
 
+  // Warn before doing any work if the index is mid-rebuild — a silently-partial
+  // graph is worse than a slow one, and node count alone can't reveal it.
+  const healthWarning = indexHealthWarning(repoPath);
+  if (healthWarning) console.error(healthWarning);
+
   if (values.architecture) {
     const dot = await runArchitectureMode(repoPath, { limit, maxSymbols, maxRender });
     // Fixed, path-independent alt: deriving it from the checkout's directory
@@ -843,5 +879,5 @@ module.exports = {
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   filterCallableSymbols, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
-  applyEmbed, embedMarkers, embedRelLink,
+  applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
 };
