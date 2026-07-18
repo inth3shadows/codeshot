@@ -7,7 +7,7 @@ const {
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   filterCallableSymbols, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
-  applyEmbed, embedMarkers, embedRelLink,
+  applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -772,6 +772,20 @@ test('CLI --embed into a nonexistent doc is rejected (refresh, not create)', () 
     assert.match(err.stderr, /does not exist/);
   }
   assert.strictEqual(threw, true, 'expected --embed into a missing doc to be rejected');
+});
+
+// --- index health check (parseUnresolvedRefs) -------------------------
+
+test('parseUnresolvedRefs extracts the count from codegraph status, comma- and ANSI-tolerant', () => {
+  assert.strictEqual(parseUnresolvedRefs('[33m⚠[0m 4,303 references from an interrupted run are awaiting resolution — some callers/impact edges are missing. Run "codegraph sync" to resolve them.'), 4303);
+  assert.strictEqual(parseUnresolvedRefs('186 references from an interrupted run'), 186);
+  assert.strictEqual(parseUnresolvedRefs('1 reference from an interrupted run'), 1);
+});
+
+test('parseUnresolvedRefs returns null on a healthy status (no interrupted-run line)', () => {
+  assert.strictEqual(parseUnresolvedRefs('Index Statistics:\n  Files: 40\n  Nodes: 900\n  Edges: 2000'), null);
+  assert.strictEqual(parseUnresolvedRefs(''), null);
+  assert.strictEqual(parseUnresolvedRefs('0 references from an interrupted run'), null, 'zero is healthy, not a warning');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
