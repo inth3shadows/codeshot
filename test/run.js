@@ -3,7 +3,7 @@
 
 const assert = require('assert');
 const {
-  buildDot, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
+  buildDot, nodeIdentities, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   filterCallableSymbols, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
@@ -76,9 +76,46 @@ test('buildDot dedupes repeated caller/callee entries', () => {
   assert.strictEqual((dot.match(/"Target" -> "Callee"/g) || []).length, 1);
 });
 
-test('buildDot keeps distinct callers/callees with the same name but different filePath', () => {
+test('buildDot keeps distinct callers/callees with the same name but different filePath (unique graphviz ids)', () => {
+  // Two callers named "Caller" in different files are distinct symbols. Graphviz
+  // keys a node by the string in the edge, so emitting both as `"Caller" -> "Target"`
+  // would collapse them into ONE box (see the render-level test below). Each must
+  // therefore get a file-qualified id AND a disambiguating label.
   const dot = buildDot('Target', [{ name: 'Caller', filePath: 'a.js' }, { name: 'Caller', filePath: 'b.js' }], []);
-  assert.strictEqual((dot.match(/"Caller" -> "Target"/g) || []).length, 2);
+  assert.match(dot, /"Caller@@a\.js" -> "Target";/);
+  assert.match(dot, /"Caller@@b\.js" -> "Target";/);
+  assert.doesNotMatch(dot, /"Caller" -> "Target"/, 'the bare shared id must NOT appear — that is the collapse this guards against');
+  assert.match(dot, /"Caller@@a\.js" \[label="Caller\\n\(a\.js\)"\];/);
+  assert.match(dot, /"Caller@@b\.js" \[label="Caller\\n\(b\.js\)"\];/);
+});
+
+test('buildDot renders same-named callers as TWO distinct boxes in the real image, not one', () => {
+  // The render-level guard: buildDot's DOT text can look right while graphviz
+  // still merges nodes. Prove the fix by counting nodes graphviz actually draws.
+  const { execFileSync } = require('child_process');
+  const dot = buildDot('Target', [{ name: 'handle', filePath: 'a.js' }, { name: 'handle', filePath: 'b.js' }], []);
+  let svg;
+  try {
+    svg = execFileSync('dot', ['-Tsvg'], { input: dot, encoding: 'utf8' });
+  } catch (err) {
+    if (err.code === 'ENOENT') { console.log('  # skipped: `dot` (graphviz) not on PATH'); return; }
+    throw new Error(`dot rejected buildDot's output: ${err.stderr || err.message}`);
+  }
+  // 3 nodes: the root "Target" plus the two distinct "handle" callers.
+  assert.strictEqual((svg.match(/class="node"/g) || []).length, 3, 'expected 3 rendered node boxes (Target + two distinct handles), not a collapsed 2');
+});
+
+test('nodeIdentities leaves a name that lives in a single file as name-as-id with no label', () => {
+  const { idOf, labelOf } = nodeIdentities([{ name: 'solo', filePath: 'a.js' }]);
+  assert.strictEqual(idOf({ name: 'solo', filePath: 'a.js' }), 'solo');
+  assert.strictEqual(labelOf({ name: 'solo', filePath: 'a.js' }), null);
+});
+
+test('nodeIdentities disambiguates a caller that shares the queried symbol\'s name away from the root', () => {
+  // Root "handle" (filePath null) + a caller "handle" from a real file must not
+  // share an id, or the caller draws as a self-loop on the root box.
+  const { idOf } = nodeIdentities([{ name: 'handle', filePath: null }, { name: 'handle', filePath: 'b.js' }]);
+  assert.strictEqual(idOf({ name: 'handle', filePath: 'b.js' }), 'handle@@b.js');
 });
 
 test('buildDot renders every caller/callee when maxRender is omitted', () => {
