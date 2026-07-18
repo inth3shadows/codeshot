@@ -118,6 +118,40 @@ test('nodeIdentities disambiguates a caller that shares the queried symbol\'s na
   assert.strictEqual(idOf({ name: 'handle', filePath: 'b.js' }), 'handle@@b.js');
 });
 
+test('buildDot omits tooltips by default (png-safe, byte-identical to before)', () => {
+  const dot = buildDot('Target', [{ name: 'Caller', filePath: 'src/caller.js' }], []);
+  assert.doesNotMatch(dot, /tooltip=/, 'no tooltip attr should appear unless explicitly requested');
+});
+
+test('buildDot with tooltips:true declares each node with its filePath as a tooltip', () => {
+  const dot = buildDot('Target',
+    [{ name: 'Caller', filePath: 'src/caller.js' }],
+    [{ name: 'Callee', filePath: 'src/callee.js' }],
+    { tooltips: true });
+  assert.match(dot, /"Caller" \[tooltip="src\/caller\.js"\];/);
+  assert.match(dot, /"Callee" \[tooltip="src\/callee\.js"\];/);
+});
+
+test('buildDot tooltips combine with a disambiguating label on a colliding node', () => {
+  const dot = buildDot('Target',
+    [{ name: 'handle', filePath: 'a.js' }, { name: 'handle', filePath: 'b.js' }], [],
+    { tooltips: true });
+  assert.match(dot, /"handle@@a\.js" \[label="handle\\n\(a\.js\)", tooltip="a\.js"\];/);
+});
+
+test('buildDot tooltips reach the rendered svg as hover-able <a xlink:title>', () => {
+  const { execFileSync } = require('child_process');
+  const dot = buildDot('Target', [{ name: 'Caller', filePath: 'src/caller.js' }], [], { tooltips: true });
+  let svg;
+  try {
+    svg = execFileSync('dot', ['-Tsvg'], { input: dot, encoding: 'utf8' });
+  } catch (err) {
+    if (err.code === 'ENOENT') { console.log('  # skipped: `dot` (graphviz) not on PATH'); return; }
+    throw new Error(`dot rejected buildDot's output: ${err.stderr || err.message}`);
+  }
+  assert.match(svg, /xlink:title="src\/caller\.js"/, 'expected the caller node to carry its file path as an svg hover title');
+});
+
 test('buildDot renders every caller/callee when maxRender is omitted', () => {
   const many = Array.from({ length: 5 }, (_, i) => ({ name: `Fn${i}`, filePath: `src/fn${i}.js` }));
   const dot = buildDot('Target', many, many);
