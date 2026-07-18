@@ -740,6 +740,14 @@ async function main() {
     console.error('codeshot: --check only applies with --embed (it verifies an embedded diagram is current)');
     process.exit(1);
   }
+  // Validate the embed target up front — before the codegraph/dot PATH checks
+  // and any expensive querying — so a bad --embed path fails fast with a clear
+  // message rather than after a multi-minute --architecture scan (and rather
+  // than being masked by a missing-codegraph error on a machine without it).
+  if (embedFile && !fs.existsSync(embedFile)) {
+    console.error(`codeshot: --embed target '${embedFile}' does not exist — --embed refreshes a diagram inside an existing doc, it does not create one.`);
+    process.exit(1);
+  }
 
   const safeSymbol = values.architecture ? null : sanitizeForFilename(symbol);
   if (!outFile) {
