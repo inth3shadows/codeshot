@@ -23,6 +23,11 @@ const execFileAsync = promisify(execFile);
 
 const DEFAULT_LIMIT = 50;
 
+// Node tooltips (the file a symbol lives in, shown on hover) only render in
+// graphviz's svg-family output, where they become <a xlink:title>. Any other
+// format ignores them, so buildDot is told to emit them only for these.
+const SVG_TOOLTIP_FORMATS = new Set(['svg', 'svgz']);
+
 // Multi-hop traversal (--depth > 1) makes one sequential codegraph call per
 // newly discovered node, per hop — on a well-connected symbol that fans out
 // fast. This caps total discovered nodes across both directions combined so
@@ -206,7 +211,7 @@ function nodeIdentities(nodes) {
   return { idOf, labelOf };
 }
 
-function buildDot(symbol, callers = [], callees = [], { maxRender, transitiveEdges = [] } = {}) {
+function buildDot(symbol, callers = [], callees = [], { maxRender, transitiveEdges = [], tooltips = false } = {}) {
   const esc = s => String(s).replace(/"/g, '\\"');
   const dedupedCallers = dedupeNodes(callers);
   const dedupedCallees = dedupeNodes(callees);
@@ -242,17 +247,28 @@ function buildDot(symbol, callers = [], callees = [], { maxRender, transitiveEdg
     `  "${rootId}" [fillcolor="#e2e8f0", color="#94a3b8", fontcolor="#0f172a", fontname="Helvetica-Bold", penwidth=1.5];`,
   ];
 
-  // Explicit label declarations, emitted once per id, for the disambiguated
-  // (colliding) nodes only — the queried symbol is excluded (its declaration
-  // above is authoritative). A non-colliding graph adds no lines here, so its
-  // output stays byte-for-byte identical to before this fix.
+  // Explicit node declarations, emitted once per id, for nodes that need
+  // attributes beyond the graph defaults: a disambiguating label (colliding
+  // names) and/or a file-path tooltip (svg output). The queried symbol is
+  // excluded — its declaration above is authoritative, and buildDot isn't
+  // passed the root's own filePath to tooltip it with. When neither applies
+  // (a non-colliding graph with tooltips off), no lines are added here, so the
+  // output stays byte-for-byte identical to before either feature existed.
   const declared = new Set([rootId]);
   for (const n of [...drawnCallers, ...drawnCallees, ...drawnTransitive.flatMap(e => [e.from, e.to])]) {
     const id = esc(idOf(n));
     if (declared.has(id)) continue;
     declared.add(id);
+    const attrs = [];
     const lab = labelOf(n);
-    if (lab) lines.push(`  "${id}" [label="${esc(lab.name)}\\n(${esc(lab.base)})"];`);
+    if (lab) attrs.push(`label="${esc(lab.name)}\\n(${esc(lab.base)})"`);
+    // In svg output graphviz wraps a tooltip'd node in <a xlink:title="...">,
+    // so hovering a box reveals which file the symbol lives in — the
+    // disambiguation a same-basename collision can't show, without cluttering
+    // the label. graphviz ignores tooltip for raster formats, so main only
+    // sets tooltips for svg-family output to keep png's DOT lean.
+    if (tooltips && n.filePath) attrs.push(`tooltip="${esc(String(n.filePath))}"`);
+    if (attrs.length) lines.push(`  "${id}" [${attrs.join(', ')}];`);
   }
 
   for (const c of drawnCallers) {
@@ -667,7 +683,11 @@ async function main() {
     if (note) console.error(note);
   }
 
-  const dot = buildDot(resolvedSymbol, callers || [], callees || [], { maxRender, transitiveEdges });
+  // Node tooltips only render in svg-family output (graphviz emits them as
+  // <a xlink:title>); they're inert in png/pdf, so gate them to svg/svgz to
+  // avoid bloating a raster diagram's intermediate DOT with dead attributes.
+  const tooltips = SVG_TOOLTIP_FORMATS.has(format.toLowerCase());
+  const dot = buildDot(resolvedSymbol, callers || [], callees || [], { maxRender, transitiveEdges, tooltips });
   renderDotToFile(dot, format, outFile);
   console.log(outFile);
 }
