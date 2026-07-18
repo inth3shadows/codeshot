@@ -514,7 +514,116 @@ function renderDotToFile(dot, format, outFile) {
   fs.unlinkSync(dotFile);
 }
 
-const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>]\n   or: callgraph.js --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>]';
+// Renders the same way as renderDotToFile but returns the image bytes instead
+// of writing them — used by --embed --check to regenerate a diagram in memory
+// and byte-compare it against the committed one, without touching the tree.
+// `dot` writes identical bytes to a file (-o) or stdout, and its svg output
+// embeds no timestamp or input path, so the two paths are directly comparable
+// under one graphviz version (the same-generator caveat every regenerate-and-
+// diff artifact check carries).
+function renderDotToBuffer(dot, format) {
+  const dotFile = path.join(os.tmpdir(), `codeshot-check-${Date.now()}.dot`);
+  fs.writeFileSync(dotFile, dot, 'utf8');
+  try {
+    return execFileSync('dot', [`-T${format}`, dotFile]);
+  } finally {
+    fs.unlinkSync(dotFile);
+  }
+}
+
+// --embed keeps a generated diagram inside a committed markdown doc, refreshed
+// in place — the same idempotent HTML-comment-marker pattern doctoc and
+// terraform-docs use. Each embed is keyed by an id (`arch`, or the symbol
+// name) so several distinct diagrams can live in one doc without clobbering
+// each other.
+function embedMarkers(markerId) {
+  return { start: `<!-- codeshot:${markerId}:start -->`, end: `<!-- codeshot:${markerId}:end -->` };
+}
+
+function regexEscape(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Pure: returns `content` with the codeshot block for `markerId` set to
+// `markdown`. If the markers already exist, their contents are replaced in
+// place (idempotent — re-running is a no-op when nothing changed); if neither
+// marker is present, a fresh block is appended after a blank line; a lone
+// start-or-end marker is malformed and throws rather than risk mangling the doc.
+function applyEmbed(content, markerId, markdown) {
+  const { start, end } = embedMarkers(markerId);
+  const block = `${start}\n${markdown}\n${end}`;
+  const hasStart = content.includes(start);
+  const hasEnd = content.includes(end);
+  if (hasStart && hasEnd) {
+    const re = new RegExp(`${regexEscape(start)}[\\s\\S]*?${regexEscape(end)}`);
+    return content.replace(re, () => block); // function replacement: '$' in markdown stays literal
+  }
+  if (hasStart !== hasEnd) {
+    throw new Error(`--embed: markers for '${markerId}' are malformed in the target doc — found a ${hasStart ? 'start marker with no matching end' : 'end marker with no matching start'}. Fix or remove the stray '<!-- codeshot:${markerId}:... -->' comment and retry.`);
+  }
+  const trimmed = content.replace(/\s+$/, '');
+  return (trimmed ? `${trimmed}\n\n` : '') + block + '\n';
+}
+
+// Markdown links use forward slashes on every platform, so the OS-specific
+// separator from path.relative is normalized before it goes into the doc.
+function embedRelLink(embedFile, imagePath) {
+  const rel = path.relative(path.dirname(path.resolve(embedFile)), path.resolve(imagePath));
+  return (rel || path.basename(imagePath)).split(path.sep).join('/');
+}
+
+// The single output tail for both modes: plain render, --embed (render + update
+// the doc in place), or --embed --check (regenerate in memory and verify the
+// committed image AND doc block are current, mutating nothing — the drift guard
+// a CI job or pre-commit hook calls; exit 1 == stale, exit 0 == up to date).
+function finishOutput(dot, { format, outFile, embedFile, check, markerId, alt }) {
+  if (!embedFile) {
+    renderDotToFile(dot, format, outFile);
+    console.log(outFile);
+    return;
+  }
+
+  const markdown = `![${alt}](${embedRelLink(embedFile, outFile)})`;
+
+  let docContent;
+  try {
+    docContent = fs.readFileSync(embedFile, 'utf8');
+  } catch {
+    console.error(`codeshot: --embed target '${embedFile}' does not exist — --embed refreshes a diagram inside an existing doc, it does not create one.`);
+    process.exit(1);
+  }
+  let expected;
+  try {
+    expected = applyEmbed(docContent, markerId, markdown); // also validates markers
+  } catch (err) {
+    console.error(`codeshot: ${err.message}`);
+    process.exit(1);
+  }
+
+  if (check) {
+    const fresh = renderDotToBuffer(dot, format);
+    let committed = null;
+    try { committed = fs.readFileSync(outFile); } catch { /* missing → stale */ }
+    const imageStale = !committed || !committed.equals(fresh);
+    const docStale = docContent !== expected;
+    if (imageStale || docStale) {
+      if (imageStale) console.error(`codeshot: --check: diagram '${outFile}' is out of date (${committed ? 'differs from a fresh render' : 'missing'}) — rerun 'codeshot ... --embed ${embedFile}' and commit the result.`);
+      if (docStale) console.error(`codeshot: --check: the codeshot:${markerId} block in '${embedFile}' is out of date or missing — rerun 'codeshot ... --embed ${embedFile}' and commit the result.`);
+      process.exit(1);
+    }
+    console.log(`codeshot: up to date — '${outFile}' and the codeshot:${markerId} block in '${embedFile}' match a fresh render.`);
+    return;
+  }
+
+  renderDotToFile(dot, format, outFile);
+  if (expected !== docContent) {
+    fs.writeFileSync(embedFile, expected, 'utf8');
+    console.error(`codeshot: updated the codeshot:${markerId} block in ${embedFile}`);
+  }
+  console.log(outFile);
+}
+
+const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--embed <file.md> [--check]]\n   or: callgraph.js --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]';
 
 async function main() {
   let values, positionals;
@@ -531,6 +640,8 @@ async function main() {
         depth: { type: 'string', default: '1' },
         architecture: { type: 'boolean', default: false },
         'max-symbols': { type: 'string', default: String(DEFAULT_MAX_SYMBOLS) },
+        embed: { type: 'string' },
+        check: { type: 'boolean', default: false },
       },
       allowPositionals: true,
     }));
@@ -620,11 +731,33 @@ async function main() {
     console.error(`codeshot: --max-symbols must be a positive integer, got '${values['max-symbols']}'`);
     process.exit(1);
   }
+  if (values.embed === '') {
+    console.error('codeshot: --embed must not be empty');
+    process.exit(1);
+  }
+  const embedFile = values.embed || null;
+  if (values.check && !embedFile) {
+    console.error('codeshot: --check only applies with --embed (it verifies an embedded diagram is current)');
+    process.exit(1);
+  }
+  // Validate the embed target up front — before the codegraph/dot PATH checks
+  // and any expensive querying — so a bad --embed path fails fast with a clear
+  // message rather than after a multi-minute --architecture scan (and rather
+  // than being masked by a missing-codegraph error on a machine without it).
+  if (embedFile && !fs.existsSync(embedFile)) {
+    console.error(`codeshot: --embed target '${embedFile}' does not exist — --embed refreshes a diagram inside an existing doc, it does not create one.`);
+    process.exit(1);
+  }
 
   const safeSymbol = values.architecture ? null : sanitizeForFilename(symbol);
   if (!outFile) {
     const base = values.architecture ? `arch-${architectureOutputBaseName(repoPath)}` : `callgraph-${safeSymbol}`;
-    outFile = path.join(os.tmpdir(), `${base}-${Date.now()}.${format}`);
+    // With --embed the image must live at a STABLE path next to the doc — so the
+    // relative link resolves, the file can be committed, and a re-run overwrites
+    // the same file rather than littering tmp with timestamped copies.
+    outFile = embedFile
+      ? path.join(path.dirname(path.resolve(embedFile)), `codeshot-${base}.${format}`)
+      : path.join(os.tmpdir(), `${base}-${Date.now()}.${format}`);
   } else {
     const mismatchWarning = formatMismatchWarning(outFile, format);
     if (mismatchWarning) console.error(mismatchWarning);
@@ -635,8 +768,8 @@ async function main() {
 
   if (values.architecture) {
     const dot = await runArchitectureMode(repoPath, { limit, maxSymbols, maxRender });
-    renderDotToFile(dot, format, outFile);
-    console.log(outFile);
+    const alt = `${path.basename(path.resolve(repoPath))} architecture — generated by codeshot`;
+    finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: 'arch', alt });
     return;
   }
 
@@ -688,8 +821,8 @@ async function main() {
   // avoid bloating a raster diagram's intermediate DOT with dead attributes.
   const tooltips = SVG_TOOLTIP_FORMATS.has(format.toLowerCase());
   const dot = buildDot(resolvedSymbol, callers || [], callees || [], { maxRender, transitiveEdges, tooltips });
-  renderDotToFile(dot, format, outFile);
-  console.log(outFile);
+  const alt = `${resolvedSymbol} call graph — generated by codeshot`;
+  finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: safeSymbol, alt });
 }
 
 if (require.main === module) {
@@ -704,4 +837,5 @@ module.exports = {
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   filterCallableSymbols, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
+  applyEmbed, embedMarkers, embedRelLink,
 };
