@@ -50,10 +50,12 @@ jobs:
       - name: Install codegraph
         run: npm install -g @colbymchenry/codegraph@1.4.1
 
-      # Full rebuild from scratch → a clean, complete index (0 unresolved refs).
+      # `init` builds the initial index in a fresh checkout (`index` rebuilds an
+      # existing one and errors if the repo was never initialized — which a CI
+      # checkout, with no committed .codegraph, never was).
       - name: Build the codegraph index
         run: |
-          codegraph index .
+          codegraph init .
           codegraph status .   # visibility: a partial index prints an unresolved-refs warning
 
       # Blocking gate: fail the PR if either committed diagram no longer matches
