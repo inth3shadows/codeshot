@@ -50,18 +50,39 @@ jobs:
       - name: Install codegraph
         run: npm install -g @colbymchenry/codegraph@1.4.1
 
-      # `init` builds the initial index in a fresh checkout (`index` rebuilds an
-      # existing one and errors if the repo was never initialized — which a CI
-      # checkout, with no committed .codegraph, never was).
-      - name: Build the codegraph index
+      # Build the index AND run --check in ONE step, on purpose. codegraph serves
+      # its index from a per-invocation process; splitting "build" and "query"
+      # across two GitHub Actions steps intermittently left `codegraph query`
+      # reporting "not initialized" — the step boundary kills codegraph's process
+      # group before the freshly built on-disk db is finalized, so a later step's
+      # fresh process sees no index (whereas the same-step `status` does). Keeping
+      # everything in one shell, plus a readiness probe that retries a real query
+      # until the index answers, makes it reliable. `init` builds the initial
+      # index in a fresh checkout (`index` errors when the repo was never
+      # initialized). CODEGRAPH_NO_WATCHDOG=1 stops a throttled runner from
+      # tripping codegraph's liveness watchdog (#850) mid-index.
+      - name: Build index and check committed diagrams are current
+        env:
+          CODEGRAPH_NO_WATCHDOG: "1"
         run: |
           codegraph init .
+          # Readiness probe: don't --check until a real query resolves against the
+          # index. Retries cover the finalize-after-build race above.
+          for attempt in 1 2 3 4 5; do
+            if codegraph query --path . --json --limit 1 -- buildDot >/dev/null 2>&1; then
+              echo "codegraph index is queryable (attempt $attempt)"
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo "::error::codegraph index never became queryable after init"; codegraph status .; exit 1
+            fi
+            echo "index not queryable yet (attempt $attempt) — syncing and retrying"
+            codegraph sync . || true
+            sleep 2
+          done
           codegraph status .   # visibility: a partial index prints an unresolved-refs warning
-
-      # Blocking gate: fail the PR if either committed diagram no longer matches
-      # what the current code produces. Structural compare = graphviz-version proof.
-      - name: Check committed diagrams are current
-        run: |
+          # Blocking gate: fail the PR if either committed diagram no longer matches
+          # what the current code produces. Structural compare = graphviz-version proof.
           node render/callgraph.js --architecture --path . --format svg \
             --out docs/architecture.svg --embed TECHNICAL.md --check
           node render/callgraph.js buildDot --path . --format svg \
