@@ -68,6 +68,37 @@ function matchSymbolNotFound(out) {
   return m ? m[1] : null;
 }
 
+// codegraph prints "✗ CodeGraph not initialized in <path> — Run 'codegraph init'
+// first" (plain text, not JSON) when --path points at a repo it has never
+// indexed — the single most common first-run failure. Without special-casing it,
+// the JSON.parse fallback wraps that message in a confusing "did not return JSON"
+// line; here it earns its own clean, actionable message instead. Sibling of
+// matchSymbolNotFound. Deliberately does NOT auto-run 'codegraph init' — building
+// an index is a heavy, persistent side effect and codegraph's call to make, not
+// codeshot's (same detect-and-instruct stance as requireOnPath).
+function matchNotInitialized(out) {
+  return /CodeGraph\s+not\s+initialized/i.test(String(out));
+}
+
+// The repo path codeshot passed to codegraph, recovered from the arg array so an
+// error message can name it. Every codegraph invocation includes '--path <p>'.
+function argRepoPath(args) {
+  const i = args.indexOf('--path');
+  return i !== -1 && args[i + 1] !== undefined ? args[i + 1] : '.';
+}
+
+// Shared clean exit for the unindexed-repo case, reachable from two paths: a
+// non-zero codegraph exit (the real one — codegraph rejects with the message on
+// stderr, caught in runCodegraph) and, defensively, a zero-exit message on
+// stdout (parseCodegraphOutput). Returns null for non-fatal callers, exits 1
+// otherwise — same contract as the matchSymbolNotFound branch.
+function exitNotInitialized(args, fatal) {
+  if (!fatal) return null;
+  const repoPath = argRepoPath(args);
+  console.error(`codeshot: codegraph has no index for '${repoPath}' yet — build one first with 'codegraph init ${repoPath}', then rerun. (codeshot reads codegraph's index; it doesn't create it.)`);
+  process.exit(1);
+}
+
 // `fatal` (default true) matches every existing call site's behavior. Pass
 // `fatal: false` when calling this in a loop that probes many symbols and
 // must survive an individual bad one (e.g. --architecture's enumeration) —
@@ -80,6 +111,7 @@ function parseCodegraphOutput(out, args, { fatal = true } = {}) {
     console.error(`codeshot: symbol '${notFound}' not found in codegraph's index — check the spelling/casing, or confirm --path points at the repo that contains it.`);
     process.exit(1);
   }
+  if (matchNotInitialized(out)) return exitNotInitialized(args, fatal);
   try {
     return JSON.parse(out);
   } catch {
@@ -95,8 +127,19 @@ function parseCodegraphOutput(out, args, { fatal = true } = {}) {
 // single codegraph response this tool realistically produces.
 const MAX_CODEGRAPH_BUFFER = 64 * 1024 * 1024;
 async function runCodegraph(args, { fatal = true } = {}) {
-  const { stdout } = await execFileAsync('codegraph', args, { encoding: 'utf8', maxBuffer: MAX_CODEGRAPH_BUFFER });
-  return parseCodegraphOutput(stdout, args, { fatal });
+  let result;
+  try {
+    result = await execFileAsync('codegraph', args, { encoding: 'utf8', maxBuffer: MAX_CODEGRAPH_BUFFER });
+  } catch (err) {
+    // codegraph exits NON-ZERO for an unindexed repo (it prints "CodeGraph not
+    // initialized" to stderr), which rejects the promise before stdout can be
+    // parsed — so this case never reaches parseCodegraphOutput's stdout check.
+    // Surface that one known first-run state cleanly; re-throw anything else so a
+    // genuine codegraph failure isn't misreported as a missing index.
+    if (matchNotInitialized(`${err.stdout || ''}${err.stderr || ''}`)) return exitNotInitialized(args, fatal);
+    throw err;
+  }
+  return parseCodegraphOutput(result.stdout, args, { fatal });
 }
 
 // `codegraph status` warns when an index was left mid-build ("N references from
@@ -974,4 +1017,5 @@ module.exports = {
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
   emptyGraphWarning, emptyArchitectureWarning,
+  matchNotInitialized, argRepoPath,
 };

@@ -98,6 +98,7 @@ fall back to a raw byte-compare, which does require CI to use the same
 ## What to Do When Something Breaks
 
 - **"codeshot: 'codegraph' not found on PATH"** — Install CodeGraph and make sure it's on your PATH, then try again.
+- **"codeshot: codegraph has no index for '...' yet"** — CodeGraph is installed but this repo has never been indexed. Run the exact command the message gives you (`codegraph init <path>`), then rerun codeshot. Codeshot reads CodeGraph's index; it deliberately doesn't build one for you (indexing is a heavy, persistent operation and CodeGraph's call to make).
 - **"codeshot: 'dot' not found on PATH"** — Install Graphviz (`brew install graphviz` on Mac, `apt install graphviz` on Ubuntu/WSL), then try again.
 - **The command runs but the diagram is empty or missing edges** — The repo probably hasn't been indexed yet, or the index is stale. Run `codegraph init` (or re-run indexing) in the target repo first. Codeshot no longer draws a blank picture silently: it warns on stderr in the two cases below.
 - **"codeshot: '...' has no callers or callees in codegraph's index"** — The symbol exists but nothing calls it and it calls nothing, so the diagram is just that one box. It may be genuinely unused (dead code) or a top-level entry point — or codegraph's index is incomplete for its file (see the sparse-diagram note below). The image is still written; the warning just explains why it's a lone box.
