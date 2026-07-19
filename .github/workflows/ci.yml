@@ -30,3 +30,39 @@ jobs:
       - name: Install graphviz (codeshot renders via `dot`)
         run: sudo apt-get update && sudo apt-get install -y graphviz
       - run: npm test
+
+  diagrams:
+    name: Diagrams are current (codeshot --check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      # codeshot renders through graphviz. --check compares diagram STRUCTURE
+      # (node/edge set) for svg, not rendered bytes, so the CI graphviz version
+      # need not match the one that generated the committed image.
+      - name: Install graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      # The index codeshot reads. Pinned (repo convention: pin dependency versions).
+      - name: Install codegraph
+        run: npm install -g @colbymchenry/codegraph@1.4.1
+
+      # `init` builds the initial index in a fresh checkout (`index` rebuilds an
+      # existing one and errors if the repo was never initialized — which a CI
+      # checkout, with no committed .codegraph, never was).
+      - name: Build the codegraph index
+        run: |
+          codegraph init .
+          codegraph status .   # visibility: a partial index prints an unresolved-refs warning
+
+      # Blocking gate: fail the PR if either committed diagram no longer matches
+      # what the current code produces. Structural compare = graphviz-version proof.
+      - name: Check committed diagrams are current
+        run: |
+          node render/callgraph.js --architecture --path . --format svg \
+            --out docs/architecture.svg --embed TECHNICAL.md --check
+          node render/callgraph.js buildDot --path . --format svg \
+            --out docs/buildDot-callgraph.svg --embed TECHNICAL.md --check

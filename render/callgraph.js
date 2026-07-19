@@ -28,6 +28,13 @@ const DEFAULT_LIMIT = 50;
 // format ignores them, so buildDot is told to emit them only for these.
 const SVG_TOOLTIP_FORMATS = new Set(['svg', 'svgz']);
 
+// --check compares the graph STRUCTURE (node/edge set) rather than raw image
+// bytes for these formats — see svgStructure. Only plain svg qualifies: it's
+// text we can parse, and its <title>s carry the semantic ids version-independently.
+// svgz (gzipped) and raster formats have no recoverable structure, so they fall
+// back to the byte-compare and its same-graphviz-version caveat.
+const STRUCTURAL_CHECK_FORMATS = new Set(['svg']);
+
 // Multi-hop traversal (--depth > 1) makes one sequential codegraph call per
 // newly discovered node, per hop — on a well-connected symbol that fans out
 // fast. This caps total discovered nodes across both directions combined so
@@ -562,6 +569,50 @@ function renderDotToBuffer(dot, format) {
   }
 }
 
+// graphviz XML-encodes a few characters inside node/edge <title>s — notably the
+// '->' of an edge id becomes '&#45;&gt;' — so a parsed title has to be decoded
+// back to the raw id codeshot wrote into the DOT. Handles the named entities
+// graphviz emits plus numeric ones; '&amp;' is undone last so an already-encoded
+// '&amp;lt;' doesn't get double-decoded.
+function decodeXmlEntities(s) {
+  return String(s)
+    .replace(/&#[xX]([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+// The version-independent heart of --check for svg output: reduce a graphviz SVG
+// to just its call STRUCTURE — the set of node ids and the set of directed edges
+// — discarding layout coordinates, colors, fonts, and the graphviz version stamp,
+// none of which are semantic drift. graphviz renders every node/edge as a
+// `<g class="node|edge">` whose `<title>` is verbatim the id codeshot put in the
+// DOT (a node's id, or an edge's "from->to"); that title text is identical across
+// graphviz versions even though the surrounding geometry is not — which is exactly
+// why a byte-compare of the rendered svg false-failed in CI whenever the committed
+// image and the checking machine used different graphviz builds. Returns a
+// canonical signature (nodes sorted, then edges sorted) so two svgs with the same
+// graph but a different node emission ORDER — codegraph's enumeration order isn't
+// guaranteed stable run-to-run — still compare equal. Cosmetic drift (a test edge
+// losing its dash, a recolor) is deliberately NOT captured: only a node or a call
+// appearing or disappearing changes the structure and fails the check. The regex
+// tolerates either attribute order (`id` before or after `class`), which also
+// varies by graphviz version, and skips the graph's own top-level <title>.
+function svgStructure(svg) {
+  const nodes = new Set();
+  const edges = new Set();
+  const re = /<g\b[^>]*\bclass="(node|edge)"[^>]*>\s*<title>([\s\S]*?)<\/title>/g;
+  let m;
+  while ((m = re.exec(String(svg))) !== null) {
+    const title = decodeXmlEntities(m[2].trim());
+    (m[1] === 'node' ? nodes : edges).add(title);
+  }
+  return `nodes:\n${[...nodes].sort().join('\n')}\nedges:\n${[...edges].sort().join('\n')}`;
+}
+
 // --embed keeps a generated diagram inside a committed markdown doc, refreshed
 // in place — the same idempotent HTML-comment-marker pattern doctoc and
 // terraform-docs use. Each embed is keyed by an id (`arch`, or the symbol
@@ -635,7 +686,20 @@ function finishOutput(dot, { format, outFile, embedFile, check, markerId, alt })
     const fresh = renderDotToBuffer(dot, format);
     let committed = null;
     try { committed = fs.readFileSync(outFile); } catch { /* missing → stale */ }
-    const imageStale = !committed || !committed.equals(fresh);
+    // svg: compare the graph structure (node/edge set), which is graphviz-version
+    // independent, so a committed image rendered by one graphviz build and a fresh
+    // render on another (e.g. a laptop vs CI) don't false-drift on layout/version
+    // bytes — the reason a raw byte-compare made --check unusable in CI. Other
+    // formats have no recoverable structure and keep the byte-compare (and its
+    // documented same-graphviz-version caveat).
+    let imageStale;
+    if (!committed) {
+      imageStale = true;
+    } else if (STRUCTURAL_CHECK_FORMATS.has(format.toLowerCase())) {
+      imageStale = svgStructure(committed.toString('utf8')) !== svgStructure(fresh.toString('utf8'));
+    } else {
+      imageStale = !committed.equals(fresh);
+    }
     const docStale = docContent !== expected;
     if (imageStale || docStale) {
       if (imageStale) console.error(`codeshot: --check: diagram '${outFile}' is out of date (${committed ? 'differs from a fresh render' : 'missing'}) — rerun 'codeshot ... --embed ${embedFile}' and commit the result.`);
@@ -880,4 +944,5 @@ module.exports = {
   filterCallableSymbols, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
+  svgStructure, decodeXmlEntities,
 };

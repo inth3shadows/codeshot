@@ -84,10 +84,16 @@ codeshot --architecture --path . --embed TECHNICAL.md --format svg --check
 ```
 
 Drop that into CI or a pre-commit hook to fail the build when someone changes
-the code but not the diagram. One caveat, inherent to any "regenerate and diff
-a binary artifact" check: it compares rendered bytes, so CI must use the same
-`graphviz` version that generated the committed image, or it will report a
-spurious mismatch.
+the code but not the diagram. For `svg` output (the recommended `--embed`
+format) `--check` compares the diagram's **structure** — the set of nodes and
+call edges — not the raw rendered bytes, so it is **graphviz-version
+independent**: the committed image and the CI machine can run different
+`graphviz` builds without a spurious mismatch. By design it only fails on
+*structural* drift (a caller/callee/edge appearing or disappearing); a
+cosmetic-only change with the identical graph — e.g. a re-color — is not
+flagged. Non-`svg` formats (png, svgz, …) have no recoverable structure and
+fall back to a raw byte-compare, which does require CI to use the same
+`graphviz` version that generated the committed image.
 
 ## What to Do When Something Breaks
 
