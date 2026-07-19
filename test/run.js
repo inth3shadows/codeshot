@@ -10,7 +10,7 @@ const {
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
   emptyGraphWarning, emptyArchitectureWarning,
-  matchNotInitialized, argRepoPath,
+  matchNotInitialized, argRepoPath, parseCodegraphOutput,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -263,6 +263,17 @@ test('matchNotInitialized detects codegraph\'s unindexed-repo message, not JSON 
 test('argRepoPath recovers the --path value codeshot passed, defaulting to "."', () => {
   assert.strictEqual(argRepoPath(['query', '--path', '/repo/x', '--json', '--', 'Foo']), '/repo/x');
   assert.strictEqual(argRepoPath(['callers', '--json']), '.', 'no --path → cwd default');
+});
+
+test('parseCodegraphOutput does NOT treat a successful JSON response as "not initialized" just because a node\'s content mentions the phrase', () => {
+  // Regression: codegraph's enumerate query returns indexed node content, and
+  // this very file's source contains "CodeGraph not initialized" in a comment.
+  // Scanning stdout for that phrase falsely reported a well-indexed repo as
+  // uninitialized (the CI diagrams job caught it). The phrase is a real signal
+  // only on stderr with a non-zero exit (runCodegraph), never on stdout.
+  const stdout = JSON.stringify([{ node: { name: 'matchNotInitialized', content: 'detects "CodeGraph not initialized"' } }]);
+  const parsed = parseCodegraphOutput(stdout, ['query', '--path', '.', '--json', '--', ''], { fatal: false });
+  assert.deepStrictEqual(parsed, [{ node: { name: 'matchNotInitialized', content: 'detects "CodeGraph not initialized"' } }]);
 });
 
 test('buildDot styles a "kind":"file" caller/callee distinctly from a real function call', () => {

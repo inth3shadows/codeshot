@@ -87,11 +87,14 @@ function argRepoPath(args) {
   return i !== -1 && args[i + 1] !== undefined ? args[i + 1] : '.';
 }
 
-// Shared clean exit for the unindexed-repo case, reachable from two paths: a
-// non-zero codegraph exit (the real one — codegraph rejects with the message on
-// stderr, caught in runCodegraph) and, defensively, a zero-exit message on
-// stdout (parseCodegraphOutput). Returns null for non-fatal callers, exits 1
-// otherwise — same contract as the matchSymbolNotFound branch.
+// Shared clean exit for the unindexed-repo case. Reached ONLY from runCodegraph's
+// catch, matched against codegraph's STDERR on a non-zero exit — never against a
+// successful command's stdout. That distinction is load-bearing: codegraph's
+// enumerate query (`query -- ''`) returns every indexed node, whose content can
+// legitimately include the literal phrase "CodeGraph not initialized" (e.g. this
+// file's own source describing the message). Scanning stdout for it would false-
+// positive on a repo that is perfectly well indexed. Returns null for non-fatal
+// callers, exits 1 otherwise — same contract as the matchSymbolNotFound branch.
 function exitNotInitialized(args, fatal) {
   if (!fatal) return null;
   const repoPath = argRepoPath(args);
@@ -111,7 +114,10 @@ function parseCodegraphOutput(out, args, { fatal = true } = {}) {
     console.error(`codeshot: symbol '${notFound}' not found in codegraph's index — check the spelling/casing, or confirm --path points at the repo that contains it.`);
     process.exit(1);
   }
-  if (matchNotInitialized(out)) return exitNotInitialized(args, fatal);
+  // NOTE: the "not initialized" case is deliberately NOT handled here on stdout —
+  // see exitNotInitialized. A successful codegraph response can contain that
+  // phrase as indexed source content; it's only a real signal on stderr with a
+  // non-zero exit, which runCodegraph handles.
   try {
     return JSON.parse(out);
   } catch {
@@ -131,12 +137,13 @@ async function runCodegraph(args, { fatal = true } = {}) {
   try {
     result = await execFileAsync('codegraph', args, { encoding: 'utf8', maxBuffer: MAX_CODEGRAPH_BUFFER });
   } catch (err) {
-    // codegraph exits NON-ZERO for an unindexed repo (it prints "CodeGraph not
-    // initialized" to stderr), which rejects the promise before stdout can be
-    // parsed — so this case never reaches parseCodegraphOutput's stdout check.
-    // Surface that one known first-run state cleanly; re-throw anything else so a
-    // genuine codegraph failure isn't misreported as a missing index.
-    if (matchNotInitialized(`${err.stdout || ''}${err.stderr || ''}`)) return exitNotInitialized(args, fatal);
+    // codegraph exits NON-ZERO for an unindexed repo, printing "CodeGraph not
+    // initialized" to STDERR. Match only stderr — never err.stdout — because a
+    // partial stdout on some other failure could contain that phrase as indexed
+    // source content and false-positive (the same trap that stdout scanning in
+    // parseCodegraphOutput would be). Surface this known first-run state cleanly;
+    // re-throw anything else so a genuine codegraph failure isn't misreported.
+    if (matchNotInitialized(`${err.stderr || ''}`)) return exitNotInitialized(args, fatal);
     throw err;
   }
   return parseCodegraphOutput(result.stdout, args, { fatal });
@@ -1017,5 +1024,5 @@ module.exports = {
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
   emptyGraphWarning, emptyArchitectureWarning,
-  matchNotInitialized, argRepoPath,
+  matchNotInitialized, argRepoPath, parseCodegraphOutput,
 };
