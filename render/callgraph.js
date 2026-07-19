@@ -158,6 +158,18 @@ function truncationWarning(kind, results, limit) {
   return `codeshot: showing ${results.length} ${kind} — codegraph's --limit (${limit}) may have cut off more; rerun with --limit <n> to see additional ${kind}.`;
 }
 
+// A symbol with no callers AND no callees renders as a lone box — a valid but
+// uninformative picture. Warn so the empty result reads as a finding (the symbol
+// is unused, an entry point, or codegraph's index is incomplete for its file)
+// rather than looking like a tool glitch — the same "warn, don't hand back a
+// silent blank" stance as indexHealthWarning/duplicateNameWarning.
+function emptyGraphWarning(symbol, callers, callees) {
+  const nCallers = Array.isArray(callers) ? callers.length : 0;
+  const nCallees = Array.isArray(callees) ? callees.length : 0;
+  if (nCallers > 0 || nCallees > 0) return null;
+  return `codeshot: '${symbol}' has no callers or callees in codegraph's index — the diagram is just the symbol itself. It may be unused (dead code) or an entry point, or codegraph's index may be incomplete for its file.`;
+}
+
 function dedupeNodes(nodes) {
   const seen = new Set();
   const result = [];
@@ -414,6 +426,16 @@ function symbolBudgetWarning(truncated, budget) {
   return `codeshot: --architecture stopped enumerating after ${budget} symbols (--max-symbols) — the graph is incomplete; rerun with a larger --max-symbols to cover the rest of the repo.`;
 }
 
+// With zero cross-file edges, buildArchitectureDot emits a graph with no nodes —
+// a blank image. Node count alone can't tell that apart from a legitimately
+// edge-free repo, so warn with the likely cause (small/single-file repo, or an
+// index that was never built) instead of writing a silent blank picture. Pure:
+// takes the aggregated file edges, returns the warning string or null.
+function emptyArchitectureWarning(fileEdges) {
+  if (Array.isArray(fileEdges) && fileEdges.length > 0) return null;
+  return `codeshot: --architecture found no cross-file call edges — the diagram is blank. codegraph's index has no resolved calls between files in this repo (it may be small or single-file, or the index may be missing — run 'codegraph init <path>' to build it, then 'codegraph status' to confirm).`;
+}
+
 // codegraph's callers/callees take a bare name with no --file disambiguation
 // (unlike `codegraph node -f`), so two same-named symbols in different files
 // are genuinely ambiguous to a `codegraph callees <name>` probe — a real risk
@@ -537,6 +559,9 @@ async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender }) {
 
   const symbolEdges = await probeFileEdges(symbols, repoPath, limit);
   const fileEdges = aggregateFileEdges(symbolEdges);
+
+  const emptyWarning = emptyArchitectureWarning(fileEdges);
+  if (emptyWarning) console.error(emptyWarning);
 
   const totalFiles = new Set(fileEdges.flatMap(e => [e.from, e.to])).size;
   const note = renderTruncationNote('files', totalFiles, maxRender);
@@ -894,6 +919,9 @@ async function main() {
     if (warning) console.error(warning);
   }
 
+  const emptyWarning = emptyGraphWarning(resolvedSymbol, callers, callees);
+  if (emptyWarning) console.error(emptyWarning);
+
   let transitiveEdges = [];
   if (depth > 1) {
     const discovered = new Set(dedupeNodes([...(callers || []), ...(callees || [])]).map(n => `${n.name} ${n.filePath}`));
@@ -945,4 +973,5 @@ module.exports = {
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
+  emptyGraphWarning, emptyArchitectureWarning,
 };

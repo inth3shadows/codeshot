@@ -9,6 +9,7 @@ const {
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
+  emptyGraphWarning, emptyArchitectureWarning,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -284,6 +285,20 @@ test('truncationWarning fires when results hit the limit', () => {
 test('truncationWarning is null when under the limit', () => {
   const results = Array.from({ length: 3 }, (_, i) => ({ name: `Fn${i}` }));
   assert.strictEqual(truncationWarning('callers', results, 20), null);
+});
+
+test('emptyGraphWarning fires only when a symbol has neither callers nor callees', () => {
+  assert.match(emptyGraphWarning('Foo', [], []), /'Foo' has no callers or callees/);
+  assert.strictEqual(emptyGraphWarning('Foo', [{ name: 'a' }], []), null);
+  assert.strictEqual(emptyGraphWarning('Foo', [], [{ name: 'b' }]), null);
+  // undefined arrays (codegraph returned nothing) count as empty, not a crash
+  assert.match(emptyGraphWarning('Foo', undefined, undefined), /has no callers or callees/);
+});
+
+test('emptyArchitectureWarning fires only when there are zero cross-file edges', () => {
+  assert.match(emptyArchitectureWarning([]), /no cross-file call edges — the diagram is blank/);
+  assert.strictEqual(emptyArchitectureWarning([{ from: 'a', to: 'b', weight: 1 }]), null);
+  assert.match(emptyArchitectureWarning(undefined), /no cross-file call edges/);
 });
 
 test('--limit rejects non-positive-integer values before reaching codegraph', () => {
