@@ -3,3 +3,4 @@ fn
 promisify
 execFileAsync
 parseArgs
+MAX_CODEGRAPH_BUFFER

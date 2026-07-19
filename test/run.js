@@ -10,6 +10,7 @@ const {
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
   emptyGraphWarning, emptyArchitectureWarning,
+  matchNotInitialized, argRepoPath, parseCodegraphOutput,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -248,6 +249,31 @@ test('formatMismatchWarning fires when --out\'s extension is a real dot format t
 test('matchSymbolNotFound extracts the symbol name from codegraph\'s plain-text not-found message', () => {
   assert.strictEqual(matchSymbolNotFound('[34mℹ[0m Symbol "Foo" not found\n'), 'Foo');
   assert.strictEqual(matchSymbolNotFound('{"symbol":"Foo","callers":[]}'), null, 'a real JSON response should never match');
+});
+
+test('matchNotInitialized detects codegraph\'s unindexed-repo message, not JSON or other errors', () => {
+  const esc = String.fromCharCode(27);
+  assert.strictEqual(matchNotInitialized(`${esc}[31m✗${esc}[0m CodeGraph not initialized in /repo\n Run "codegraph init" first`), true);
+  assert.strictEqual(matchNotInitialized('codegraph not initialized'), true, 'case-insensitive');
+  assert.strictEqual(matchNotInitialized('[{"node":{}}]'), false, 'a real JSON response must not match');
+  assert.strictEqual(matchNotInitialized('Symbol "Foo" not found'), false, 'the not-found message is a different case');
+  assert.strictEqual(matchNotInitialized(''), false);
+});
+
+test('argRepoPath recovers the --path value codeshot passed, defaulting to "."', () => {
+  assert.strictEqual(argRepoPath(['query', '--path', '/repo/x', '--json', '--', 'Foo']), '/repo/x');
+  assert.strictEqual(argRepoPath(['callers', '--json']), '.', 'no --path → cwd default');
+});
+
+test('parseCodegraphOutput does NOT treat a successful JSON response as "not initialized" just because a node\'s content mentions the phrase', () => {
+  // Regression: codegraph's enumerate query returns indexed node content, and
+  // this very file's source contains "CodeGraph not initialized" in a comment.
+  // Scanning stdout for that phrase falsely reported a well-indexed repo as
+  // uninitialized (the CI diagrams job caught it). The phrase is a real signal
+  // only on stderr with a non-zero exit (runCodegraph), never on stdout.
+  const stdout = JSON.stringify([{ node: { name: 'matchNotInitialized', content: 'detects "CodeGraph not initialized"' } }]);
+  const parsed = parseCodegraphOutput(stdout, ['query', '--path', '.', '--json', '--', ''], { fatal: false });
+  assert.deepStrictEqual(parsed, [{ node: { name: 'matchNotInitialized', content: 'detects "CodeGraph not initialized"' } }]);
 });
 
 test('buildDot styles a "kind":"file" caller/callee distinctly from a real function call', () => {
@@ -788,6 +814,39 @@ test('CLI --embed into a nonexistent doc is rejected (refresh, not create)', () 
     assert.match(err.stderr, /does not exist/);
   }
   assert.strictEqual(threw, true, 'expected --embed into a missing doc to be rejected');
+});
+
+test('CLI on an unindexed repo prints a clean "no index" message, not a raw codegraph error', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const callgraphJs = path.join(__dirname, '..', 'render', 'callgraph.js');
+
+  // Needs codegraph on PATH to produce the real non-zero "not initialized" exit.
+  try {
+    execFileSync('codegraph', ['--version'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH');
+    return;
+  }
+
+  // A fresh dir under tmp with no .codegraph anywhere above it → codegraph
+  // reports "not initialized" rather than resolving a parent index.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codeshot-unindexed-'));
+  fs.writeFileSync(path.join(dir, 'app.py'), 'def hello():\n    pass\n', 'utf8');
+  let threw = false;
+  try {
+    execFileSync('node', [callgraphJs, 'hello', '--path', dir], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /has no index for/);
+    assert.match(err.stderr, /codegraph init/);
+    assert.doesNotMatch(err.stderr, /did not return JSON|Command failed/, 'must be the clean message, not the raw thrown error');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  assert.strictEqual(threw, true, 'expected exit 1 on an unindexed repo');
 });
 
 // --- svgStructure: version-independent --check comparison -------------
