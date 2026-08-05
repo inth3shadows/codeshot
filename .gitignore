@@ -3,6 +3,8 @@ node_modules/
 *.log
 dist/
 
-# tool-generated index/scratch dirs (runecho / codegraph) — never committed
-.ai/
-.codegraph/
+# tool-generated index/scratch dirs (runecho / codegraph) — never committed.
+# No trailing slash: in a shared-index worktree layout these are symlinks to a
+# sibling checkout's index, and a dir-only pattern leaves them untracked-noisy.
+.ai
+.codegraph

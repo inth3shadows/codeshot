@@ -5,7 +5,7 @@ const assert = require('assert');
 const {
   buildDot, nodeIdentities, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
-  unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
+  unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, duplicateNames, parseNodeCalls, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
@@ -648,6 +648,169 @@ test('duplicateNameWarning is null when every name is unique', () => {
   assert.strictEqual(duplicateNameWarning(symbols), null);
 });
 
+test('duplicateNameWarning reports ordinary duplicates as re-probed, not as possibly-wrong', () => {
+  const symbols = [
+    { name: 'render', kind: 'function', filePath: 'a.js' },
+    { name: 'render', kind: 'function', filePath: 'b.js' },
+  ];
+  const warning = duplicateNameWarning(symbols);
+  assert.match(warning, /file-qualified/);
+  assert.doesNotMatch(warning, /may be attributed to the wrong file/);
+});
+
+test('duplicateNameWarning still warns about duplicate file names, which node -f cannot disambiguate', () => {
+  const symbols = [
+    { name: 'index.js', kind: 'file', filePath: 'a/index.js' },
+    { name: 'index.js', kind: 'file', filePath: 'b/index.js' },
+  ];
+  const warning = duplicateNameWarning(symbols);
+  assert.match(warning, /may be attributed to the wrong file/);
+  assert.match(warning, /index\.js/);
+});
+
+test('duplicateNames returns only names seen in more than one file', () => {
+  const dupes = duplicateNames([
+    { name: 'render', filePath: 'a.js' },
+    { name: 'render', filePath: 'b.js' },
+    { name: 'unique', filePath: 'c.js' },
+  ]);
+  assert.deepStrictEqual([...dupes], ['render']);
+});
+
+test('duplicateNames ignores same-name-same-file symbols, which have no file ambiguity to resolve', () => {
+  // Two methods named String() on different types in one file: the bare-name
+  // probe's union of their callees is already exactly right for that file, and
+  // re-probing by file would only lose edges.
+  const dupes = duplicateNames([
+    { name: 'String', filePath: 'svc.go' },
+    { name: 'String', filePath: 'svc.go' },
+  ]);
+  assert.deepStrictEqual([...dupes], []);
+});
+
+// Fixtures below are real `codegraph node -f` output shapes from the pinned
+// 1.5.0 — the whole point of parseNodeCalls is that it reads text, not JSON, so
+// these pin the format the parser was written against.
+const NODE_OUTPUT_HEAD = [
+  '**buildDot** (function)',
+  '',
+  '**Location:** render/callgraph.js:314',
+  '**Signature:** `(symbol, callers = [], callees = [])`',
+  '',
+];
+
+const TRAIL_HEADER = '**Trail — codegraph_node any of these to follow it (no Read needed)**';
+
+test('parseNodeCalls reads file-qualified callees out of a real node -f trail', () => {
+  const out = [
+    ...NODE_OUTPUT_HEAD,
+    TRAIL_HEADER,
+    '**Calls →** dedupeNodes (render/callgraph.js:223), depthColor (render/other.js:251)',
+    '**Called by ←** main (render/callgraph.js:821)',
+  ].join('\n');
+  assert.deepStrictEqual(parseNodeCalls(out, 'render/callgraph.js'), [
+    { name: 'dedupeNodes', filePath: 'render/callgraph.js' },
+    { name: 'depthColor', filePath: 'render/other.js' },
+  ]);
+});
+
+test('parseNodeCalls returns [] — not null — for a recognized symbol that calls nothing', () => {
+  const out = [...NODE_OUTPUT_HEAD, TRAIL_HEADER, '**Called by ←** main (render/callgraph.js:821)'].join('\n');
+  assert.deepStrictEqual(parseNodeCalls(out, 'render/callgraph.js'), []);
+});
+
+test('parseNodeCalls returns null on unrecognized output so the caller falls back instead of inventing an empty result', () => {
+  for (const bad of ['', 'Symbol "X" not found in the codebase', '{"callees":[]}', 'total garbage']) {
+    assert.strictEqual(parseNodeCalls(bad, 'a.js'), null, `expected null for ${JSON.stringify(bad)}`);
+  }
+});
+
+test('parseNodeCalls returns null for file-mode output, which has a header and a location but no trail', () => {
+  // `codegraph node -f <file> <basename>` answers in file mode. Returning []
+  // here would read as "this file calls nothing" and suppress the fallback.
+  const out = ['**callgraph.js** (file)', '', '**Location:** render/callgraph.js:1', '', '```javascript', "1\t#!/usr/bin/env node", '```'].join('\n');
+  assert.strictEqual(parseNodeCalls(out, 'render/callgraph.js'), null);
+});
+
+test('parseNodeCalls returns null when codegraph truncates the trail with "+N more"', () => {
+  // Measured on codegraph 1.5.0: the trail line caps at 12 entries. `main` in
+  // this repo has 23 callees and its trail shows 12 + "+11 more". Taking the
+  // visible 12 would silently drop real edges — worse than the over-reporting
+  // bare-name probe we fall back to.
+  const out = [
+    ...NODE_OUTPUT_HEAD,
+    TRAIL_HEADER,
+    '**Calls →** a (x.js:1), b (x.js:2), c (x.js:3), +11 more',
+  ].join('\n');
+  assert.strictEqual(parseNodeCalls(out, 'render/callgraph.js'), null);
+});
+
+test('parseNodeCalls returns null when the answer is for a different file than the one probed', () => {
+  // `-f` is a preference, not a filter: codegraph answers with another file's
+  // same-named symbol (exit 0, no error) when the requested file has no match.
+  const out = [...NODE_OUTPUT_HEAD, TRAIL_HEADER, '**Calls →** alpha (a/alpha.js:1)'].join('\n');
+  assert.strictEqual(parseNodeCalls(out, 'b/svc.js'), null);
+  assert.deepStrictEqual(parseNodeCalls(out, 'render/callgraph.js'), [{ name: 'alpha', filePath: 'a/alpha.js' }]);
+});
+
+test('parseNodeCalls returns null when codegraph concatenates more than one matching symbol', () => {
+  // Two same-named symbols in one file come back as two trail blocks; keeping
+  // only one would silently drop the other's edges.
+  const out = [
+    ...NODE_OUTPUT_HEAD,
+    TRAIL_HEADER,
+    '**Calls →** alpha (a/alpha.js:1)',
+    '',
+    '**handle** (function)',
+    '',
+    '**Location:** render/callgraph.js:400',
+    TRAIL_HEADER,
+    '**Calls →** beta (b/beta.js:1)',
+  ].join('\n');
+  assert.strictEqual(parseNodeCalls(out, 'render/callgraph.js'), null);
+});
+
+test('parseNodeCalls drops a file-node callee, which has no real call site to draw', () => {
+  const out = [
+    ...NODE_OUTPUT_HEAD,
+    TRAIL_HEADER,
+    '**Calls →** run.js (test/run.js:1), dedupeNodes (render/callgraph.js:223)',
+  ].join('\n');
+  assert.deepStrictEqual(parseNodeCalls(out, 'render/callgraph.js'), [{ name: 'dedupeNodes', filePath: 'render/callgraph.js' }]);
+});
+
+test('parseNodeCalls ignores a trail-shaped line inside the embedded source body', () => {
+  // node -f echoes the symbol's own source, and this repo's source legitimately
+  // contains lines describing the trail format.
+  const out = [
+    ...NODE_OUTPUT_HEAD,
+    '```javascript',
+    '315\t// the Calls line, e.g. dedupeNodes (render/callgraph.js:223)',
+    '```',
+    TRAIL_HEADER,
+    '**Calls →** dedupeNodes (render/callgraph.js:223)',
+  ].join('\n');
+  assert.deepStrictEqual(parseNodeCalls(out, 'render/callgraph.js'), [{ name: 'dedupeNodes', filePath: 'render/callgraph.js' }]);
+});
+
+test('parseCodegraphOutput does not mistake indexed source content for a not-found message', () => {
+  // Under json:false the response embeds arbitrary source, and this repo's own
+  // test file contains the literal not-found sentence. Matching it anywhere in
+  // the body would null out a perfectly good answer and silently fall back.
+  const out = [
+    '**probe** (function)',
+    '',
+    '**Location:** test/run.js:700',
+    '',
+    '```javascript',
+    '700\tassert.match(err, /Symbol "Foo" not found in the codebase/);',
+    '```',
+    TRAIL_HEADER,
+    '**Calls →** assert (test/run.js:4)',
+  ].join('\n');
+  assert.strictEqual(parseCodegraphOutput(out, ['node'], { fatal: false, json: false }), out);
+});
+
 test('aggregateFileEdges drops self-file edges', () => {
   const edges = aggregateFileEdges([{ fromFile: 'a.js', toFile: 'a.js' }, { fromFile: 'a.js', toFile: 'b.js' }]);
   assert.strictEqual(edges.length, 1);
@@ -742,6 +905,58 @@ test('CLI --architecture runs end-to-end against this repo\'s own real codegraph
     assert.match(svg, /callgraph\.js/);
   } finally {
     fs.rmSync(out, { force: true });
+  }
+});
+
+// The regression test for the duplicate-name fix. This repo's own index has zero
+// duplicate names, so the self-test above can never exercise the file-qualified
+// path — it needs a purpose-built repo where the bare-name probe is provably
+// wrong. Measured against the real codegraph 1.5.0: `codegraph callees handle`
+// returns the UNION of both files' callees, so the pre-fix code drew 4 edges of
+// which 2 were fabricated. Building the fixture index takes ~2s.
+test('--architecture attributes a duplicate-named symbol\'s edges to its own file, not the union of every same-named symbol', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const callgraphJs = path.join(__dirname, '..', 'render', 'callgraph.js');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codeshot-dupname-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'a'));
+    fs.mkdirSync(path.join(dir, 'b'));
+    // Two files defining `handle`, each calling a DIFFERENT function. The bare
+    // name alone cannot tell them apart; the containing file can.
+    fs.writeFileSync(path.join(dir, 'a', 'svc.js'), 'const { alpha } = require("./alpha");\nfunction handle() { return alpha(); }\nmodule.exports = { handle };\n');
+    fs.writeFileSync(path.join(dir, 'a', 'alpha.js'), 'function alpha() { return 1; }\nmodule.exports = { alpha };\n');
+    fs.writeFileSync(path.join(dir, 'b', 'svc.js'), 'const { beta } = require("../b/beta");\nfunction handle() { return beta(); }\nmodule.exports = { handle };\n');
+    fs.writeFileSync(path.join(dir, 'b', 'beta.js'), 'function beta() { return 2; }\nmodule.exports = { beta };\n');
+    // Two `run` methods in ONE file, calling different things. Same name, but no
+    // file ambiguity — so this must keep the bare-name probe and keep BOTH edges.
+    // Routing it through the file-qualified probe loses one: codegraph answers a
+    // same-file collision with two concatenated trail blocks.
+    fs.mkdirSync(path.join(dir, 'c'));
+    fs.writeFileSync(path.join(dir, 'c', 'dual.js'), 'const { alpha } = require("../a/alpha");\nconst { beta } = require("../b/beta");\nclass A { run() { return alpha(); } }\nclass B { run() { return beta(); } }\nmodule.exports = { A, B };\n');
+
+    try {
+      execFileSync('codegraph', ['init', dir], { stdio: 'pipe', timeout: 180000 });
+    } catch {
+      console.log('  # skipped: `codegraph` not on PATH or could not index the fixture repo');
+      return;
+    }
+
+    const out = path.join(dir, 'arch.dot');
+    execFileSync('node', [callgraphJs, '--architecture', '--path', dir, '--out', out, '--format', 'dot'], { encoding: 'utf8', stdio: 'pipe', timeout: 180000 });
+    const dot = fs.readFileSync(out, 'utf8');
+
+    assert.match(dot, /"a\/svc\.js" -> "a\/alpha\.js"/, 'expected the real edge from a/svc.js');
+    assert.match(dot, /"b\/svc\.js" -> "b\/beta\.js"/, 'expected the real edge from b/svc.js');
+    assert.doesNotMatch(dot, /"a\/svc\.js" -> "b\/beta\.js"/, 'a/svc.js does not call beta — this is the misattributed edge the fix removes');
+    assert.doesNotMatch(dot, /"b\/svc\.js" -> "a\/alpha\.js"/, 'b/svc.js does not call alpha — this is the misattributed edge the fix removes');
+    assert.match(dot, /"c\/dual\.js" -> "a\/alpha\.js"/, 'same-file duplicates must keep both edges, not just the last trail block');
+    assert.match(dot, /"c\/dual\.js" -> "b\/beta\.js"/, 'same-file duplicates must keep both edges, not just the last trail block');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
