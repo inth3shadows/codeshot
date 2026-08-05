@@ -462,13 +462,19 @@ async function collectTransitive(direction, repoPath, limit, maxDepth, seedNodes
 // --- --architecture mode: whole-repo file-level dependency graph ---------
 
 // `query ""` results come back as `{ node: {...}, score }`, unlike
-// callers/callees' flat `{ name, kind, filePath }` shape. A "kind":"file"
-// entry is the file object itself, not a callable symbol — codegraph has no
-// `callees <file>` concept, so it's dropped rather than probed.
-function filterCallableSymbols(queryResults) {
-  return (queryResults || [])
-    .map(r => r.node)
-    .filter(n => n && n.kind !== 'file');
+// callers/callees' flat `{ name, kind, filePath }` shape — this just unwraps
+// that envelope. A "kind":"file" entry (the file itself, not a function) is
+// KEPT, not dropped: `codegraph callees <fileBasename>` is a real, working
+// query against it (verified against a live index), and it's the only way to
+// see calls made from inside a top-level anonymous callback — codegraph
+// attributes those to the enclosing file node, since no named function
+// contains them (e.g. this repo's own test/run.js: every assertion inside a
+// `test('...', () => { ... })` body calls into render/callgraph.js this way,
+// and none of those calls are reachable from any named symbol codeshot could
+// otherwise probe). Without this, --architecture mode is structurally blind
+// to that whole category of cross-file call.
+function unwrapQueryNodes(queryResults) {
+  return (queryResults || []).map(r => r.node).filter(Boolean);
 }
 
 function symbolBudgetWarning(truncated, budget) {
@@ -490,6 +496,9 @@ function emptyArchitectureWarning(fileEdges) {
 // (unlike `codegraph node -f`), so two same-named symbols in different files
 // are genuinely ambiguous to a `codegraph callees <name>` probe — a real risk
 // at --architecture's scale (probing hundreds of names), not a corner case.
+// Since unwrapQueryNodes now keeps file nodes in the probed set too, this also
+// catches two files sharing a basename in different directories (e.g. two
+// `index.js`) — the same ambiguity, just on a file's own name.
 function duplicateNameWarning(symbols) {
   const counts = new Map();
   for (const s of symbols || []) counts.set(s.name, (counts.get(s.name) || 0) + 1);
@@ -571,7 +580,7 @@ function architectureOutputBaseName(repoPath) {
 const ENUMERATION_QUERY_LIMIT = 100000;
 async function enumerateSymbols(repoPath, maxSymbols) {
   const results = await runCodegraph(['query', '--path', repoPath, '--json', '--limit', String(ENUMERATION_QUERY_LIMIT), '--', '']);
-  const symbols = filterCallableSymbols(results);
+  const symbols = unwrapQueryNodes(results);
   const truncated = symbols.length > maxSymbols;
   return { symbols: symbols.slice(0, maxSymbols), truncated };
 }
@@ -1019,7 +1028,7 @@ if (require.main === module) {
 module.exports = {
   buildDot, nodeIdentities, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
-  filterCallableSymbols, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
+  unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
