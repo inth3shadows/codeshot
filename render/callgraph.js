@@ -472,9 +472,16 @@ async function collectTransitive(direction, repoPath, limit, maxDepth, seedNodes
 // `test('...', () => { ... })` body calls into render/callgraph.js this way,
 // and none of those calls are reachable from any named symbol codeshot could
 // otherwise probe). Without this, --architecture mode is structurally blind
-// to that whole category of cross-file call.
+// to that whole category of cross-file call. Also drops any entry with no
+// usable `name` (a malformed/partial index record) — probeFileEdges passes
+// this straight into a `codegraph` subprocess's argv, where `undefined` would
+// throw before codegraph ever gets to report its own "not found", bypassing
+// the fatal:false resilience that's supposed to let one bad entry skip past
+// without aborting the whole scan.
 function unwrapQueryNodes(queryResults) {
-  return (queryResults || []).map(r => r.node).filter(Boolean);
+  return (queryResults || [])
+    .map(r => r.node)
+    .filter(n => n && typeof n.name === 'string' && n.name.length > 0);
 }
 
 function symbolBudgetWarning(truncated, budget) {
@@ -600,6 +607,13 @@ async function probeFileEdges(symbols, repoPath, limit) {
     );
     if (result === null) continue;
     for (const c of result.callees || []) {
+      // A "kind":"file" callee is a module-level/import reference codegraph
+      // couldn't resolve to a real call site — symbol mode already treats
+      // these as unverified (edgeStyleAttrs draws them dotted/gray, not a
+      // real call edge); counting one as a full-weight file-to-file edge
+      // here would fabricate exactly the kind of edge this file-node-probing
+      // change exists to stop fabricating.
+      if (c.kind === 'file') continue;
       edges.push({ fromFile: s.filePath, toFile: c.filePath });
     }
     if ((i + 1) % 25 === 0) {

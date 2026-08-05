@@ -543,9 +543,11 @@ test('unwrapQueryNodes unwraps .node and keeps kind:file entries (probed for ano
     { node: { name: 'a.js', kind: 'file', filePath: 'a.js' } },
     { node: { name: 'BAR', kind: 'constant', filePath: 'b.js' } },
     { node: null },
+    { node: { name: '', kind: 'function', filePath: 'c.js' } },
+    { node: { name: undefined, kind: 'function', filePath: 'd.js' } },
   ];
   const symbols = unwrapQueryNodes(results);
-  assert.strictEqual(symbols.length, 3);
+  assert.strictEqual(symbols.length, 3, 'a missing/empty name must be dropped, not passed through to a codegraph subprocess call');
   assert.deepStrictEqual(symbols.map(s => s.name), ['Foo', 'a.js', 'BAR']);
 });
 
