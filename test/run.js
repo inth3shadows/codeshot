@@ -369,6 +369,55 @@ test('--depth rejects non-positive-integer values before reaching codegraph', ()
   }
 });
 
+test('--max-depth-nodes rejects non-positive-integer values before reaching codegraph', () => {
+  const { execFileSync } = require('child_process');
+  for (const bad of ['abc', '0', '-5', '3.5', 'NaN']) {
+    let threw = false;
+    try {
+      execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--max-depth-nodes', bad], { encoding: 'utf8', stdio: 'pipe' });
+    } catch (err) {
+      threw = true;
+      assert.match(err.stderr, /--max-depth-nodes must be a positive integer/);
+    }
+    assert.strictEqual(threw, true, `expected --max-depth-nodes ${bad} to be rejected`);
+  }
+});
+
+test('--architecture rejects an explicit --max-depth-nodes (no multi-hop file traversal to bound)', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), '--architecture', '--max-depth-nodes', '500'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--max-depth-nodes has no effect with --architecture/);
+  }
+  assert.strictEqual(threw, true, 'expected --architecture + --max-depth-nodes to be rejected');
+});
+
+test('--architecture accepts an explicit --max-depth-nodes that matches its own default (same non-divergence rule as --depth)', () => {
+  // --depth 1 explicitly passed alongside --architecture is a silent no-op
+  // because it matches --depth's own default (values.depth !== '1' in main).
+  // --max-depth-nodes must follow the same rule for its own default (200), not
+  // just "was --max-depth-nodes passed at all" — otherwise the two flags
+  // disagree on what "explicitly passed" means for an identical "rejected only
+  // if it would actually change anything" contract.
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const out = execFileSync('node', [callgraphJs, '--architecture', '--max-depth-nodes', '200', '--path', repoRoot, '--format', 'dot'], { encoding: 'utf8', stdio: 'pipe' });
+  assert.ok(out.trim().length > 0, 'expected --architecture --max-depth-nodes 200 to succeed and print an output path, not be rejected');
+});
+
 test('missing symbol argument is rejected with a codeshot-prefixed message', () => {
   const { execFileSync } = require('child_process');
   let threw = false;
@@ -501,6 +550,35 @@ test('CLI --depth traversal runs end-to-end against this repo\'s own real codegr
   } finally {
     fs.rmSync(depth1Out, { force: true });
     fs.rmSync(depth2Out, { force: true });
+  }
+});
+
+test('CLI --max-depth-nodes lowers the --depth traversal budget end-to-end against this repo\'s own real codegraph index', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const out = path.join(os.tmpdir(), `codeshot-maxdepthnodes-${Date.now()}.dot`);
+  try {
+    // buildDot has at least one real caller/callee in this repo, so seeding the
+    // depth-2 traversal's discovered set already meets a budget of 1 — the
+    // traversal must report it hit the (lowered, not default 200) cap.
+    const { spawnSync } = require('child_process');
+    const result = spawnSync('node', [callgraphJs, 'buildDot', '--path', repoRoot, '--out', out, '--format', 'dot', '--depth', '2', '--max-depth-nodes', '1'], { encoding: 'utf8' });
+    assert.strictEqual(result.status, 0, `expected a successful render even when the depth budget is hit, got stderr: ${result.stderr}`);
+    assert.match(result.stderr, /safety cap of 1 discovered nodes/, 'expected the lowered --max-depth-nodes value to appear in the truncation warning');
+  } finally {
+    fs.rmSync(out, { force: true });
   }
 });
 

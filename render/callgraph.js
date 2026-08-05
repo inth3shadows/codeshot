@@ -39,15 +39,15 @@ const STRUCTURAL_CHECK_FORMATS = new Set(['svg']);
 // newly discovered node, per hop — on a well-connected symbol that fans out
 // fast. This caps total discovered nodes across both directions combined so
 // one request can't turn into hundreds of sequential codegraph invocations.
-// Not exposed as a flag (yet): a fixed safety cap, not a tuning knob.
-const NODE_BUDGET = 200;
+// Exposed as --max-depth-nodes (default below) for a symbol whose real graph
+// genuinely needs a higher cap to finish at --depth 3+.
+const DEFAULT_NODE_BUDGET = 200;
 
 // --architecture probes every enumerated symbol sequentially (one codegraph
 // call each) to build the file-level graph — a multi-minute operation on a
-// mid-size repo, unlike NODE_BUDGET's quiet safety net on an already-fast
-// --depth traversal. Users legitimately need to trade coverage for speed
-// themselves, so this — deliberately, unlike NODE_BUDGET — IS exposed as a
-// flag (--max-symbols).
+// mid-size repo, the same reasoning --max-depth-nodes above now shares: users
+// legitimately need to trade coverage for speed themselves, so both are
+// exposed as flags (--max-symbols here, --max-depth-nodes for --depth).
 const DEFAULT_MAX_SYMBOLS = 500;
 
 function requireOnPath(bin, installHint) {
@@ -413,7 +413,7 @@ function formatMismatchWarning(outFile, format) {
 
 function depthBudgetWarning(truncated, budget) {
   if (!truncated) return null;
-  return `codeshot: --depth traversal stopped early (internal safety cap of ${budget} discovered nodes) — the graph beyond this point is incomplete; rerun with a smaller --depth or --limit, or a more specific symbol, to stay under the cap.`;
+  return `codeshot: --depth traversal stopped early (safety cap of ${budget} discovered nodes) — the graph beyond this point is incomplete; rerun with a smaller --depth or --limit, a more specific symbol, or a higher --max-depth-nodes to raise the cap.`;
 }
 
 // codegraph's callers/callees fuzzy-match a partial/inexact query (e.g. `New`
@@ -793,7 +793,7 @@ function finishOutput(dot, { format, outFile, embedFile, check, markerId, alt })
   console.log(outFile);
 }
 
-const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--embed <file.md> [--check]]\n   or: callgraph.js --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]';
+const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]\n   or: callgraph.js --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]';
 
 async function main() {
   let values, positionals;
@@ -808,6 +808,7 @@ async function main() {
         'max-render': { type: 'string' },
         format: { type: 'string', default: 'png' },
         depth: { type: 'string', default: '1' },
+        'max-depth-nodes': { type: 'string' },
         architecture: { type: 'boolean', default: false },
         'max-symbols': { type: 'string', default: String(DEFAULT_MAX_SYMBOLS) },
         embed: { type: 'string' },
@@ -828,6 +829,10 @@ async function main() {
       const flagIndex = process.argv.indexOf('--depth');
       const badValue = flagIndex !== -1 ? process.argv[flagIndex + 1] : undefined;
       console.error(`codeshot: --depth must be a positive integer, got '${badValue}'`);
+    } else if (err.code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE' && /--max-depth-nodes/.test(err.message)) {
+      const flagIndex = process.argv.indexOf('--max-depth-nodes');
+      const badValue = flagIndex !== -1 ? process.argv[flagIndex + 1] : undefined;
+      console.error(`codeshot: --max-depth-nodes must be a positive integer, got '${badValue}'`);
     } else if (err.code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE' && /--max-symbols/.test(err.message)) {
       const flagIndex = process.argv.indexOf('--max-symbols');
       const badValue = flagIndex !== -1 ? process.argv[flagIndex + 1] : undefined;
@@ -895,6 +900,18 @@ async function main() {
   if (values.architecture && values.depth !== '1') {
     console.error('codeshot: --depth has no effect with --architecture (there is no multi-hop file traversal)');
     process.exit(1);
+  }
+  let maxDepthNodes = DEFAULT_NODE_BUDGET;
+  if (values['max-depth-nodes'] !== undefined) {
+    maxDepthNodes = Number(values['max-depth-nodes']);
+    if (!Number.isInteger(maxDepthNodes) || maxDepthNodes <= 0) {
+      console.error(`codeshot: --max-depth-nodes must be a positive integer, got '${values['max-depth-nodes']}'`);
+      process.exit(1);
+    }
+    if (values.architecture && maxDepthNodes !== DEFAULT_NODE_BUDGET) {
+      console.error('codeshot: --max-depth-nodes has no effect with --architecture (there is no multi-hop file traversal)');
+      process.exit(1);
+    }
   }
   const maxSymbols = Number(values['max-symbols']);
   if (!Number.isInteger(maxSymbols) || maxSymbols <= 0) {
@@ -975,10 +992,10 @@ async function main() {
   let transitiveEdges = [];
   if (depth > 1) {
     const discovered = new Set(dedupeNodes([...(callers || []), ...(callees || [])]).map(n => `${n.name} ${n.filePath}`));
-    const callerResult = await collectTransitive('callers', repoPath, limit, depth, dedupeNodes(callers || []), discovered, NODE_BUDGET);
-    const calleeResult = await collectTransitive('callees', repoPath, limit, depth, dedupeNodes(callees || []), discovered, NODE_BUDGET);
+    const callerResult = await collectTransitive('callers', repoPath, limit, depth, dedupeNodes(callers || []), discovered, maxDepthNodes);
+    const calleeResult = await collectTransitive('callees', repoPath, limit, depth, dedupeNodes(callees || []), discovered, maxDepthNodes);
     transitiveEdges = [...callerResult.edges, ...calleeResult.edges];
-    const budgetWarning = depthBudgetWarning(callerResult.truncated || calleeResult.truncated, NODE_BUDGET);
+    const budgetWarning = depthBudgetWarning(callerResult.truncated || calleeResult.truncated, maxDepthNodes);
     if (budgetWarning) console.error(budgetWarning);
   }
 
