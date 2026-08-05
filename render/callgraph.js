@@ -413,7 +413,7 @@ function formatMismatchWarning(outFile, format) {
 
 function depthBudgetWarning(truncated, budget) {
   if (!truncated) return null;
-  return `codeshot: --depth traversal stopped early (internal safety cap of ${budget} discovered nodes) — the graph beyond this point is incomplete; rerun with a smaller --depth or --limit, or a more specific symbol, to stay under the cap.`;
+  return `codeshot: --depth traversal stopped early (safety cap of ${budget} discovered nodes) — the graph beyond this point is incomplete; rerun with a smaller --depth or --limit, a more specific symbol, or a higher --max-depth-nodes to raise the cap.`;
 }
 
 // codegraph's callers/callees fuzzy-match a partial/inexact query (e.g. `New`

@@ -553,7 +553,7 @@ test('CLI --max-depth-nodes lowers the --depth traversal budget end-to-end again
     const { spawnSync } = require('child_process');
     const result = spawnSync('node', [callgraphJs, 'buildDot', '--path', repoRoot, '--out', out, '--format', 'dot', '--depth', '2', '--max-depth-nodes', '1'], { encoding: 'utf8' });
     assert.strictEqual(result.status, 0, `expected a successful render even when the depth budget is hit, got stderr: ${result.stderr}`);
-    assert.match(result.stderr, /internal safety cap of 1 discovered nodes/, 'expected the lowered --max-depth-nodes value to appear in the truncation warning');
+    assert.match(result.stderr, /safety cap of 1 discovered nodes/, 'expected the lowered --max-depth-nodes value to appear in the truncation warning');
   } finally {
     fs.rmSync(out, { force: true });
   }
