@@ -24,7 +24,7 @@ npm install -g github:inth3shadows/codeshot
 
 **Requirements:**
 - Node.js ≥ 18
-- [`codegraph`](https://github.com/colbymchenry/codegraph) CLI on PATH, with the target repo indexed (`codegraph init`)
+- [`codegraph`](https://github.com/colbymchenry/codegraph) CLI on PATH, **1.5.0 or later**, with the target repo indexed (`codegraph init`). `--architecture` mode needs 1.5.0+ specifically: earlier versions have a call-resolution bug (fixed by codegraph's `LITERAL_RECEIVER_TYPES` fix) that can silently fabricate cross-file edges from unrelated builtin method calls (e.g. `/regex/.test(x)`) whose name happens to collide with a real project symbol.
 - `graphviz` (`dot`) on PATH — `brew install graphviz` / `apt install graphviz`
 
 Codeshot checks for both on startup and tells you exactly what's missing and how to install it.

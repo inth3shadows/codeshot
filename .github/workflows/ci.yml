@@ -47,8 +47,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y graphviz
 
       # The index codeshot reads. Pinned (repo convention: pin dependency versions).
+      # Floor is 1.5.0, not just latest-at-time-of-writing: 1.4.1 has a real call-
+      # resolution bug (fixed by codegraph's LITERAL_RECEIVER_TYPES change) that
+      # silently fabricates cross-file edges from unrelated builtin calls whose
+      # name happens to collide with a real project symbol — confirmed on this
+      # exact repo (see README.md#install and TECHNICAL.md's Known Limitations).
       - name: Install codegraph
-        run: npm install -g @colbymchenry/codegraph@1.4.1
+        run: npm install -g @colbymchenry/codegraph@1.5.0
 
       # `init` builds the initial index in a fresh checkout (`index` rebuilds an
       # existing one and errors if the repo was never initialized — which a CI

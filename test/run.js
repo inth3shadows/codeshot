@@ -5,7 +5,7 @@ const assert = require('assert');
 const {
   buildDot, nodeIdentities, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
-  filterCallableSymbols, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
+  unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
@@ -615,15 +615,18 @@ test('CLI resolves a fuzzy/partial query to its canonical name for the rendered 
 
 // --- --architecture mode ---------------------------------------------
 
-test('filterCallableSymbols unwraps .node and drops kind:file entries', () => {
+test('unwrapQueryNodes unwraps .node and keeps kind:file entries (probed for anonymous-callback calls)', () => {
   const results = [
     { node: { name: 'Foo', kind: 'function', filePath: 'a.js' } },
     { node: { name: 'a.js', kind: 'file', filePath: 'a.js' } },
     { node: { name: 'BAR', kind: 'constant', filePath: 'b.js' } },
+    { node: null },
+    { node: { name: '', kind: 'function', filePath: 'c.js' } },
+    { node: { name: undefined, kind: 'function', filePath: 'd.js' } },
   ];
-  const symbols = filterCallableSymbols(results);
-  assert.strictEqual(symbols.length, 2);
-  assert.deepStrictEqual(symbols.map(s => s.name), ['Foo', 'BAR']);
+  const symbols = unwrapQueryNodes(results);
+  assert.strictEqual(symbols.length, 3, 'a missing/empty name must be dropped, not passed through to a codegraph subprocess call');
+  assert.deepStrictEqual(symbols.map(s => s.name), ['Foo', 'a.js', 'BAR']);
 });
 
 test('symbolBudgetWarning fires only when enumeration was truncated', () => {
