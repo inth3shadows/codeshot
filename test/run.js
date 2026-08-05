@@ -395,6 +395,29 @@ test('--architecture rejects an explicit --max-depth-nodes (no multi-hop file tr
   assert.strictEqual(threw, true, 'expected --architecture + --max-depth-nodes to be rejected');
 });
 
+test('--architecture accepts an explicit --max-depth-nodes that matches its own default (same non-divergence rule as --depth)', () => {
+  // --depth 1 explicitly passed alongside --architecture is a silent no-op
+  // because it matches --depth's own default (values.depth !== '1' in main).
+  // --max-depth-nodes must follow the same rule for its own default (200), not
+  // just "was --max-depth-nodes passed at all" — otherwise the two flags
+  // disagree on what "explicitly passed" means for an identical "rejected only
+  // if it would actually change anything" contract.
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const out = execFileSync('node', [callgraphJs, '--architecture', '--max-depth-nodes', '200', '--path', repoRoot, '--format', 'dot'], { encoding: 'utf8', stdio: 'pipe' });
+  assert.ok(out.trim().length > 0, 'expected --architecture --max-depth-nodes 200 to succeed and print an output path, not be rejected');
+});
+
 test('missing symbol argument is rejected with a codeshot-prefixed message', () => {
   const { execFileSync } = require('child_process');
   let threw = false;

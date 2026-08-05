@@ -908,7 +908,7 @@ async function main() {
       console.error(`codeshot: --max-depth-nodes must be a positive integer, got '${values['max-depth-nodes']}'`);
       process.exit(1);
     }
-    if (values.architecture) {
+    if (values.architecture && maxDepthNodes !== DEFAULT_NODE_BUDGET) {
       console.error('codeshot: --max-depth-nodes has no effect with --architecture (there is no multi-hop file traversal)');
       process.exit(1);
     }
