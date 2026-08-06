@@ -7,6 +7,7 @@ const {
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, duplicateNames, parseNodeCalls, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
+  groupPath, rollupFileEdges, groupCollapseWarning, sortSymbolsForEnumeration,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
   emptyGraphWarning, emptyArchitectureWarning,
@@ -877,6 +878,186 @@ test('buildArchitectureDot respects maxRender by dropping edges outside the top-
 
 test('architectureOutputBaseName sanitizes a repo path down to its basename', () => {
   assert.strictEqual(architectureOutputBaseName('/home/ericm/personal_projects/codeshot/master'), 'master');
+});
+
+// --- --group-depth: rolling the file graph up into directory groups ------
+
+test('groupPath rolls a nested file up to its first N directory segments', () => {
+  assert.strictEqual(groupPath('src/api/user.js', 1), 'src/');
+  assert.strictEqual(groupPath('src/api/user.js', 2), 'src/api/');
+});
+
+test('groupPath leaves a repo-root file as itself (no directory to roll into)', () => {
+  // Grouping it under '' would merge every root-level file into one nameless box.
+  assert.strictEqual(groupPath('index.js', 1), 'index.js');
+});
+
+test('groupPath degrades to the file\'s own directories when depth exceeds the tree', () => {
+  assert.strictEqual(groupPath('render/callgraph.js', 5), 'render/');
+});
+
+test('groupPath splits Windows separators too', () => {
+  assert.strictEqual(groupPath('src\\api\\user.js', 1), 'src/');
+});
+
+test('rollupFileEdges sums the weights of every file pair collapsing into one group pair', () => {
+  const rolled = rollupFileEdges([
+    { from: 'src/a.js', to: 'lib/x.js', weight: 2 },
+    { from: 'src/b.js', to: 'lib/y.js', weight: 3 },
+  ], 1);
+  assert.deepStrictEqual(rolled, [{ from: 'src/', to: 'lib/', weight: 5 }]);
+});
+
+test('rollupFileEdges drops edges that become self-group (intra-module calls)', () => {
+  const rolled = rollupFileEdges([
+    { from: 'src/a.js', to: 'src/b.js', weight: 4 },
+    { from: 'src/a.js', to: 'lib/x.js', weight: 1 },
+  ], 1);
+  assert.deepStrictEqual(rolled, [{ from: 'src/', to: 'lib/', weight: 1 }]);
+});
+
+test('rollupFileEdges is a no-op when no --group-depth was given', () => {
+  const edges = [{ from: 'src/a.js', to: 'src/b.js', weight: 1 }];
+  assert.strictEqual(rollupFileEdges(edges, undefined), edges);
+});
+
+test('groupCollapseWarning fires only when the rollup ate every edge', () => {
+  assert.match(groupCollapseWarning(7, 0, 1, 1), /--group-depth 1 left no edges to draw — all 7 cross-file edge\(s\)/);
+  assert.strictEqual(groupCollapseWarning(7, 3, 1, 2), null, 'edges survived — not a collapse');
+  assert.strictEqual(groupCollapseWarning(0, 0, 1, 0), null, 'nothing to collapse — emptyArchitectureWarning owns this case');
+  assert.strictEqual(groupCollapseWarning(7, 0, undefined, 0), null, 'no --group-depth — not the flag\'s doing');
+});
+
+test('groupCollapseWarning gives opposite advice for one group vs several', () => {
+  // One group: the depth is too coarse, going deeper helps.
+  assert.match(groupCollapseWarning(3, 0, 1, 1), /every file falls into a single group.*Try a deeper --group-depth/s);
+  // Several groups: the modules genuinely don't call each other, so a deeper
+  // --group-depth stays blank — telling the user to go deeper would be a dead end.
+  const many = groupCollapseWarning(3, 0, 1, 2);
+  assert.match(many, /the 2 groups at this depth have no calls between them/);
+  assert.match(many, /a deeper --group-depth will stay blank/);
+  assert.doesNotMatch(many, /within one directory/, 'must not assert a single directory when there are several');
+});
+
+test('sortSymbolsForEnumeration compares by code point, not locale collation', () => {
+  // localeCompare with no explicit locale uses the implementation-default
+  // locale, which varies with the environment and the Node binary's ICU build —
+  // that would reintroduce the run-to-run variance this sort exists to remove.
+  // Code point order puts uppercase before lowercase and '_' (U+005F) after
+  // uppercase; en-US collation does neither.
+  const sorted = sortSymbolsForEnumeration([
+    { name: 'a', filePath: 'src/api.js' },
+    { name: 'a', filePath: 'src/Api.js' },
+    { name: 'a', filePath: 'src/_x.js' },
+  ]);
+  assert.deepStrictEqual(sorted.map(s => s.filePath), ['src/Api.js', 'src/_x.js', 'src/api.js']);
+});
+
+test('symbolBudgetWarning names the cut as a path-sorted prefix, not a sample', () => {
+  // Otherwise "the graph is incomplete" reads as "a few edges missing", hiding
+  // that unprobed late-path files render as sinks that appear to call nothing.
+  const warning = symbolBudgetWarning(true, 500);
+  assert.match(warning, /path-sorted prefix, not a sample/);
+  assert.match(warning, /may appear to call nothing when they do/);
+});
+
+test('buildArchitectureDot still dashes a rolled-up test directory group', () => {
+  // isTestRef reads path segments, so the group's trailing slash must not defeat it.
+  const dot = buildArchitectureDot(rollupFileEdges([{ from: 'test/run.js', to: 'render/callgraph.js', weight: 1 }], 1));
+  assert.match(dot, /"test\/"\s*\[style="rounded,filled,dashed"\]/);
+});
+
+test('sortSymbolsForEnumeration orders by filePath then name, so a --max-symbols slice is reproducible', () => {
+  const sorted = sortSymbolsForEnumeration([
+    { name: 'zeta', filePath: 'b.js' },
+    { name: 'beta', filePath: 'a.js' },
+    { name: 'alpha', filePath: 'a.js' },
+  ]);
+  assert.deepStrictEqual(sorted.map(s => `${s.filePath}:${s.name}`), ['a.js:alpha', 'a.js:beta', 'b.js:zeta']);
+});
+
+test('sortSymbolsForEnumeration does not mutate its input', () => {
+  const input = [{ name: 'z', filePath: 'b.js' }, { name: 'a', filePath: 'a.js' }];
+  sortSymbolsForEnumeration(input);
+  assert.strictEqual(input[0].name, 'z');
+});
+
+test('--group-depth is rejected outside --architecture (no file graph to roll up)', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--group-depth', '1'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--group-depth only applies with --architecture/);
+  }
+  assert.strictEqual(threw, true, 'expected --group-depth without --architecture to be rejected');
+});
+
+test('--group-depth rejects a non-positive-integer value', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), '--architecture', '--group-depth', '0'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--group-depth must be a positive integer, got '0'/);
+  }
+  assert.strictEqual(threw, true, 'expected --group-depth 0 to be rejected');
+});
+
+test('CLI --architecture --group-depth 1 draws directory groups, not files', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  // --format dot prints the DOT source itself, so the node ids are directly
+  // assertable — this repo's two source files live in render/ and test/.
+  const out = execFileSync('node', [callgraphJs, '--architecture', '--path', repoRoot, '--group-depth', '1', '--format', 'dot'], { encoding: 'utf8', stdio: 'pipe' });
+  const dot = require('fs').readFileSync(out.trim(), 'utf8');
+  try {
+    assert.match(dot, /"render\/"/, 'expected a render/ group node');
+    assert.match(dot, /"test\/"/, 'expected a test/ group node');
+    assert.doesNotMatch(dot, /callgraph\.js/, 'files must be rolled up, not drawn alongside their groups');
+  } finally {
+    require('fs').rmSync(out.trim(), { force: true });
+  }
+});
+
+test('CLI --embed --architecture --group-depth writes its own marker block, leaving an ungrouped one intact', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codeshot-groupembed-'));
+  const doc = path.join(dir, 'DOC.md');
+  fs.writeFileSync(doc, '# Doc\n\n<!-- codeshot:arch:start -->\n![existing](existing.svg)\n<!-- codeshot:arch:end -->\n', 'utf8');
+  try {
+    execFileSync('node', [callgraphJs, '--architecture', '--path', repoRoot, '--group-depth', '1', '--embed', doc, '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
+    const md = fs.readFileSync(doc, 'utf8');
+    assert.match(md, /<!-- codeshot:arch-d1:start -->/, 'grouped view must use its own marker id');
+    assert.match(md, /!\[existing\]\(existing\.svg\)/, 'the pre-existing ungrouped block must be left alone');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('CLI --architecture runs end-to-end against this repo\'s own real codegraph index', () => {

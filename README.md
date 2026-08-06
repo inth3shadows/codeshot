@@ -49,6 +49,8 @@ codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-re
 
 ```bash
 codeshot --architecture --path ~/code/myrepo --out architecture.svg --format svg
+# ...or, on a repo with more files than fit in one readable picture:
+codeshot --architecture --path ~/code/myrepo --group-depth 1 --out modules.svg --format svg
 ```
 
 A second mode, distinct from the single-symbol trail above: instead of one
@@ -66,6 +68,19 @@ slow operation (one sequential `codegraph` call per enumerated symbol), so
 two extra flags exist specifically for this mode:
 - `--max-symbols` — cap how many symbols get probed (default 500). Codeshot
   warns on stderr if this cuts the scan short.
+- `--group-depth <n>` — roll files up into their first `n` directory segments
+  and draw *those* as the nodes (`--group-depth 1` on `src/api/user.js` →
+  `src/`), summing the call weights of every file pair that collapses into the
+  same pair of groups. This is the readable view of a repo big enough that the
+  per-file graph is a hairball. Unlike `--max-render`, which drops the
+  least-busy *files* outright — taking every edge that touched them with it —
+  grouping keeps every **cross-module** call and just draws it at module
+  resolution. Calls that become intra-group are dropped, for the same reason
+  same-file calls already are: this diagram is about coupling between modules,
+  not inside them. So the summed weights on a grouped diagram are legitimately
+  lower than the per-file one's, often much lower — that's the intra-module
+  traffic, not a lost edge. Repo-root files (no directory to roll into) stay
+  themselves.
 - `--depth` has no effect here and is rejected if passed — there's no
   multi-hop file-traversal concept to apply it to.
 

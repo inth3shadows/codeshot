@@ -499,7 +499,13 @@ function unwrapQueryNodes(queryResults) {
 
 function symbolBudgetWarning(truncated, budget) {
   if (!truncated) return null;
-  return `codeshot: --architecture stopped enumerating after ${budget} symbols (--max-symbols) — the graph is incomplete; rerun with a larger --max-symbols to cover the rest of the repo.`;
+  // Names the SHAPE of the incompleteness, not just its existence: the kept
+  // subset is a path-sorted prefix (see sortSymbolsForEnumeration), so the
+  // missing symbols are not a random sample — they are the last files by path,
+  // and since only scanned symbols contribute outgoing edges, those files can
+  // render as sinks that appear to call nothing. "Incomplete" alone reads as
+  // "a few edges missing" and would leave that misreading in place.
+  return `codeshot: --architecture stopped enumerating after ${budget} symbols (--max-symbols) — the graph is incomplete; rerun with a larger --max-symbols to cover the rest of the repo. Note the cut is a path-sorted prefix, not a sample: files later in path order went unprobed, so they may appear to call nothing when they do.`;
 }
 
 // With zero cross-file edges, buildArchitectureDot emits a graph with no nodes —
@@ -632,6 +638,61 @@ function aggregateFileEdges(symbolEdges) {
   return [...weights.values()];
 }
 
+// The group a file rolls up into at --group-depth <n>: its first `n` DIRECTORY
+// segments, with a trailing slash so a group reads as a directory rather than a
+// file. A file with no directory at all (a repo-root file) has nothing to roll
+// into and stays itself — grouping it under "" would invent a nameless node and
+// silently merge every root file into one box. A file shallower than `n` keeps
+// whatever directories it has, so a deeper --group-depth degrades to per-file
+// output rather than erroring. Pure; posix and Windows separators both split.
+function groupPath(filePath, depth) {
+  const parts = String(filePath || '').split(/[\\/]/).filter(Boolean);
+  const dirs = parts.slice(0, -1);
+  if (!dirs.length) return filePath;
+  return `${dirs.slice(0, depth).join('/')}/`;
+}
+
+// Rewrites file-level edges as group-level edges, summing the weights of every
+// file pair that collapses into the same group pair. Self-group edges are
+// dropped for exactly the reason aggregateFileEdges drops self-file ones: once
+// a directory is the unit, a call between two files inside it is intra-module
+// structure, not the cross-module coupling this diagram is about. Returns the
+// same {from, to, weight} shape, so everything downstream (topFilesByWeight,
+// emptyArchitectureWarning, isTestRef's dashed test nodes, buildArchitectureDot)
+// works on groups unchanged. Pure; `depth` unset returns the input untouched.
+function rollupFileEdges(fileEdges, depth) {
+  if (!Number.isFinite(depth)) return fileEdges;
+  const weights = new Map();
+  for (const e of fileEdges || []) {
+    const from = groupPath(e.from, depth);
+    const to = groupPath(e.to, depth);
+    if (from === to) continue;
+    const key = `${from} -> ${to}`;
+    weights.set(key, (weights.get(key) || { from, to, weight: 0 }));
+    weights.get(key).weight += e.weight;
+  }
+  return [...weights.values()];
+}
+
+// A rollup that eats every edge yields a blank image whose cause is the flag,
+// not the code — emptyArchitectureWarning would blame a missing index instead.
+//
+// `groupCount` (how many distinct groups the pre-rollup endpoints mapped to)
+// separates the two genuinely different causes, which want opposite advice:
+// one group means the depth is too coarse and a deeper --group-depth will help;
+// several groups means every call is intra-module at this depth, the diagram is
+// a real (if boring) finding, and going deeper will keep returning blank. The
+// earlier single-message version asserted "within one directory" in both cases,
+// which contradicted the user's own tree and sent them down a dead end.
+// Pure: takes the edge counts either side of the rollup, returns the string or null.
+function groupCollapseWarning(beforeCount, afterCount, depth, groupCount) {
+  if (!Number.isFinite(depth) || beforeCount === 0 || afterCount > 0) return null;
+  const advice = groupCount > 1
+    ? `the ${groupCount} groups at this depth have no calls between them, so there is genuinely no cross-module coupling to draw — a deeper --group-depth will stay blank; drop the flag for the per-file graph.`
+    : 'every file falls into a single group at this depth. Try a deeper --group-depth, or drop the flag for the per-file graph.';
+  return `codeshot: --group-depth ${depth} left no edges to draw — all ${beforeCount} cross-file edge(s) collapsed within a group: ${advice}`;
+}
+
 // Top-N files by total in+out edge weight — simpler than a connected-
 // component/centrality algorithm, consistent with keeping v1 minimal.
 // `null` means "no cap" (mirrors allocateRenderBudget's no-op case).
@@ -689,9 +750,35 @@ function architectureOutputBaseName(repoPath) {
 const ENUMERATION_QUERY_LIMIT = 100000;
 async function enumerateSymbols(repoPath, maxSymbols) {
   const results = await runCodegraph(['query', '--path', repoPath, '--json', '--limit', String(ENUMERATION_QUERY_LIMIT), '--', '']);
-  const symbols = unwrapQueryNodes(results);
+  const symbols = sortSymbolsForEnumeration(unwrapQueryNodes(results));
   const truncated = symbols.length > maxSymbols;
   return { symbols: symbols.slice(0, maxSymbols), truncated };
+}
+
+// codegraph's order for the enumeration query is unspecified (untested whether
+// it is insertion, alphabetical, or id order — see TECHNICAL.md), so on a repo
+// larger than --max-symbols the slice above would keep a DIFFERENT subset run to
+// run: the same repo, unchanged, could yield a different diagram each time, and
+// a committed diagram guarded by --check could flap in CI for no code reason.
+// Sorting by (filePath, name) makes the kept subset a deterministic function of
+// the index alone. It does not make the subset representative — it is still a
+// prefix, now explicitly a path-ordered one, so a truncated scan covers the
+// code-point-first files rather than an even sample (symbolBudgetWarning says
+// so). Pure.
+//
+// Compared by code point, deliberately NOT String#localeCompare: localeCompare
+// with no explicit locale uses the *implementation-default* locale, which varies
+// with the environment and with how the Node binary's ICU was built — so it
+// would reintroduce, one layer down, exactly the run-to-run variability this
+// function exists to remove (a dev box and a CI runner could keep different
+// subsets of the same repo, and --check would fail with no code change). Code
+// point order is machine-independent by construction. Its only cost is that
+// 'Api.js' sorts before 'api.js'; nothing here needs human-facing collation.
+function sortSymbolsForEnumeration(symbols) {
+  const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  return [...(symbols || [])].sort((a, b) =>
+    byCodePoint(String(a.filePath || ''), String(b.filePath || '')) ||
+    byCodePoint(String(a.name || ''), String(b.name || '')));
 }
 
 // The file-qualified probe, used only for names that are actually ambiguous.
@@ -754,7 +841,7 @@ async function probeFileEdges(symbols, repoPath, limit) {
   return edges;
 }
 
-async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender }) {
+async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, groupDepth }) {
   const { symbols, truncated } = await enumerateSymbols(repoPath, maxSymbols);
   const symbolWarning = symbolBudgetWarning(truncated, maxSymbols);
   if (symbolWarning) console.error(symbolWarning);
@@ -762,13 +849,26 @@ async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender }) {
   if (dupeWarning) console.error(dupeWarning);
 
   const symbolEdges = await probeFileEdges(symbols, repoPath, limit);
-  const fileEdges = aggregateFileEdges(symbolEdges);
+  const rawFileEdges = aggregateFileEdges(symbolEdges);
+  // The rollup happens here, on aggregated edges, rather than by rewriting
+  // filePaths at probe time: probing must stay file-exact (parseNodeCalls'
+  // expectedFile check, isTestRef, the duplicate-name attribution all key off
+  // the real path), and collapsing afterwards keeps --group-depth a pure,
+  // testable view over the same data instead of a second scan mode.
+  const fileEdges = rollupFileEdges(rawFileEdges, groupDepth);
 
+  const groupCount = Number.isFinite(groupDepth)
+    ? new Set(rawFileEdges.flatMap(e => [groupPath(e.from, groupDepth), groupPath(e.to, groupDepth)])).size
+    : 0;
+  const collapseWarning = groupCollapseWarning(rawFileEdges.length, fileEdges.length, groupDepth, groupCount);
+  if (collapseWarning) console.error(collapseWarning);
   const emptyWarning = emptyArchitectureWarning(fileEdges);
-  if (emptyWarning) console.error(emptyWarning);
+  if (emptyWarning && !collapseWarning) console.error(emptyWarning);
 
+  // Counted (and capped) after the rollup: --max-render bounds what is actually
+  // drawn, and with --group-depth the drawn nodes are groups, not files.
   const totalFiles = new Set(fileEdges.flatMap(e => [e.from, e.to])).size;
-  const note = renderTruncationNote('files', totalFiles, maxRender);
+  const note = renderTruncationNote(groupDepth ? 'groups' : 'files', totalFiles, maxRender);
   if (note) console.error(note);
 
   return buildArchitectureDot(fileEdges, { maxRender });
@@ -947,7 +1047,7 @@ function finishOutput(dot, { format, outFile, embedFile, check, markerId, alt })
   console.log(outFile);
 }
 
-const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]\n   or: callgraph.js --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]';
+const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]\n   or: callgraph.js --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--format <fmt>] [--embed <file.md> [--check]]';
 
 async function main() {
   let values, positionals;
@@ -965,6 +1065,7 @@ async function main() {
         'max-depth-nodes': { type: 'string' },
         architecture: { type: 'boolean', default: false },
         'max-symbols': { type: 'string', default: String(DEFAULT_MAX_SYMBOLS) },
+        'group-depth': { type: 'string' },
         embed: { type: 'string' },
         check: { type: 'boolean', default: false },
       },
@@ -991,6 +1092,10 @@ async function main() {
       const flagIndex = process.argv.indexOf('--max-symbols');
       const badValue = flagIndex !== -1 ? process.argv[flagIndex + 1] : undefined;
       console.error(`codeshot: --max-symbols must be a positive integer, got '${badValue}'`);
+    } else if (err.code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE' && /--group-depth/.test(err.message)) {
+      const flagIndex = process.argv.indexOf('--group-depth');
+      const badValue = flagIndex !== -1 ? process.argv[flagIndex + 1] : undefined;
+      console.error(`codeshot: --group-depth must be a positive integer, got '${badValue}'`);
     } else {
       console.error(`codeshot: ${err.message}`);
     }
@@ -1072,6 +1177,23 @@ async function main() {
     console.error(`codeshot: --max-symbols must be a positive integer, got '${values['max-symbols']}'`);
     process.exit(1);
   }
+  // Rejected outside --architecture rather than silently ignored (the stance
+  // --depth/--max-depth-nodes take in the opposite direction, not --max-symbols'
+  // quiet no-op): there is no file-level graph to roll up in symbol mode, so a
+  // --group-depth there is always a mistake, and a silently-dropped flag reads
+  // as "grouping applied" in exactly the diagram you'd then trust.
+  let groupDepth;
+  if (values['group-depth'] !== undefined) {
+    groupDepth = Number(values['group-depth']);
+    if (!Number.isInteger(groupDepth) || groupDepth <= 0) {
+      console.error(`codeshot: --group-depth must be a positive integer, got '${values['group-depth']}'`);
+      process.exit(1);
+    }
+    if (!values.architecture) {
+      console.error('codeshot: --group-depth only applies with --architecture (a symbol trail has no file-level graph to roll up)');
+      process.exit(1);
+    }
+  }
   if (values.embed === '') {
     console.error('codeshot: --embed must not be empty');
     process.exit(1);
@@ -1092,7 +1214,8 @@ async function main() {
 
   const safeSymbol = values.architecture ? null : sanitizeForFilename(symbol);
   if (!outFile) {
-    const base = values.architecture ? `arch-${architectureOutputBaseName(repoPath)}` : `callgraph-${safeSymbol}`;
+    const archBase = groupDepth ? `arch-d${groupDepth}-${architectureOutputBaseName(repoPath)}` : `arch-${architectureOutputBaseName(repoPath)}`;
+    const base = values.architecture ? archBase : `callgraph-${safeSymbol}`;
     // With --embed the image must live at a STABLE path next to the doc — so the
     // relative link resolves, the file can be committed, and a re-run overwrites
     // the same file rather than littering tmp with timestamped copies.
@@ -1113,15 +1236,23 @@ async function main() {
   if (healthWarning) console.error(healthWarning);
 
   if (values.architecture) {
-    const dot = await runArchitectureMode(repoPath, { limit, maxSymbols, maxRender });
+    const dot = await runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, groupDepth });
     // Fixed, path-independent alt: deriving it from the checkout's directory
     // basename made the embedded markdown vary by where the repo was cloned
     // (a bare-worktree dir, "master", a branch name...), which both read wrong
     // and broke --check portability — a fresh clone under a different dir name
     // would report the committed diagram as drifted. The repo name is redundant
     // anyway; the diagram lives in that repo's own doc.
-    const alt = 'Architecture — generated by codeshot';
-    finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: 'arch', alt });
+    // The grouped view gets its own marker id (and default image name), so
+    // embedding it doesn't silently overwrite an ungrouped `codeshot:arch`
+    // block already committed in the same doc — the per-file and per-module
+    // pictures answer different questions and a repo may reasonably want both.
+    // Unset --group-depth keeps the plain 'arch' id, so existing docs are
+    // untouched.
+    const alt = groupDepth
+      ? `Architecture (grouped by directory, depth ${groupDepth}) — generated by codeshot`
+      : 'Architecture — generated by codeshot';
+    finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: groupDepth ? `arch-d${groupDepth}` : 'arch', alt });
     return;
   }
 
@@ -1192,6 +1323,7 @@ module.exports = {
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, duplicateNames, parseNodeCalls, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
+  groupPath, rollupFileEdges, groupCollapseWarning, sortSymbolsForEnumeration,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
   emptyGraphWarning, emptyArchitectureWarning,
