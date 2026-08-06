@@ -41,10 +41,35 @@ them, labeled with how many calls. Boxes for test files render dashed, same
 as symbol mode. Unlike symbol mode, there's no `<SymbolName>` argument — the
 `--architecture` flag replaces it, and combining the two is rejected.
 
+**Too many files to read? Group them.** On anything bigger than a handful of
+files, a box per file is a hairball. `--group-depth <n>` draws directories
+instead — files roll up into their first `n` path segments, and the call counts
+between them are summed:
+
+```bash
+codeshot --architecture --path /path/to/repo --group-depth 1 --out modules.svg --format svg
+```
+
+`--group-depth 1` gives you the top-level module map (`src/` → `lib/`,
+`test/` → `src/`); `--group-depth 2` splits one level finer (`src/api/` →
+`src/db/`). Calls *inside* a group don't draw an arrow — the diagram is about
+coupling between modules, the same reason calls inside one file don't draw one.
+Prefer this over `--max-render` when the graph is dense: `--max-render` throws
+the quiet files away entirely, while grouping keeps every *cross-module* call
+and just zooms out. Calls between two files in the same group don't draw an
+arrow, so the weights on a grouped diagram add up to less than the per-file
+one's — that difference is the repo's intra-module traffic, not a dropped edge.
+Files at the repo root have no directory to roll into, so they stay as
+themselves.
+
 This can genuinely take a few minutes on a mid-size-or-larger repo (one
 `codegraph` call per symbol, run sequentially) — `--max-symbols <n>`
 (default 500) trades completeness for speed if you want a faster, partial
-scan; Codeshot tells you on stderr if it stopped early. `--limit` and
+scan; Codeshot tells you on stderr if it stopped early. Note what "partial"
+means: symbols are probed in path order, so the cut is a prefix, not a sample —
+files late in path order go unprobed and can therefore appear to call nothing
+when they really do. Raise `--max-symbols` before trusting a sparse-looking
+corner of a big repo's diagram. `--limit` and
 `--max-render` carry over from symbol mode (see above); `--depth` doesn't
 apply here and is rejected if you pass it.
 
@@ -70,7 +95,9 @@ block:
 
 Symbol mode works the same way, keyed by the symbol name
 (`<!-- codeshot:<symbol>:start -->`), so several distinct diagrams can live in
-one doc without clobbering each other. `--embed` **refreshes an existing doc —
+one doc without clobbering each other. `--group-depth` gets its own key too
+(`<!-- codeshot:arch-d1:start -->`), so you can commit both the per-file and the
+per-module architecture picture in the same doc and `--check` both. `--embed` **refreshes an existing doc —
 it won't create one**, and a stray/half-present marker pair is an error rather
 than a silent mangle.
 
@@ -112,7 +139,8 @@ fall back to a raw byte-compare, which does require CI to use the same
 - **"codeshot: --depth traversal stopped early (safety cap of 200 discovered nodes)"** — The symbol is heavily connected enough that `--depth` hit its node-discovery cap before finishing; the graph you got is real but incomplete beyond that point. Try a smaller `--depth` (2 instead of 3), a lower `--limit`, a more specific, less-central symbol, or raise the cap itself with `codeshot <Symbol> --depth 3 --max-depth-nodes 500` (default is 200).
 - **`--depth` runs slowly** — Each additional hop makes one sequential `codegraph` call per newly discovered node (CodeGraph itself has no multi-hop traversal for `callers`/`callees`, so Codeshot does this client-side), so a well-connected symbol at `--depth 2` or higher can take noticeably longer than the default `--depth 1`. This is expected, not a bug.
 - **`--architecture` is taking a long time** — Expected on anything past a small repo: it's one sequential `codegraph` call per enumerated symbol, and there's no way to parallelize it (concurrent `codegraph` calls against one index race and fail). Rerun with a smaller `--max-symbols` (e.g. `--max-symbols 100`) for a faster, partial scan — Codeshot warns on stderr when the scan is cut short by the cap so you know the result is incomplete.
-- **`--architecture`'s diagram is a hairball / unreadable** — Same fix as symbol mode: `--max-render <n>` (e.g. `--max-render 20`) keeps only the busiest N files by total call-edge weight and drops the rest. Some remaining files can end up with no surviving edges if all their edges pointed at a dropped file — that's expected, not a bug, at aggressive `--max-render` values.
+- **`--architecture`'s diagram is a hairball / unreadable** — Reach for `--group-depth 1` first: it draws one box per top-level directory instead of one per file, so no *module-to-module* call is thrown away, the picture just zooms out (see "Generating a whole-repo architecture diagram" above). If it's still dense at group level, `--max-render <n>` (e.g. `--max-render 20`) then keeps only the busiest N nodes by total call-edge weight and drops the rest. Some remaining nodes can end up with no surviving edges if all their edges pointed at a dropped one — that's expected, not a bug, at aggressive `--max-render` values.
+- **"codeshot: --group-depth N left no edges to draw"** — Every call in the repo is between files that share a group at that depth, so the grouped diagram is blank. The message tells you which of the two causes it is. *"every file falls into a single group"* (common at `--group-depth 1` where everything lives under `src/`) means the depth is too coarse — try 2 or 3. *"the N groups at this depth have no calls between them"* means the modules genuinely don't call each other at this depth; going deeper will stay blank, so drop the flag for the per-file graph.
 
 For anything not covered here, check `TECHNICAL.md` or open an issue on the GitHub repo.
 
