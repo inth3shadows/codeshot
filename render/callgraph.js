@@ -896,7 +896,19 @@ async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, gro
 // that makes this reproducible for --embed --check in CI, where there is no
 // working tree to diff against.
 function gitDiffFiles(repoPath, ref) {
-  const args = ['diff', '--name-only', ref || 'HEAD'];
+  // --end-of-options: without it, a --diff-ref value starting with '-' (e.g.
+  // untrusted input from a CI template) is parsed by git as a FLAG instead
+  // of a revision — the same argv-injection risk resolveSymbol's '--' guards
+  // against for codegraph, just with git's own equivalent (git predates
+  // universal '--' pathspec-boundary support with this flag specifically for
+  // disambiguating an option-like revision argument; unlike '--', it doesn't
+  // also mark what follows as a pathspec, so `ref` is still parsed as a
+  // normal revision/range). -z: NUL-terminated, UNQUOTED output — sidesteps
+  // core.quotePath's C-style octal-escaping of non-ASCII filenames (the
+  // default), which the earlier line-based '\n'.split would have silently
+  // left mangled (and un-matchable against codegraph's raw filePath) rather
+  // than decoded.
+  const args = ['diff', '--name-only', '-z', '--end-of-options', ref || 'HEAD'];
   let out;
   try {
     out = execFileSync('git', args, { cwd: repoPath, encoding: 'utf8' });
@@ -904,9 +916,10 @@ function gitDiffFiles(repoPath, ref) {
     console.error(`codeshot: 'git ${args.join(' ')}' failed in '${repoPath}' — confirm it's a git repo${ref ? ` and '${ref}' is a valid ref/range` : ''}. (${String(err.message).split('\n')[0]})`);
     process.exit(1);
   }
-  // git always emits forward slashes; normalized so a Windows checkout's
-  // codegraph filePath (if it ever differs) still has a chance to match.
-  return out.split('\n').map(l => l.trim()).filter(Boolean).map(f => f.replace(/\\/g, '/'));
+  // git's diff output always uses forward slashes internally regardless of
+  // platform, so no separator normalization is needed on this side (unlike
+  // matchRootSymbols' defensive normalization of codegraph's OWN filePath).
+  return out.split('\0').map(l => l.trim()).filter(Boolean);
 }
 
 // Pure: which enumerated symbols live in one of the changed files. Split out
@@ -920,6 +933,26 @@ function matchRootSymbols(symbols, changedFiles) {
 
 function diffNoChangesWarning(diffRef) {
   return `codeshot: --diff found no changed files${diffRef ? ` for '${diffRef}'` : ' (working tree matches HEAD)'} — nothing to diagram.`;
+}
+
+// A zero-changed-files diff is a common, unremarkable state for --diff
+// specifically (a clean working tree, unlike --architecture's empty-graph
+// case which signals something's actually wrong) — so unlike
+// emptyArchitectureWarning, this refuses rather than warns-and-proceeds
+// when --embed is involved: rendering the blank graph anyway would silently
+// overwrite a real, previously-committed diagram and doc block at exit 0,
+// the kind of quiet data loss a script or pre-commit hook could easily miss.
+function diffEmbedRefusal(diffRef, embedFile) {
+  return `codeshot: --diff found no changed files${diffRef ? ` for '${diffRef}'` : ' (working tree matches HEAD)'} — refusing to overwrite the existing diagram embedded in '${embedFile}' with a blank one. Pass --diff-ref to target a specific range, or drop --embed to render a (blank) image on its own.`;
+}
+
+// Unlike emptyGraphWarning (one queried symbol, so one warning reads
+// naturally), --diff can have many roots — a per-root warning would be
+// noise on a large diff, so this reports the aggregate count instead of
+// naming each one.
+function diffEmptyRootsWarning(emptyCount, totalCount) {
+  if (emptyCount === 0) return null;
+  return `codeshot: ${emptyCount} of ${totalCount} changed symbol(s) have no callers or callees in codegraph's index — drawn as lone boxes. They may be unused (dead code) or entry points, or codegraph's index may be incomplete for their file.`;
 }
 
 function diffNoSymbolsWarning(repoPath, changedCount) {
@@ -1006,9 +1039,17 @@ function buildDiffDot(roots, edges, { maxRender, tooltips = false } = {}) {
 // parallel codegraph calls against one index race on its schema_versions
 // table. `fatal: false` on each probe lets one bad root (an ambiguous or
 // since-deleted name) skip past without aborting the rest of the diff.
-async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, tooltips }) {
+async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, tooltips, embedFile }) {
   const changedFiles = gitDiffFiles(repoPath, diffRef);
   if (changedFiles.length === 0) {
+    // With --embed, rendering the blank graph anyway would silently
+    // overwrite a real, previously-committed diagram — see
+    // diffEmbedRefusal. Without --embed there's nothing to protect, so
+    // this stays the same warn-and-render-blank behavior as before.
+    if (embedFile) {
+      console.error(diffEmbedRefusal(diffRef, embedFile));
+      process.exit(1);
+    }
     console.error(diffNoChangesWarning(diffRef));
     // No point running enumerateAllSymbols' full-index query (potentially
     // slow/large, per its own comment) when there is nothing it could match —
@@ -1024,12 +1065,18 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
   if (budgetWarning) console.error(budgetWarning);
   const roots = matched.slice(0, maxSymbols);
 
-  // Same known limitation --architecture's bare-name probing has: two roots
-  // (or a root and a pulled-in caller/callee) sharing a name across files are
-  // ambiguous to codegraph's bare-name callers/callees query. Reusing the
-  // existing warning rather than reimplementing --architecture's heavier
-  // node -f fix keeps this v1 honest about the gap instead of hiding it.
-  const dupeWarning = duplicateNameWarning(roots);
+  // Same known limitation --architecture's bare-name probing has: two
+  // symbols sharing a name across files are ambiguous to codegraph's
+  // bare-name callers/callees query. Scoped to ALL of allSymbols whose name
+  // matches a root's — not just roots-vs-roots — so a root colliding with
+  // an unrelated, unchanged symbol elsewhere in the repo is caught too;
+  // duplicateNameWarning(roots) alone would miss that (a diff touching just
+  // one `parse` finds no duplicate among a 1-symbol root set even if the
+  // repo has three). Reusing the existing warning rather than
+  // reimplementing --architecture's heavier node -f fix keeps this v1
+  // honest about the gap instead of hiding it.
+  const rootNames = new Set(roots.map(r => r.name));
+  const dupeWarning = duplicateNameWarning(allSymbols.filter(s => rootNames.has(s.name)));
   if (dupeWarning) console.error(dupeWarning);
 
   const edges = [];
@@ -1040,11 +1087,21 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
     for (const c of (calleesResult?.callees || [])) edges.push({ from: root, to: c });
   }
 
+  const dedupedEdges = dedupeEdges(edges);
   const rootKeys = new Set(roots.map(r => `${r.name} ${r.filePath}`));
-  const nonRootNodes = dedupeNodes(dedupeEdges(edges).flatMap(e => [e.from, e.to]))
+  const nonRootNodes = dedupeNodes(dedupedEdges.flatMap(e => [e.from, e.to]))
     .filter(n => !rootKeys.has(`${n.name} ${n.filePath}`));
   const note = renderTruncationNote('callers/callees', nonRootNodes.length, maxRender);
   if (note) console.error(note);
+
+  const rootsWithEdges = new Set();
+  for (const e of dedupedEdges) {
+    const fk = `${e.from.name} ${e.from.filePath}`, tk = `${e.to.name} ${e.to.filePath}`;
+    if (rootKeys.has(fk)) rootsWithEdges.add(fk);
+    if (rootKeys.has(tk)) rootsWithEdges.add(tk);
+  }
+  const emptyRootsWarning = diffEmptyRootsWarning(roots.length - rootsWithEdges.size, roots.length);
+  if (emptyRootsWarning) console.error(emptyRootsWarning);
 
   return buildDiffDot(roots, edges, { maxRender, tooltips });
 }
@@ -1409,9 +1466,10 @@ async function main() {
   // id and silently overwrite each other. Unset --diff-ref keeps the plain
   // 'diff' id/name, so a bare `--diff` embed is unaffected.
   const diffSuffix = values['diff-ref'] ? `-${sanitizeForFilename(values['diff-ref'])}` : '';
+  const diffMarkerId = `diff${diffSuffix}`; // built once, shared by the default filename below and finishOutput's markerId
   if (!outFile) {
     const archBase = groupDepth ? `arch-d${groupDepth}-${architectureOutputBaseName(repoPath)}` : `arch-${architectureOutputBaseName(repoPath)}`;
-    const base = values.architecture ? archBase : diffMode ? `diff${diffSuffix}-${architectureOutputBaseName(repoPath)}` : `callgraph-${safeSymbol}`;
+    const base = values.architecture ? archBase : diffMode ? `${diffMarkerId}-${architectureOutputBaseName(repoPath)}` : `callgraph-${safeSymbol}`;
     // With --embed the image must live at a STABLE path next to the doc — so the
     // relative link resolves, the file can be committed, and a re-run overwrites
     // the same file rather than littering tmp with timestamped copies.
@@ -1438,9 +1496,9 @@ async function main() {
   const tooltips = SVG_TOOLTIP_FORMATS.has(format.toLowerCase());
 
   if (diffMode) {
-    const dot = await runDiffMode(repoPath, { diffRef: values['diff-ref'] || null, limit, maxSymbols, maxRender, tooltips });
+    const dot = await runDiffMode(repoPath, { diffRef: values['diff-ref'] || null, limit, maxSymbols, maxRender, tooltips, embedFile });
     const alt = `Diff-scoped call graph${values['diff-ref'] ? ` (${values['diff-ref']})` : ''} — generated by codeshot`;
-    finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: `diff${diffSuffix}`, alt });
+    finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: diffMarkerId, alt });
     return;
   }
 
@@ -1534,4 +1592,5 @@ module.exports = {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
+  diffEmbedRefusal, diffEmptyRootsWarning,
 };

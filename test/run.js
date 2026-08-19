@@ -13,6 +13,7 @@ const {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
+  diffEmbedRefusal, diffEmptyRootsWarning,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -1166,6 +1167,66 @@ test('--architecture rejects --depth > 1', () => {
   assert.strictEqual(threw, true, 'expected --architecture + --depth 2 to be rejected');
 });
 
+test('CLI --diff runs end-to-end against this repo\'s own real codegraph index and git history', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const out = path.join(os.tmpdir(), `codeshot-diff-selftest-${Date.now()}.svg`);
+  try {
+    // --diff-ref HEAD~1 diffs this file's own most recent commit against the
+    // one before it — always touches render/callgraph.js in this repo's real
+    // history, so unlike relying on the ambient working-tree state (which is
+    // clean on a fresh checkout/CI), this is deterministic regardless of
+    // what's currently staged/unstaged. Also exercises the actual `git diff
+    // --name-only -z --end-of-options <ref>` invocation end-to-end, not just
+    // buildDiffDot's pure rendering.
+    execFileSync('node', [callgraphJs, '--diff', '--diff-ref', 'HEAD~1', '--path', repoRoot, '--out', out, '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
+    const svg = fs.readFileSync(out, 'utf8');
+    assert.match(svg, /<svg/, 'expected --diff to produce real SVG output');
+    // Graphviz renders a bolded root as font-weight="bold" in SVG (DOT's
+    // fontname="Helvetica-Bold" doesn't appear literally) — confirms at
+    // least one changed symbol was actually drawn as a root, not a blank graph.
+    assert.match(svg, /font-weight="bold"/);
+  } finally {
+    fs.rmSync(out, { force: true });
+  }
+});
+
+test('--diff rejects a <symbol> argument', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), 'Foo', '--diff'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--diff cannot be combined with a <symbol> argument/);
+  }
+  assert.strictEqual(threw, true, 'expected --diff + <symbol> to be rejected');
+});
+
+test('--diff rejects --architecture', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), '--diff', '--architecture'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--architecture cannot be combined with --diff/);
+  }
+  assert.strictEqual(threw, true, 'expected --diff + --architecture to be rejected');
+});
+
 // --- --embed / --check ------------------------------------------------
 
 test('embedMarkers keys start/end comments by the marker id', () => {
@@ -1228,6 +1289,45 @@ test('CLI --check without --embed is rejected', () => {
     assert.match(err.stderr, /--check only applies with --embed/);
   }
   assert.strictEqual(threw, true, 'expected --check without --embed to be rejected');
+});
+
+test('CLI --diff --embed on an empty diff refuses to overwrite an existing embedded diagram', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    // main() checks codegraph/dot are on PATH before runDiffMode even sees
+    // the empty diff, regardless of whether this path ends up calling
+    // codegraph — so this test needs the same portability guard as the
+    // other CLI tests, or it fails on the wrong error on a machine without
+    // codegraph installed.
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codeshot-diff-embed-refusal-'));
+  const doc = path.join(dir, 'DOC.md');
+  const original = '# Doc\n\n<!-- codeshot:diff:start -->\n![pre-existing](pre-existing.svg)\n<!-- codeshot:diff:end -->\n';
+  fs.writeFileSync(doc, original, 'utf8');
+  let threw = false;
+  try {
+    // HEAD..HEAD is guaranteed empty regardless of repo/working-tree state.
+    execFileSync('node', [callgraphJs, '--diff', '--diff-ref', 'HEAD..HEAD', '--path', repoRoot, '--embed', doc, '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /refusing to overwrite the existing diagram embedded in/);
+  }
+  assert.strictEqual(threw, true, 'expected an empty --diff --embed to be refused, not silently blank the doc');
+  // The doc itself must be untouched — this is the actual data-loss guard,
+  // not just that the process exited non-zero.
+  assert.strictEqual(fs.readFileSync(doc, 'utf8'), original);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('CLI --embed --architecture round-trips: writes image + block, --check then passes, drift then fails', () => {
@@ -1438,6 +1538,17 @@ test('diffNoSymbolsWarning reports the changed-file count and a codegraph sync h
 test('diffSymbolBudgetWarning is null under budget, fires and names the cut over budget', () => {
   assert.strictEqual(diffSymbolBudgetWarning(3, 5), null);
   assert.match(diffSymbolBudgetWarning(7, 5), /matched 7 changed symbols but only probing the first 5/);
+});
+
+test('diffEmbedRefusal names the embed target and the ref (or HEAD) it found nothing for', () => {
+  assert.match(diffEmbedRefusal(null, 'docs.md'), /working tree matches HEAD/);
+  assert.match(diffEmbedRefusal(null, 'docs.md'), /'docs\.md'/);
+  assert.match(diffEmbedRefusal('origin/main...HEAD', 'docs.md'), /'origin\/main\.\.\.HEAD'/);
+});
+
+test('diffEmptyRootsWarning is null when every root has at least one edge, fires with the aggregate count otherwise', () => {
+  assert.strictEqual(diffEmptyRootsWarning(0, 5), null);
+  assert.match(diffEmptyRootsWarning(2, 5), /2 of 5 changed symbol\(s\) have no callers or callees/);
 });
 
 test('buildDiffDot bolds every root and draws caller -> root / root -> callee edges', () => {
