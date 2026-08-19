@@ -886,14 +886,17 @@ async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, gro
 
 // --- --diff mode: call graph scoped to a set of changed files ------------
 
-// Shells out to `git diff --name-only` — unstaged working-tree changes with
-// no ref (matches git's own default and the user's "what have I changed"
-// mental model), or a specific range/ref when --diff-ref is given. The range
-// form is what makes this reproducible for --embed --check in CI, where
-// there is no working tree to diff against.
+// Shells out to `git diff --name-only`. With no explicit ref, this diffs
+// against HEAD (not git's own bare-`git diff` default, which is working-tree
+// vs the INDEX and misses fully-staged changes — e.g. right after `git add
+// -A`, plain `git diff` reports nothing at all). Passing 'HEAD' explicitly
+// covers staged + unstaged in one comparison, matching what the docs promise
+// ("working tree vs HEAD") and the user's "what have I changed" mental
+// model. --diff-ref overrides this with a specific range/ref — the form
+// that makes this reproducible for --embed --check in CI, where there is no
+// working tree to diff against.
 function gitDiffFiles(repoPath, ref) {
-  const args = ['diff', '--name-only'];
-  if (ref) args.push(ref);
+  const args = ['diff', '--name-only', ref || 'HEAD'];
   let out;
   try {
     out = execFileSync('git', args, { cwd: repoPath, encoding: 'utf8' });
@@ -975,12 +978,23 @@ function buildDiffDot(roots, edges, { maxRender, tooltips = false } = {}) {
     lines.push(`  "${id}"${attrs.length ? ` [${attrs.join(', ')}]` : ''};`);
   }
   for (const e of drawnEdges) {
-    // Same asymmetry buildDot's single-root version applies: a caller edge is
-    // styled off the CALLER (dashed if it's test code), a callee edge only
-    // gets styling when the callee itself is an unresolved file reference —
-    // a root calling out is never dashed just because the root happens to
-    // live in a test file.
-    const attrs = e.kind === 'caller' ? edgeStyleAttrs(e.from) : (e.to.kind === 'file' ? edgeStyleAttrs(e.to) : []);
+    // Deliberately does NOT replicate buildDot's caller-vs-callee asymmetry
+    // (there, a callee edge is never dashed just because the single queried
+    // root happens to live in a test file — see buildDot's comment). That
+    // asymmetry doesn't transfer here: with multiple roots, a root-to-root
+    // edge is simultaneously "root A's callee edge" and "root B's caller
+    // edge" depending only on which of the two probes discovered it first,
+    // an arbitrary artifact of sortSymbolsForEnumeration's probe order that
+    // dedupeEdges' from/to-only key can't see. Styling off `edge.kind` (an
+    // earlier version of this function) made the dashed "test" indicator
+    // flip on and off for the identical call depending on that probe order.
+    // Styling off `e.from` alone is deterministic regardless of discovery
+    // order, since dedupeEdges always keeps the same (from, to) pair: dashed
+    // when the call's actual source is test code, dotted when either
+    // endpoint is an unresolved file-kind reference (checked on `from` first
+    // so a file-kind source always wins, matching edgeStyleAttrs' own
+    // precedence).
+    const attrs = e.to.kind === 'file' && e.from.kind !== 'file' ? edgeStyleAttrs(e.to) : edgeStyleAttrs(e.from);
     const style = attrs.length ? ` [${attrs.join(', ')}]` : '';
     lines.push(`  "${esc(idOf(e.from))}" -> "${esc(idOf(e.to))}"${style};`);
   }
@@ -994,11 +1008,17 @@ function buildDiffDot(roots, edges, { maxRender, tooltips = false } = {}) {
 // since-deleted name) skip past without aborting the rest of the diff.
 async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, tooltips }) {
   const changedFiles = gitDiffFiles(repoPath, diffRef);
-  if (changedFiles.length === 0) console.error(diffNoChangesWarning(diffRef));
+  if (changedFiles.length === 0) {
+    console.error(diffNoChangesWarning(diffRef));
+    // No point running enumerateAllSymbols' full-index query (potentially
+    // slow/large, per its own comment) when there is nothing it could match —
+    // an empty diff can only ever produce an empty root set.
+    return buildDiffDot([], [], { maxRender, tooltips });
+  }
 
   const allSymbols = await enumerateAllSymbols(repoPath);
   const matched = matchRootSymbols(allSymbols, changedFiles);
-  if (changedFiles.length > 0 && matched.length === 0) console.error(diffNoSymbolsWarning(repoPath, changedFiles.length));
+  if (matched.length === 0) console.error(diffNoSymbolsWarning(repoPath, changedFiles.length));
 
   const budgetWarning = diffSymbolBudgetWarning(matched.length, maxSymbols);
   if (budgetWarning) console.error(budgetWarning);
@@ -1015,9 +1035,9 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
   const edges = [];
   for (const root of roots) {
     const callersResult = await runCodegraph(['callers', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
-    for (const c of (callersResult?.callers || [])) edges.push({ from: c, to: root, kind: 'caller' });
+    for (const c of (callersResult?.callers || [])) edges.push({ from: c, to: root });
     const calleesResult = await runCodegraph(['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
-    for (const c of (calleesResult?.callees || [])) edges.push({ from: root, to: c, kind: 'callee' });
+    for (const c of (calleesResult?.callees || [])) edges.push({ from: root, to: c });
   }
 
   const rootKeys = new Set(roots.map(r => `${r.name} ${r.filePath}`));
@@ -1383,9 +1403,15 @@ async function main() {
   }
 
   const safeSymbol = (values.architecture || diffMode) ? null : sanitizeForFilename(symbol);
+  // Suffixed by --diff-ref, same reason --group-depth gets its own suffix
+  // below: two --diff diagrams scoped to different ranges (e.g. a release
+  // diff and a PR diff) must not collide on one stable --embed path/marker
+  // id and silently overwrite each other. Unset --diff-ref keeps the plain
+  // 'diff' id/name, so a bare `--diff` embed is unaffected.
+  const diffSuffix = values['diff-ref'] ? `-${sanitizeForFilename(values['diff-ref'])}` : '';
   if (!outFile) {
     const archBase = groupDepth ? `arch-d${groupDepth}-${architectureOutputBaseName(repoPath)}` : `arch-${architectureOutputBaseName(repoPath)}`;
-    const base = values.architecture ? archBase : diffMode ? `diff-${architectureOutputBaseName(repoPath)}` : `callgraph-${safeSymbol}`;
+    const base = values.architecture ? archBase : diffMode ? `diff${diffSuffix}-${architectureOutputBaseName(repoPath)}` : `callgraph-${safeSymbol}`;
     // With --embed the image must live at a STABLE path next to the doc — so the
     // relative link resolves, the file can be committed, and a re-run overwrites
     // the same file rather than littering tmp with timestamped copies.
@@ -1414,7 +1440,7 @@ async function main() {
   if (diffMode) {
     const dot = await runDiffMode(repoPath, { diffRef: values['diff-ref'] || null, limit, maxSymbols, maxRender, tooltips });
     const alt = `Diff-scoped call graph${values['diff-ref'] ? ` (${values['diff-ref']})` : ''} — generated by codeshot`;
-    finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: 'diff', alt });
+    finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: `diff${diffSuffix}`, alt });
     return;
   }
 

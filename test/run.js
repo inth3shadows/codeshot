@@ -1443,8 +1443,8 @@ test('diffSymbolBudgetWarning is null under budget, fires and names the cut over
 test('buildDiffDot bolds every root and draws caller -> root / root -> callee edges', () => {
   const roots = [{ name: 'Root', filePath: 'src/root.js' }];
   const edges = [
-    { from: { name: 'caller', filePath: 'a.js' }, to: roots[0], kind: 'caller' },
-    { from: roots[0], to: { name: 'callee', filePath: 'b.js' }, kind: 'callee' },
+    { from: { name: 'caller', filePath: 'a.js' }, to: roots[0] },
+    { from: roots[0], to: { name: 'callee', filePath: 'b.js' } },
   ];
   const dot = buildDiffDot(roots, edges);
   assert.match(dot, /"Root" \[fillcolor="#e2e8f0".*fontname="Helvetica-Bold"/);
@@ -1452,22 +1452,36 @@ test('buildDiffDot bolds every root and draws caller -> root / root -> callee ed
   assert.match(dot, /"Root" -> "callee"/);
 });
 
-test('buildDiffDot dashes a caller edge from a test caller, but never dashes a root -> callee edge just because the root lives in a test file', () => {
+test('buildDiffDot dashes an edge whose actual SOURCE is test code, whether that source is a plain caller or a root calling out', () => {
   const roots = [{ name: 'Root', filePath: 'test/root.spec.js' }];
   const edges = [
-    { from: { name: 'callerTest', filePath: 'test/caller.spec.js' }, to: roots[0], kind: 'caller' },
-    { from: roots[0], to: { name: 'callee', filePath: 'b.js' }, kind: 'callee' },
+    { from: { name: 'callerTest', filePath: 'test/caller.spec.js' }, to: roots[0] },
+    { from: roots[0], to: { name: 'callee', filePath: 'b.js' } },
   ];
   const dot = buildDiffDot(roots, edges);
   assert.match(dot, /"callerTest" -> "Root" \[style=dashed, label="test"\];/);
-  assert.match(dot, /"Root" -> "callee";/);
+  // Root itself lives in test/root.spec.js, so a call it makes IS a test
+  // calling production code — unlike buildDot's single-root mode, this is
+  // deliberately not suppressed here (see buildDiffDot's edge-styling comment).
+  assert.match(dot, /"Root" -> "callee" \[style=dashed, label="test"\];/);
+});
+
+test('buildDiffDot dotted-styles a file-kind endpoint on either side, and gives a file-kind source priority over a test-kind target', () => {
+  const roots = [{ name: 'Root', filePath: 'src/root.js' }];
+  const edges = [
+    { from: { name: 'root.js', filePath: 'src/root.js', kind: 'file' }, to: roots[0] },
+    { from: roots[0], to: { name: 'unresolved.js', filePath: 'lib/unresolved.js', kind: 'file' } },
+  ];
+  const dot = buildDiffDot(roots, edges);
+  assert.match(dot, /"root\.js" -> "Root" \[style=dotted, color="#9ca3af", label="file"\];/);
+  assert.match(dot, /"Root" -> "unresolved\.js" \[style=dotted, color="#9ca3af", label="file"\];/);
 });
 
 test('buildDiffDot always draws every root even when --max-render caps non-root nodes to fewer than the roots', () => {
   const roots = [{ name: 'R1', filePath: 'a.js' }, { name: 'R2', filePath: 'b.js' }];
   const edges = [
-    { from: { name: 'c1', filePath: 'c1.js' }, to: roots[0], kind: 'caller' },
-    { from: { name: 'c2', filePath: 'c2.js' }, to: roots[1], kind: 'caller' },
+    { from: { name: 'c1', filePath: 'c1.js' }, to: roots[0] },
+    { from: { name: 'c2', filePath: 'c2.js' }, to: roots[1] },
   ];
   const dot = buildDiffDot(roots, edges, { maxRender: 1 });
   assert.match(dot, /"R1"/);
@@ -1477,15 +1491,31 @@ test('buildDiffDot always draws every root even when --max-render caps non-root 
   assert.strictEqual(keptCallers.length, 1);
 });
 
-test('buildDiffDot dedupes an edge reachable both as a caller-probe and a callee-probe result', () => {
-  const roots = [{ name: 'R', filePath: 'r.js' }];
-  const other = { name: 'Other', filePath: 'o.js' };
-  const edges = [
-    { from: other, to: roots[0], kind: 'caller' },
-    { from: other, to: roots[0], kind: 'caller' }, // duplicate probe result
-  ];
-  const dot = buildDiffDot(roots, edges);
-  assert.strictEqual((dot.match(/"Other" -> "R"/g) || []).length, 1);
+test('buildDiffDot dedupes a root-to-root edge discovered via both probes (one root\'s caller-probe, the other\'s callee-probe), regardless of which is pushed first', () => {
+  const r1 = { name: 'R1', filePath: 'a.js' };
+  const r2 = { name: 'R2', filePath: 'b.js' };
+  // {from: r1, to: r2} is the exact same real call whether it's found as
+  // r2's caller (r1 calls r2) or r1's callee (r1 calls r2) — dedupeEdges'
+  // from/to-only key collapses them into one edge no matter which the
+  // caller-probe/callee-probe loop in runDiffMode pushed first.
+  const asCallerFirst = [{ from: r1, to: r2 }, { from: r1, to: r2 }];
+  const asCalleeFirst = [{ from: r1, to: r2 }, { from: r1, to: r2 }];
+  for (const edges of [asCallerFirst, asCalleeFirst]) {
+    const dot = buildDiffDot([r1, r2], edges);
+    assert.strictEqual((dot.match(/"R1" -> "R2"/g) || []).length, 1);
+  }
+});
+
+test('buildDiffDot styles a root-to-root edge the same way regardless of push order (order-independence, not just value-dedup)', () => {
+  // R1 lives in a test file — a call it makes should read as dashed "test"
+  // however the edge was assembled, not just when the object instances differ.
+  const r1 = { name: 'R1', filePath: 'test/r1.spec.js' };
+  const r2 = { name: 'R2', filePath: 'b.js' };
+  const dotA = buildDiffDot([r1, r2], [{ from: r1, to: r2 }]);
+  const dotB = buildDiffDot([r2, r1], [{ from: r1, to: r2 }]); // roots array order flipped
+  for (const dot of [dotA, dotB]) {
+    assert.match(dot, /"R1" -> "R2" \[style=dashed, label="test"\];/);
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

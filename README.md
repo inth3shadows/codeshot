@@ -108,11 +108,13 @@ in the usual house style. Built on the same per-symbol `callers`/`callees`
 fetch as single-symbol mode, just run once per changed symbol instead of
 once for the one you named.
 
-- No value after `--diff` diffs the **working tree against HEAD** (git's own
-  default — "what have I changed right now"). `--diff-ref <range>` diffs an
-  explicit ref or range instead (e.g. `origin/main...HEAD`) — use this form
-  for `--embed --check` in CI, where there's no working tree to diff and an
-  unstaged-diff default would make the check flap for no code reason.
+- No value after `--diff` diffs the **working tree against HEAD** (both
+  staged and unstaged changes — "what have I changed right now"; note this
+  is `git diff HEAD`, not bare `git diff`, which only covers unstaged edits
+  and would miss anything already `git add`ed). `--diff-ref <range>` diffs
+  an explicit ref or range instead (e.g. `origin/main...HEAD`) — use this
+  form for `--embed --check` in CI, where there's no working tree to diff
+  and the default would make the check flap for reasons unrelated to the code.
 - `--limit`, `--max-render`, and `--max-symbols` are reused with the same
   meaning as symbol/architecture mode: `--limit` still bounds each changed
   symbol's callers/callees fetch, `--max-symbols` now caps how many *changed*
@@ -123,6 +125,10 @@ once for the one you named.
   passed — no multi-hop traversal in this mode.
 - Composes with `--embed`/`--check` the same as the other two modes — a
   changed-files diagram in a PR description, kept fresh and CI-guarded.
+  `--diff-ref` gets its own marker id and default filename (`codeshot:diff-<ref>`,
+  same pattern `--group-depth` uses for `--architecture`), so a release-range
+  diagram and a PR-range diagram can live in the same doc without one
+  silently overwriting the other; a bare `--diff` keeps the plain `codeshot:diff` id.
 - Same same-named-symbol caveat as `--architecture` (see TECHNICAL.md):
   codegraph's `callers`/`callees` take a bare name, so two changed symbols
   sharing a name in different files can be ambiguous; codeshot warns when
