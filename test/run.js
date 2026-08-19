@@ -14,7 +14,7 @@ const {
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
   diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning,
-  diffRefuseOrWarn, diffTruncationWarning, nodeKey,
+  diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -997,6 +997,20 @@ test('--group-depth is rejected outside --architecture (no file graph to roll up
   assert.strictEqual(threw, true, 'expected --group-depth without --architecture to be rejected');
 });
 
+test('--group-depth is rejected under --diff with a --diff-specific reason, not symbol mode\'s "symbol trail" wording', () => {
+  const { execFileSync } = require('child_process');
+  let threw = false;
+  try {
+    execFileSync('node', [require('path').join(__dirname, '..', 'render', 'callgraph.js'), '--diff', '--group-depth', '1'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.match(err.stderr, /--group-depth only applies with --architecture/);
+    assert.match(err.stderr, /--diff diagrams individual changed symbols/);
+    assert.doesNotMatch(err.stderr, /a symbol trail has no file-level graph/);
+  }
+  assert.strictEqual(threw, true, 'expected --group-depth under --diff to be rejected');
+});
+
 test('--group-depth rejects a non-positive-integer value', () => {
   const { execFileSync } = require('child_process');
   let threw = false;
@@ -1335,7 +1349,7 @@ test('CLI --diff --embed on an empty diff refuses to overwrite an existing embed
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('CLI --diff --embed --check on an empty diff runs the normal drift comparison instead of refusing (regression: --check was never wired to runDiffMode)', () => {
+test('CLI --diff --embed --check on an empty diff reports "nothing to check" and exits 0 — not the embed refusal, and not a false drift report (regression: --check had no reachable passing state on a zero-root diff)', () => {
   const { execFileSync } = require('child_process');
   const path = require('path');
   const fs = require('fs');
@@ -1352,23 +1366,18 @@ test('CLI --diff --embed --check on an empty diff runs the normal drift comparis
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codeshot-diff-embed-check-'));
   const doc = path.join(dir, 'DOC.md');
-  // A deliberately stale block — this isn't what a fresh blank render's
-  // markdown looks like, so --check should report drift (exit 1) via
-  // finishOutput's normal comparison, NOT via diffEmbedRefusal's "refusing
-  // to overwrite" message (--check never writes, so that refusal's whole
-  // rationale doesn't apply here — see diffRefuseOrWarn).
+  // Deliberately stale relative to what a blank render's markdown would
+  // look like — proves --check isn't comparing at all, not just that it
+  // happens to compare-and-pass: a zero-root diff has nothing this
+  // invocation would diagram, so the committed block (from some other
+  // invocation/range) isn't "drift" to report either way.
   const original = '# Doc\n\n<!-- codeshot:diff:start -->\nstale\n<!-- codeshot:diff:end -->\n';
   fs.writeFileSync(doc, original, 'utf8');
-  let threw = false;
-  try {
-    execFileSync('node', [callgraphJs, '--diff', '--diff-ref', 'HEAD..HEAD', '--path', repoRoot, '--embed', doc, '--check', '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
-  } catch (err) {
-    threw = true;
-    assert.doesNotMatch(err.stderr, /refusing to overwrite/, '--check must never hit the embed-refusal path');
-    assert.match(err.stderr, /out of date/, 'expected the normal --check drift report instead');
-  }
-  assert.strictEqual(threw, true, 'expected --check to report drift against the deliberately stale stub block');
-  // --check must never write, on either code path.
+  const stdout = execFileSync('node', [callgraphJs, '--diff', '--diff-ref', 'HEAD..HEAD', '--path', repoRoot, '--embed', doc, '--check', '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
+  assert.match(stdout, /nothing to diagram, so nothing to check/);
+  assert.doesNotMatch(stdout, /refusing to overwrite/);
+  assert.doesNotMatch(stdout, /out of date/);
+  // Never writes, on this path either.
   assert.strictEqual(fs.readFileSync(doc, 'utf8'), original);
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -1630,22 +1639,32 @@ test('diffTruncationWarning is null with no truncated roots, fires with the aggr
   assert.match(msg, /foo, bar/);
 });
 
-test('diffRefuseOrWarn logs only the warn message (never exits) when there is no embedFile, or when check is true even with one', () => {
+test('diffNothingToCheck / diffNothingToCheckNoSymbols name the embed target and never claim "refusing to overwrite"', () => {
+  const a = diffNothingToCheck(null, 'docs.md');
+  assert.match(a, /nothing to diagram, so nothing to check/);
+  assert.match(a, /'docs\.md'/);
+  assert.doesNotMatch(a, /refusing to overwrite/);
+
+  const b = diffNothingToCheckNoSymbols('/repo', 3, 'docs.md');
+  assert.match(b, /3 changed file\(s\) but no matching symbols/);
+  assert.match(b, /nothing to diagram, so nothing to check/);
+  assert.doesNotMatch(b, /refusing to overwrite/);
+});
+
+test('diffHandleEmptyRoots logs only the warn message (never exits) when there is no embedFile', () => {
   const originalError = console.error;
-  for (const [embedFile, check] of [[null, false], ['doc.md', true]]) {
-    const logs = [];
-    console.error = (msg) => logs.push(msg);
-    try {
-      diffRefuseOrWarn(embedFile, check, 'REFUSAL', 'WARN');
-    } finally {
-      console.error = originalError;
-    }
-    assert.deepStrictEqual(logs, ['WARN'], `expected only the warn message for embedFile=${embedFile}, check=${check}`);
+  const logs = [];
+  console.error = (msg) => logs.push(msg);
+  try {
+    diffHandleEmptyRoots(null, false, 'REFUSAL', 'WARN', 'NOTHING_TO_CHECK');
+  } finally {
+    console.error = originalError;
   }
-  // The actual embedFile && !check → refusal + process.exit(1) branch is
-  // exercised via the real CLI (see the --diff --embed CLI tests below) —
-  // calling process.exit(1) directly in-process here would kill the test
-  // runner itself.
+  assert.deepStrictEqual(logs, ['WARN']);
+  // The embedFile && !check → refusal (exit 1) and embedFile && check →
+  // "nothing to check" (exit 0) branches are exercised via the real CLI
+  // (see the --diff --embed [--check] CLI tests below) — calling
+  // process.exit directly in-process here would kill the test runner itself.
 });
 
 test('matchRootSymbols excludes "kind":"file" index entries — a changed FILE itself must not become a diagram root', () => {

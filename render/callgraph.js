@@ -924,7 +924,12 @@ function gitDiffFiles(repoPath, ref) {
   const args = ['diff', '--name-only', '-z', '--end-of-options', ref || 'HEAD'];
   let out;
   try {
-    out = execFileSync('git', args, { cwd: repoPath, encoding: 'utf8' });
+    // Same class of large-output problem MAX_CODEGRAPH_BUFFER exists for on
+    // the codegraph side — Node's default 1MB execFileSync maxBuffer can
+    // overflow on a range spanning thousands of changed files, throwing
+    // ENOBUFS with no useful message; reusing that constant here avoids a
+    // second, smaller silent ceiling for the same class of failure.
+    out = execFileSync('git', args, { cwd: repoPath, encoding: 'utf8', maxBuffer: MAX_CODEGRAPH_BUFFER });
   } catch (err) {
     console.error(`codeshot: 'git ${args.join(' ')}' failed in '${repoPath}' — confirm it's a git repo${ref ? ` and '${ref}' is a valid ref/range` : ''}. (${String(err.message).split('\n')[0]})`);
     process.exit(1);
@@ -973,6 +978,16 @@ function diffEmbedRefusal(diffRef, embedFile) {
   return `codeshot: --diff found no changed files${diffRef ? ` for '${diffRef}'` : ' (working tree matches HEAD)'} — refusing to overwrite the existing diagram embedded in '${embedFile}' with a blank one. Pass --diff-ref to target a specific range, or drop --embed to render a (blank) image on its own.`;
 }
 
+// --check's counterpart to diffEmbedRefusal: a zero-changed-files diff means
+// there is nothing THIS invocation would diagram, so the committed image in
+// embedFile (from some other invocation/range) isn't "stale" relative to
+// it — there's simply nothing to compare. Reports success (exit 0, stdout —
+// matching finishOutput's own "up to date" convention) rather than treating
+// an unrelated committed diagram as drift.
+function diffNothingToCheck(diffRef, embedFile) {
+  return `codeshot: --diff found no changed files${diffRef ? ` for '${diffRef}'` : ' (working tree matches HEAD)'} — nothing to diagram, so nothing to check. The diagram embedded in '${embedFile}' reflects a different invocation and is left untouched.`;
+}
+
 // Shared by both "zero roots" branches in runDiffMode (empty diff, and
 // changed-but-unmatched files) so their identical refuse-vs-warn control
 // flow lives in one place. `check` matters here: --embed --check never
@@ -982,8 +997,25 @@ function diffEmbedRefusal(diffRef, embedFile) {
 // refusal on an empty/unmatched diff instead of running its intended
 // stale/fresh comparison, breaking exactly the CI drift-guard workflow the
 // docs recommend (`--diff --diff-ref <range> --embed doc.md --check`).
-function diffRefuseOrWarn(embedFile, check, refusalMsg, warnMsg) {
-  if (embedFile && !check) {
+// Three-way, not two-way: embedFile && check is NOT the same situation as
+// bare `check` deserves the warn-and-proceed treatment. If it were, --check
+// would have no reachable passing state on a zero-root diff — proceeding to
+// buildDiffDot([], ...) hands finishOutput a blank render, which it then
+// compares against the real, non-blank COMMITTED diagram, reports "out of
+// date", and tells the user to fix it by rerunning with --embed — the exact
+// invocation diffEmbedRefusal(NoSymbols) refuses for this same zero-root
+// diff. That's a dead end: no command produces a green check. The fix is
+// that a zero-root diff has literally nothing FOR --check to verify (the
+// committed diagram reflects a different invocation's range) — so --check
+// specifically reports that and exits 0, cleanly outside finishOutput's
+// compare-and-report path entirely, rather than either refusing or
+// (falsely) flagging drift.
+function diffHandleEmptyRoots(embedFile, check, refusalMsg, warnMsg, nothingToCheckMsg) {
+  if (embedFile && check) {
+    console.log(nothingToCheckMsg);
+    process.exit(0);
+  }
+  if (embedFile) {
     console.error(refusalMsg);
     process.exit(1);
   }
@@ -999,6 +1031,11 @@ function diffRefuseOrWarn(embedFile, check, refusalMsg, warnMsg) {
 // specifically (and would then wrongly) says "found no changed files".
 function diffEmbedRefusalNoSymbols(repoPath, changedCount, embedFile) {
   return `codeshot: --diff found ${changedCount} changed file(s) but no matching symbols in codegraph's index — refusing to overwrite the existing diagram embedded in '${embedFile}' with a blank one. They may not define top-level symbols, may be in a language codegraph doesn't index, or the index may be stale (run 'codegraph sync ${repoPath}'); drop --embed to render a (blank) image on its own instead.`;
+}
+
+// --check's counterpart to diffEmbedRefusalNoSymbols — see diffNothingToCheck.
+function diffNothingToCheckNoSymbols(repoPath, changedCount, embedFile) {
+  return `codeshot: --diff found ${changedCount} changed file(s) but no matching symbols in codegraph's index — nothing to diagram, so nothing to check. The diagram embedded in '${embedFile}' reflects a different invocation and is left untouched. (They may not define top-level symbols, may be in a language codegraph doesn't index, or the index may be stale — run 'codegraph sync ${repoPath}' to confirm.)`;
 }
 
 // duplicateNameWarning's "resolved" message explicitly claims codeshot
@@ -1050,7 +1087,13 @@ function diffNoSymbolsWarning(repoPath, changedCount) {
 // repo get enumerated.
 function diffSymbolBudgetWarning(matchedCount, budget) {
   if (matchedCount <= budget) return null;
-  return `codeshot: --diff matched ${matchedCount} changed symbols but only probing the first ${budget} (--max-symbols) — the diagram is incomplete; rerun with a larger --max-symbols to cover the rest of the diff.`;
+  // `matched` inherits enumerateAllSymbols' (filePath, name) sort order (see
+  // sortSymbolsForEnumeration), so — same shape symbolBudgetWarning already
+  // calls out for --architecture — the kept prefix is deterministic but not
+  // representative: cut symbols are whichever changed files sort last by
+  // path, not a random sample, and can read as "calls nothing" in the
+  // diagram rather than "wasn't probed".
+  return `codeshot: --diff matched ${matchedCount} changed symbols but only probing the first ${budget} (--max-symbols) — the diagram is incomplete. The cut is a path-sorted prefix, not a sample: changed symbols in files that sort later are simply missing, not shown as having no callers/callees. Rerun with a larger --max-symbols to cover the rest of the diff.`;
 }
 
 // Multi-root variant of buildDot: instead of one queried symbol at the
@@ -1121,12 +1164,18 @@ function buildDiffDot(roots, edges, { maxRender, tooltips = false } = {}) {
 
 // Sequential — same concurrency hazard collectTransitive/probeFileEdges note:
 // parallel codegraph calls against one index race on its schema_versions
-// table. `fatal: false` on each probe lets one bad root (an ambiguous or
-// since-deleted name) skip past without aborting the rest of the diff.
+// table. `fatal: false` on each probe covers the same subset runCodegraph's
+// contract always has — a symbol-not-found or unparseable-JSON response —
+// not every possible codegraph failure: an execFileAsync error that isn't
+// the "not initialized" case still re-throws uncaught regardless of
+// `fatal`, exactly like probeFileEdges' identical `fatal: false` calls for
+// --architecture. A genuine codegraph crash/lock on root N still aborts the
+// rest of the diff; that gap is pre-existing to `runCodegraph` itself, not
+// something --diff mode introduces or fixes.
 async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, tooltips, embedFile, check }) {
   const changedFiles = gitDiffFiles(repoPath, diffRef);
   if (changedFiles.length === 0) {
-    diffRefuseOrWarn(embedFile, check, diffEmbedRefusal(diffRef, embedFile), diffNoChangesWarning(diffRef));
+    diffHandleEmptyRoots(embedFile, check, diffEmbedRefusal(diffRef, embedFile), diffNoChangesWarning(diffRef), diffNothingToCheck(diffRef, embedFile));
     // No point running enumerateAllSymbols' full-index query (potentially
     // slow/large, per its own comment) when there is nothing it could match —
     // an empty diff can only ever produce an empty root set.
@@ -1141,13 +1190,23 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
     // symbol codegraph indexed (docs/config-only diff, unsupported
     // language). Still zero roots → still a blank graph → still must not
     // silently clobber a committed diagram.
-    diffRefuseOrWarn(embedFile, check, diffEmbedRefusalNoSymbols(repoPath, changedFiles.length, embedFile), diffNoSymbolsWarning(repoPath, changedFiles.length));
+    diffHandleEmptyRoots(embedFile, check, diffEmbedRefusalNoSymbols(repoPath, changedFiles.length, embedFile), diffNoSymbolsWarning(repoPath, changedFiles.length), diffNothingToCheckNoSymbols(repoPath, changedFiles.length, embedFile));
     return buildDiffDot([], [], { maxRender, tooltips });
   }
 
   const budgetWarning = diffSymbolBudgetWarning(matched.length, maxSymbols);
   if (budgetWarning) console.error(budgetWarning);
-  const roots = matched.slice(0, maxSymbols);
+  // Deduped by (name, filePath) — matchRootSymbols can return two distinct
+  // enumerated records that collapse to the same identity (e.g. two
+  // same-named methods on different receiver types in one Go file; the
+  // codebase already treats that as ONE identity everywhere else — see
+  // duplicateNames' comment on same-file collisions being unambiguous).
+  // Without this, roots.length stayed the raw (possibly larger) count while
+  // buildDiffDot's own dedupeNodes silently drew them as a single box,
+  // desyncing diffEmptyRootsWarning's math from what was actually rendered
+  // (a false "N have no callers" when both real duplicates DID have edges),
+  // and probing/probing the same symbol twice wasted a codegraph call.
+  const roots = dedupeNodes(matched.slice(0, maxSymbols));
 
   // Same known limitation --architecture's bare-name probing has: two
   // symbols sharing a name across files are ambiguous to codegraph's
@@ -1533,7 +1592,14 @@ async function main() {
       process.exit(1);
     }
     if (!values.architecture) {
-      console.error('codeshot: --group-depth only applies with --architecture (a symbol trail has no file-level graph to roll up)');
+      // Distinguishes --diff from plain symbol mode: reusing symbol mode's
+      // "a symbol trail has no file-level graph to roll up" wording for
+      // --diff told a --diff user their command looked like symbol mode —
+      // wrong diagnosis, since --diff has no <symbol> argument at all.
+      const reason = diffMode
+        ? '--diff diagrams individual changed symbols, not files, so there is no file-level graph to roll up'
+        : 'a symbol trail has no file-level graph to roll up';
+      console.error(`codeshot: --group-depth only applies with --architecture (${reason})`);
       process.exit(1);
     }
   }
@@ -1639,7 +1705,7 @@ async function main() {
 
   let transitiveEdges = [];
   if (depth > 1) {
-    const discovered = new Set(dedupeNodes([...(callers || []), ...(callees || [])]).map(n => `${n.name} ${n.filePath}`));
+    const discovered = new Set(dedupeNodes([...(callers || []), ...(callees || [])]).map(nodeKey));
     const callerResult = await collectTransitive('callers', repoPath, limit, depth, dedupeNodes(callers || []), discovered, maxDepthNodes);
     const calleeResult = await collectTransitive('callees', repoPath, limit, depth, dedupeNodes(callees || []), discovered, maxDepthNodes);
     transitiveEdges = [...callerResult.edges, ...calleeResult.edges];
@@ -1689,5 +1755,5 @@ module.exports = {
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
   diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning,
-  diffRefuseOrWarn, diffTruncationWarning, nodeKey,
+  diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
 };
