@@ -748,9 +748,19 @@ function architectureOutputBaseName(repoPath) {
 // "return everything" behavior; the real cap enforced is the client-side
 // slice to maxSymbols below, exactly as intended.
 const ENUMERATION_QUERY_LIMIT = 100000;
-async function enumerateSymbols(repoPath, maxSymbols) {
+
+// The untruncated, sorted symbol list — split out from enumerateSymbols so
+// --diff mode (below) can filter the FULL index down to a handful of known
+// changed files without first losing symbols to --max-symbols' repo-wide
+// cap, which exists to bound --architecture's expensive per-symbol probing,
+// not this cheap single enumeration query.
+async function enumerateAllSymbols(repoPath) {
   const results = await runCodegraph(['query', '--path', repoPath, '--json', '--limit', String(ENUMERATION_QUERY_LIMIT), '--', '']);
-  const symbols = sortSymbolsForEnumeration(unwrapQueryNodes(results));
+  return sortSymbolsForEnumeration(unwrapQueryNodes(results));
+}
+
+async function enumerateSymbols(repoPath, maxSymbols) {
+  const symbols = await enumerateAllSymbols(repoPath);
   const truncated = symbols.length > maxSymbols;
   return { symbols: symbols.slice(0, maxSymbols), truncated };
 }
@@ -872,6 +882,151 @@ async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, gro
   if (note) console.error(note);
 
   return buildArchitectureDot(fileEdges, { maxRender });
+}
+
+// --- --diff mode: call graph scoped to a set of changed files ------------
+
+// Shells out to `git diff --name-only` — unstaged working-tree changes with
+// no ref (matches git's own default and the user's "what have I changed"
+// mental model), or a specific range/ref when --diff-ref is given. The range
+// form is what makes this reproducible for --embed --check in CI, where
+// there is no working tree to diff against.
+function gitDiffFiles(repoPath, ref) {
+  const args = ['diff', '--name-only'];
+  if (ref) args.push(ref);
+  let out;
+  try {
+    out = execFileSync('git', args, { cwd: repoPath, encoding: 'utf8' });
+  } catch (err) {
+    console.error(`codeshot: 'git ${args.join(' ')}' failed in '${repoPath}' — confirm it's a git repo${ref ? ` and '${ref}' is a valid ref/range` : ''}. (${String(err.message).split('\n')[0]})`);
+    process.exit(1);
+  }
+  // git always emits forward slashes; normalized so a Windows checkout's
+  // codegraph filePath (if it ever differs) still has a chance to match.
+  return out.split('\n').map(l => l.trim()).filter(Boolean).map(f => f.replace(/\\/g, '/'));
+}
+
+// Pure: which enumerated symbols live in one of the changed files. Split out
+// from runDiffMode so the matching logic — the same path-format risk PR #24
+// fixed for --architecture's file attribution — is unit-testable without
+// shelling out to git or codegraph.
+function matchRootSymbols(symbols, changedFiles) {
+  const changedSet = new Set((changedFiles || []).map(f => String(f).replace(/\\/g, '/')));
+  return (symbols || []).filter(s => s.filePath && changedSet.has(String(s.filePath).replace(/\\/g, '/')));
+}
+
+function diffNoChangesWarning(diffRef) {
+  return `codeshot: --diff found no changed files${diffRef ? ` for '${diffRef}'` : ' (working tree matches HEAD)'} — nothing to diagram.`;
+}
+
+function diffNoSymbolsWarning(repoPath, changedCount) {
+  return `codeshot: --diff found ${changedCount} changed file(s) but no matching symbols in codegraph's index — they may not define top-level symbols, may be in a language codegraph doesn't index, or the index may be stale (run 'codegraph sync ${repoPath}').`;
+}
+
+// Mirrors symbolBudgetWarning's "warn, name the shape of the cut" stance for
+// --architecture, but for --diff's much smaller and differently-ordered
+// budget: how many of the CHANGED, matched symbols get probed for
+// callers/callees (two codegraph calls each), not how many of the whole
+// repo get enumerated.
+function diffSymbolBudgetWarning(matchedCount, budget) {
+  if (matchedCount <= budget) return null;
+  return `codeshot: --diff matched ${matchedCount} changed symbols but only probing the first ${budget} (--max-symbols) — the diagram is incomplete; rerun with a larger --max-symbols to cover the rest of the diff.`;
+}
+
+// Multi-root variant of buildDot: instead of one queried symbol at the
+// center, every root (a symbol defined in a changed file) is drawn bold/
+// highlighted, same visual weight buildDot gives its single root, and its
+// direct callers/callees fan out around it in the house style. Unlike
+// buildDot, roots are always drawn in full (they ARE the diff) — --max-render
+// bounds only the callers/callees pulled in around them, the same "budget the
+// discovered context, not the thing asked for" stance --depth's node budget
+// takes for symbol mode.
+function buildDiffDot(roots, edges, { maxRender, tooltips = false } = {}) {
+  const esc = s => String(s).replace(/"/g, '\\"');
+  const keyOf = n => `${n.name} ${n.filePath}`;
+  const rootKeys = new Set(roots.map(keyOf));
+  const dedupedEdges = dedupeEdges(edges);
+
+  const allNodes = dedupeNodes([...roots, ...dedupedEdges.flatMap(e => [e.from, e.to])]);
+  const nonRootNodes = allNodes.filter(n => !rootKeys.has(keyOf(n)));
+  const keepNonRoot = Number.isFinite(maxRender)
+    ? new Set(nonRootNodes.slice(0, maxRender).map(keyOf))
+    : null;
+  const keep = key => rootKeys.has(key) || !keepNonRoot || keepNonRoot.has(key);
+
+  const drawnNodes = allNodes.filter(n => keep(keyOf(n)));
+  const drawnEdges = dedupedEdges.filter(e => keep(keyOf(e.from)) && keep(keyOf(e.to)));
+
+  const { idOf, labelOf } = nodeIdentities(drawnNodes);
+
+  const lines = [
+    'digraph callgraph {',
+    '  rankdir=LR; bgcolor="white"; splines=polyline; nodesep=0.35; ranksep=0.75; pad=0.2;',
+    '  node [shape=box, style="rounded,filled", fillcolor="#f8fafc", color="#cbd5e1", fontcolor="#334155", fontname="Helvetica", fontsize=11, penwidth=1.1, margin="0.20,0.11"];',
+    '  edge [color="#94a3b8", arrowsize=0.6, penwidth=1.0];',
+  ];
+  for (const n of drawnNodes) {
+    const id = esc(idOf(n));
+    const attrs = [];
+    const lab = labelOf(n);
+    if (lab) attrs.push(`label="${esc(lab.name)}\\n(${esc(lab.base)})"`);
+    if (tooltips && n.filePath) attrs.push(`tooltip="${esc(String(n.filePath))}"`);
+    if (rootKeys.has(keyOf(n))) attrs.push('fillcolor="#e2e8f0"', 'color="#94a3b8"', 'fontcolor="#0f172a"', 'fontname="Helvetica-Bold"', 'penwidth=1.5');
+    lines.push(`  "${id}"${attrs.length ? ` [${attrs.join(', ')}]` : ''};`);
+  }
+  for (const e of drawnEdges) {
+    // Same asymmetry buildDot's single-root version applies: a caller edge is
+    // styled off the CALLER (dashed if it's test code), a callee edge only
+    // gets styling when the callee itself is an unresolved file reference —
+    // a root calling out is never dashed just because the root happens to
+    // live in a test file.
+    const attrs = e.kind === 'caller' ? edgeStyleAttrs(e.from) : (e.to.kind === 'file' ? edgeStyleAttrs(e.to) : []);
+    const style = attrs.length ? ` [${attrs.join(', ')}]` : '';
+    lines.push(`  "${esc(idOf(e.from))}" -> "${esc(idOf(e.to))}"${style};`);
+  }
+  lines.push('}');
+  return lines.join('\n');
+}
+
+// Sequential — same concurrency hazard collectTransitive/probeFileEdges note:
+// parallel codegraph calls against one index race on its schema_versions
+// table. `fatal: false` on each probe lets one bad root (an ambiguous or
+// since-deleted name) skip past without aborting the rest of the diff.
+async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, tooltips }) {
+  const changedFiles = gitDiffFiles(repoPath, diffRef);
+  if (changedFiles.length === 0) console.error(diffNoChangesWarning(diffRef));
+
+  const allSymbols = await enumerateAllSymbols(repoPath);
+  const matched = matchRootSymbols(allSymbols, changedFiles);
+  if (changedFiles.length > 0 && matched.length === 0) console.error(diffNoSymbolsWarning(repoPath, changedFiles.length));
+
+  const budgetWarning = diffSymbolBudgetWarning(matched.length, maxSymbols);
+  if (budgetWarning) console.error(budgetWarning);
+  const roots = matched.slice(0, maxSymbols);
+
+  // Same known limitation --architecture's bare-name probing has: two roots
+  // (or a root and a pulled-in caller/callee) sharing a name across files are
+  // ambiguous to codegraph's bare-name callers/callees query. Reusing the
+  // existing warning rather than reimplementing --architecture's heavier
+  // node -f fix keeps this v1 honest about the gap instead of hiding it.
+  const dupeWarning = duplicateNameWarning(roots);
+  if (dupeWarning) console.error(dupeWarning);
+
+  const edges = [];
+  for (const root of roots) {
+    const callersResult = await runCodegraph(['callers', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
+    for (const c of (callersResult?.callers || [])) edges.push({ from: c, to: root, kind: 'caller' });
+    const calleesResult = await runCodegraph(['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
+    for (const c of (calleesResult?.callees || [])) edges.push({ from: root, to: c, kind: 'callee' });
+  }
+
+  const rootKeys = new Set(roots.map(r => `${r.name} ${r.filePath}`));
+  const nonRootNodes = dedupeNodes(dedupeEdges(edges).flatMap(e => [e.from, e.to]))
+    .filter(n => !rootKeys.has(`${n.name} ${n.filePath}`));
+  const note = renderTruncationNote('callers/callees', nonRootNodes.length, maxRender);
+  if (note) console.error(note);
+
+  return buildDiffDot(roots, edges, { maxRender, tooltips });
 }
 
 function renderDotToFile(dot, format, outFile) {
@@ -1047,7 +1202,7 @@ function finishOutput(dot, { format, outFile, embedFile, check, markerId, alt })
   console.log(outFile);
 }
 
-const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]\n   or: callgraph.js --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--format <fmt>] [--embed <file.md> [--check]]';
+const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]\n   or: callgraph.js --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--format <fmt>] [--embed <file.md> [--check]]\n   or: callgraph.js --diff [--diff-ref <range>] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]';
 
 async function main() {
   let values, positionals;
@@ -1066,6 +1221,8 @@ async function main() {
         architecture: { type: 'boolean', default: false },
         'max-symbols': { type: 'string', default: String(DEFAULT_MAX_SYMBOLS) },
         'group-depth': { type: 'string' },
+        diff: { type: 'boolean', default: false },
+        'diff-ref': { type: 'string' },
         embed: { type: 'string' },
         check: { type: 'boolean', default: false },
       },
@@ -1112,14 +1269,24 @@ async function main() {
   }
 
   const symbol = positionals[0];
-  if (values.architecture && symbol) {
-    console.error('codeshot: --architecture cannot be combined with a <symbol> argument');
+  const diffMode = values.diff || values['diff-ref'] !== undefined;
+  if (values.architecture && diffMode) {
+    console.error('codeshot: --architecture cannot be combined with --diff');
     console.error(USAGE);
     process.exit(1);
   }
-  if (!values.architecture && !symbol) {
+  if ((values.architecture || diffMode) && symbol) {
+    console.error(`codeshot: --${values.architecture ? 'architecture' : 'diff'} cannot be combined with a <symbol> argument`);
+    console.error(USAGE);
+    process.exit(1);
+  }
+  if (!values.architecture && !diffMode && !symbol) {
     console.error('codeshot: missing required <symbol> argument');
     console.error(USAGE);
+    process.exit(1);
+  }
+  if (values['diff-ref'] === '') {
+    console.error('codeshot: --diff-ref must not be empty');
     process.exit(1);
   }
 
@@ -1156,8 +1323,10 @@ async function main() {
     console.error(`codeshot: --depth must be a positive integer, got '${values.depth}'`);
     process.exit(1);
   }
-  if (values.architecture && values.depth !== '1') {
-    console.error('codeshot: --depth has no effect with --architecture (there is no multi-hop file traversal)');
+  if ((values.architecture || diffMode) && values.depth !== '1') {
+    const mode = values.architecture ? '--architecture' : '--diff';
+    const reason = values.architecture ? 'there is no multi-hop file traversal' : 'diff mode only draws direct callers/callees around each changed symbol';
+    console.error(`codeshot: --depth has no effect with ${mode} (${reason})`);
     process.exit(1);
   }
   let maxDepthNodes = DEFAULT_NODE_BUDGET;
@@ -1167,8 +1336,9 @@ async function main() {
       console.error(`codeshot: --max-depth-nodes must be a positive integer, got '${values['max-depth-nodes']}'`);
       process.exit(1);
     }
-    if (values.architecture && maxDepthNodes !== DEFAULT_NODE_BUDGET) {
-      console.error('codeshot: --max-depth-nodes has no effect with --architecture (there is no multi-hop file traversal)');
+    if ((values.architecture || diffMode) && maxDepthNodes !== DEFAULT_NODE_BUDGET) {
+      const mode = values.architecture ? '--architecture' : '--diff';
+      console.error(`codeshot: --max-depth-nodes has no effect with ${mode} (there is no multi-hop traversal)`);
       process.exit(1);
     }
   }
@@ -1212,10 +1382,10 @@ async function main() {
     process.exit(1);
   }
 
-  const safeSymbol = values.architecture ? null : sanitizeForFilename(symbol);
+  const safeSymbol = (values.architecture || diffMode) ? null : sanitizeForFilename(symbol);
   if (!outFile) {
     const archBase = groupDepth ? `arch-d${groupDepth}-${architectureOutputBaseName(repoPath)}` : `arch-${architectureOutputBaseName(repoPath)}`;
-    const base = values.architecture ? archBase : `callgraph-${safeSymbol}`;
+    const base = values.architecture ? archBase : diffMode ? `diff-${architectureOutputBaseName(repoPath)}` : `callgraph-${safeSymbol}`;
     // With --embed the image must live at a STABLE path next to the doc — so the
     // relative link resolves, the file can be committed, and a re-run overwrites
     // the same file rather than littering tmp with timestamped copies.
@@ -1229,11 +1399,24 @@ async function main() {
 
   requireOnPath('codegraph', 'Install: https://github.com/colbymchenry/codegraph');
   requireOnPath('dot', 'Install graphviz (e.g. `brew install graphviz` or `apt install graphviz`).');
+  if (diffMode) requireOnPath('git', 'Install git (e.g. `apt install git`) — --diff shells out to `git diff` to find changed files.');
 
   // Warn before doing any work if the index is mid-rebuild — a silently-partial
   // graph is worse than a slow one, and node count alone can't reveal it.
   const healthWarning = indexHealthWarning(repoPath);
   if (healthWarning) console.error(healthWarning);
+
+  // Node tooltips only render in svg-family output (graphviz emits them as
+  // <a xlink:title>); computed here (rather than just before symbol mode's
+  // buildDot call) so --diff's buildDiffDot can use it too.
+  const tooltips = SVG_TOOLTIP_FORMATS.has(format.toLowerCase());
+
+  if (diffMode) {
+    const dot = await runDiffMode(repoPath, { diffRef: values['diff-ref'] || null, limit, maxSymbols, maxRender, tooltips });
+    const alt = `Diff-scoped call graph${values['diff-ref'] ? ` (${values['diff-ref']})` : ''} — generated by codeshot`;
+    finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: 'diff', alt });
+    return;
+  }
 
   if (values.architecture) {
     const dot = await runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, groupDepth });
@@ -1302,10 +1485,6 @@ async function main() {
     if (note) console.error(note);
   }
 
-  // Node tooltips only render in svg-family output (graphviz emits them as
-  // <a xlink:title>); they're inert in png/pdf, so gate them to svg/svgz to
-  // avoid bloating a raster diagram's intermediate DOT with dead attributes.
-  const tooltips = SVG_TOOLTIP_FORMATS.has(format.toLowerCase());
   const dot = buildDot(resolvedSymbol, callers || [], callees || [], { maxRender, transitiveEdges, tooltips });
   const alt = `${resolvedSymbol} call graph — generated by codeshot`;
   finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: safeSymbol, alt });
@@ -1328,4 +1507,5 @@ module.exports = {
   svgStructure, decodeXmlEntities,
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
+  matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
 };

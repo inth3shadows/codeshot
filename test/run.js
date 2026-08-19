@@ -12,6 +12,7 @@ const {
   svgStructure, decodeXmlEntities,
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
+  matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -1399,6 +1400,92 @@ test('parseUnresolvedRefs returns null on a healthy status (no interrupted-run l
   assert.strictEqual(parseUnresolvedRefs('Index Statistics:\n  Files: 40\n  Nodes: 900\n  Edges: 2000'), null);
   assert.strictEqual(parseUnresolvedRefs(''), null);
   assert.strictEqual(parseUnresolvedRefs('0 references from an interrupted run'), null, 'zero is healthy, not a warning');
+});
+
+// --- --diff mode --------------------------------------------------------
+
+test('matchRootSymbols keeps only symbols whose filePath is a changed file', () => {
+  const symbols = [
+    { name: 'a', filePath: 'src/a.js' },
+    { name: 'b', filePath: 'src/b.js' },
+    { name: 'c', filePath: 'src/c.js' },
+  ];
+  const roots = matchRootSymbols(symbols, ['src/a.js', 'src/c.js']);
+  assert.deepStrictEqual(roots.map(r => r.name), ['a', 'c']);
+});
+
+test('matchRootSymbols normalizes backslash separators on both sides', () => {
+  const symbols = [{ name: 'a', filePath: 'src\\a.js' }];
+  assert.strictEqual(matchRootSymbols(symbols, ['src/a.js']).length, 1);
+});
+
+test('matchRootSymbols ignores symbols with no filePath and returns [] on no match', () => {
+  assert.deepStrictEqual(matchRootSymbols([{ name: 'a', filePath: null }], ['src/a.js']), []);
+  assert.deepStrictEqual(matchRootSymbols([{ name: 'a', filePath: 'src/a.js' }], ['src/other.js']), []);
+});
+
+test('diffNoChangesWarning names the ref when given, and "matches HEAD" when not', () => {
+  assert.match(diffNoChangesWarning(null), /working tree matches HEAD/);
+  assert.match(diffNoChangesWarning('origin/main...HEAD'), /'origin\/main\.\.\.HEAD'/);
+});
+
+test('diffNoSymbolsWarning reports the changed-file count and a codegraph sync hint', () => {
+  const msg = diffNoSymbolsWarning('/repo', 3);
+  assert.match(msg, /3 changed file/);
+  assert.match(msg, /codegraph sync \/repo/);
+});
+
+test('diffSymbolBudgetWarning is null under budget, fires and names the cut over budget', () => {
+  assert.strictEqual(diffSymbolBudgetWarning(3, 5), null);
+  assert.match(diffSymbolBudgetWarning(7, 5), /matched 7 changed symbols but only probing the first 5/);
+});
+
+test('buildDiffDot bolds every root and draws caller -> root / root -> callee edges', () => {
+  const roots = [{ name: 'Root', filePath: 'src/root.js' }];
+  const edges = [
+    { from: { name: 'caller', filePath: 'a.js' }, to: roots[0], kind: 'caller' },
+    { from: roots[0], to: { name: 'callee', filePath: 'b.js' }, kind: 'callee' },
+  ];
+  const dot = buildDiffDot(roots, edges);
+  assert.match(dot, /"Root" \[fillcolor="#e2e8f0".*fontname="Helvetica-Bold"/);
+  assert.match(dot, /"caller" -> "Root"/);
+  assert.match(dot, /"Root" -> "callee"/);
+});
+
+test('buildDiffDot dashes a caller edge from a test caller, but never dashes a root -> callee edge just because the root lives in a test file', () => {
+  const roots = [{ name: 'Root', filePath: 'test/root.spec.js' }];
+  const edges = [
+    { from: { name: 'callerTest', filePath: 'test/caller.spec.js' }, to: roots[0], kind: 'caller' },
+    { from: roots[0], to: { name: 'callee', filePath: 'b.js' }, kind: 'callee' },
+  ];
+  const dot = buildDiffDot(roots, edges);
+  assert.match(dot, /"callerTest" -> "Root" \[style=dashed, label="test"\];/);
+  assert.match(dot, /"Root" -> "callee";/);
+});
+
+test('buildDiffDot always draws every root even when --max-render caps non-root nodes to fewer than the roots', () => {
+  const roots = [{ name: 'R1', filePath: 'a.js' }, { name: 'R2', filePath: 'b.js' }];
+  const edges = [
+    { from: { name: 'c1', filePath: 'c1.js' }, to: roots[0], kind: 'caller' },
+    { from: { name: 'c2', filePath: 'c2.js' }, to: roots[1], kind: 'caller' },
+  ];
+  const dot = buildDiffDot(roots, edges, { maxRender: 1 });
+  assert.match(dot, /"R1"/);
+  assert.match(dot, /"R2"/);
+  // exactly one of the two callers survives the maxRender:1 cut, not both
+  const keptCallers = ['c1', 'c2'].filter(n => dot.includes(`"${n}"`));
+  assert.strictEqual(keptCallers.length, 1);
+});
+
+test('buildDiffDot dedupes an edge reachable both as a caller-probe and a callee-probe result', () => {
+  const roots = [{ name: 'R', filePath: 'r.js' }];
+  const other = { name: 'Other', filePath: 'o.js' };
+  const edges = [
+    { from: other, to: roots[0], kind: 'caller' },
+    { from: other, to: roots[0], kind: 'caller' }, // duplicate probe result
+  ];
+  const dot = buildDiffDot(roots, edges);
+  assert.strictEqual((dot.match(/"Other" -> "R"/g) || []).length, 1);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

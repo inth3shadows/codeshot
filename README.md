@@ -92,6 +92,42 @@ See [TECHNICAL.md](TECHNICAL.md#architecture) for the known limitation
 around same-named symbols across files, and why the graph can be slow on
 larger repos.
 
+## Diff-scoped diagram
+
+```bash
+codeshot --diff --path ~/code/myrepo --out changed.svg --format svg
+# ...or against a specific range/ref, for reproducibility in CI:
+codeshot --diff --diff-ref origin/main...HEAD --path ~/code/myrepo --out pr.svg --format svg
+```
+
+A third mode: instead of one named symbol or the whole repo, it diagrams
+just the symbols defined in **changed files** — every symbol codegraph's
+index attributes to a file `git diff` reports as touched — bolded as the
+diagram's roots, with their direct callers/callees fanned out around them
+in the usual house style. Built on the same per-symbol `callers`/`callees`
+fetch as single-symbol mode, just run once per changed symbol instead of
+once for the one you named.
+
+- No value after `--diff` diffs the **working tree against HEAD** (git's own
+  default — "what have I changed right now"). `--diff-ref <range>` diffs an
+  explicit ref or range instead (e.g. `origin/main...HEAD`) — use this form
+  for `--embed --check` in CI, where there's no working tree to diff and an
+  unstaged-diff default would make the check flap for no code reason.
+- `--limit`, `--max-render`, and `--max-symbols` are reused with the same
+  meaning as symbol/architecture mode: `--limit` still bounds each changed
+  symbol's callers/callees fetch, `--max-symbols` now caps how many *changed*
+  symbols get probed (not the whole repo), and `--max-render` bounds only the
+  callers/callees pulled in around the changed symbols — every changed symbol
+  itself is always drawn, since it's the reason the diagram exists.
+- `--depth` and `--max-depth-nodes` have no effect here and are rejected if
+  passed — no multi-hop traversal in this mode.
+- Composes with `--embed`/`--check` the same as the other two modes — a
+  changed-files diagram in a PR description, kept fresh and CI-guarded.
+- Same same-named-symbol caveat as `--architecture` (see TECHNICAL.md):
+  codegraph's `callers`/`callees` take a bare name, so two changed symbols
+  sharing a name in different files can be ambiguous; codeshot warns when
+  this applies rather than silently misattributing an edge.
+
 ## Design decisions
 
 **Why shell out to the CodeGraph CLI instead of reading its SQLite index directly?**

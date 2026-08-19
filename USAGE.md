@@ -73,6 +73,37 @@ corner of a big repo's diagram. `--limit` and
 `--max-render` carry over from symbol mode (see above); `--depth` doesn't
 apply here and is rejected if you pass it.
 
+## Diagramming just what a diff touched
+
+A third question, narrower than either of the above: "what does *this
+change* touch." Run:
+
+```bash
+codeshot --diff --path /path/to/repo --out changed.svg --format svg
+```
+
+With no ref, that diagrams the symbols defined in files your **working tree**
+currently changes (`git diff`'s own default — uncommitted edits). To scope it
+to a specific range instead — a PR's diff, say — pass `--diff-ref`:
+
+```bash
+codeshot --diff --diff-ref origin/main...HEAD --path /path/to/repo --out pr.svg --format svg
+```
+
+Every symbol codegraph attributes to a changed file is drawn bold, as a
+diagram root, with its direct callers/callees fanned out around it — same
+house style as symbol mode, just one root per changed symbol instead of one
+you named. Like `--architecture`, there's no `<SymbolName>` argument here;
+`--diff` (or `--diff-ref`) replaces it.
+
+Use `--diff-ref`, not the bare working-tree default, for anything you'll
+`--embed --check` in CI — there's no working tree on a CI runner to diff
+against, so the unstaged default would make the check fail (or pass) for
+reasons unrelated to the code. `--limit`, `--max-render`, and `--max-symbols`
+carry over, with `--max-symbols` now bounding how many *changed* symbols get
+probed rather than the whole repo's; `--depth`/`--max-depth-nodes` don't
+apply here and are rejected if you pass them.
+
 ## Embedding a diagram in your docs, and keeping it fresh
 
 Both modes take `--embed <file.md>` to write the diagram straight into an
