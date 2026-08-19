@@ -13,7 +13,7 @@ const {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -1184,13 +1184,17 @@ test('CLI --diff runs end-to-end against this repo\'s own real codegraph index a
 
   const out = path.join(os.tmpdir(), `codeshot-diff-selftest-${Date.now()}.svg`);
   try {
-    // --diff-ref HEAD~1 diffs this file's own most recent commit against the
-    // one before it — always touches render/callgraph.js in this repo's real
-    // history, so unlike relying on the ambient working-tree state (which is
-    // clean on a fresh checkout/CI), this is deterministic regardless of
-    // what's currently staged/unstaged. Also exercises the actual `git diff
-    // --name-only -z --end-of-options <ref>` invocation end-to-end, not just
-    // buildDiffDot's pure rendering.
+    // --diff-ref HEAD~1 means `git diff HEAD~1` — working tree vs that
+    // commit, NOT a two-commit HEAD~1-vs-HEAD comparison, so this is NOT
+    // fully independent of the ambient working tree (uncommitted changes,
+    // if any, are included on top). What IS guaranteed regardless of that
+    // state: HEAD~1..HEAD always touched render/callgraph.js in this repo's
+    // real history, so the committed diff alone is enough for the
+    // assertions below (non-blank SVG, at least one bold root) to hold —
+    // they don't depend on exactly what's staged/unstaged, just that it's
+    // never LESS than that committed floor. Also exercises the actual
+    // `git diff --name-only -z --end-of-options <ref>` invocation
+    // end-to-end, not just buildDiffDot's pure rendering.
     execFileSync('node', [callgraphJs, '--diff', '--diff-ref', 'HEAD~1', '--path', repoRoot, '--out', out, '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
     const svg = fs.readFileSync(out, 'utf8');
     assert.match(svg, /<svg/, 'expected --diff to produce real SVG output');
@@ -1549,6 +1553,26 @@ test('diffEmbedRefusal names the embed target and the ref (or HEAD) it found not
 test('diffEmptyRootsWarning is null when every root has at least one edge, fires with the aggregate count otherwise', () => {
   assert.strictEqual(diffEmptyRootsWarning(0, 5), null);
   assert.match(diffEmptyRootsWarning(2, 5), /2 of 5 changed symbol\(s\) have no callers or callees/);
+});
+
+test('diffEmbedRefusalNoSymbols reports the changed-file count, the embed target, and a codegraph sync hint, but not the "found no changed files" wording diffEmbedRefusal uses', () => {
+  const msg = diffEmbedRefusalNoSymbols('/repo', 3, 'docs.md');
+  assert.match(msg, /3 changed file\(s\) but no matching symbols/);
+  assert.match(msg, /refusing to overwrite the existing diagram embedded in 'docs\.md'/);
+  assert.match(msg, /codegraph sync \/repo/);
+  assert.doesNotMatch(msg, /found no changed files/);
+});
+
+test('diffDuplicateNameWarning fires on a real cross-file collision and never claims the node -f re-probe --architecture does', () => {
+  const symbols = [
+    { name: 'parse', filePath: 'a.js' },
+    { name: 'parse', filePath: 'b.js' },
+    { name: 'unique', filePath: 'c.js' },
+  ];
+  const msg = diffDuplicateNameWarning(symbols);
+  assert.match(msg, /1 symbol name\(s\).*parse/);
+  assert.doesNotMatch(msg, /re-probes/);
+  assert.strictEqual(diffDuplicateNameWarning([{ name: 'unique', filePath: 'c.js' }]), null);
 });
 
 test('buildDiffDot bolds every root and draws caller -> root / root -> callee edges', () => {

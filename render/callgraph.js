@@ -946,6 +946,32 @@ function diffEmbedRefusal(diffRef, embedFile) {
   return `codeshot: --diff found no changed files${diffRef ? ` for '${diffRef}'` : ' (working tree matches HEAD)'} — refusing to overwrite the existing diagram embedded in '${embedFile}' with a blank one. Pass --diff-ref to target a specific range, or drop --embed to render a (blank) image on its own.`;
 }
 
+// Sibling of diffEmbedRefusal for the OTHER way a --diff can end up with
+// zero roots: real changed files, but none of them define a symbol
+// codegraph indexed (a docs-only/config-only diff, or an unsupported
+// language). Same data-loss risk, different cause — kept as a separate
+// message (mirrors diffNoChangesWarning/diffNoSymbolsWarning's existing
+// split) rather than overloading diffEmbedRefusal's wording, which
+// specifically (and would then wrongly) says "found no changed files".
+function diffEmbedRefusalNoSymbols(repoPath, changedCount, embedFile) {
+  return `codeshot: --diff found ${changedCount} changed file(s) but no matching symbols in codegraph's index — refusing to overwrite the existing diagram embedded in '${embedFile}' with a blank one. They may not define top-level symbols, may be in a language codegraph doesn't index, or the index may be stale (run 'codegraph sync ${repoPath}'); drop --embed to render a (blank) image on its own instead.`;
+}
+
+// duplicateNameWarning's "resolved" message explicitly claims codeshot
+// re-probes a colliding name with codegraph's file-qualified 'node -f' —
+// true for --architecture's probeFileEdges, but --diff mode never does
+// that re-probe (see TECHNICAL.md's Known Limitations): every root,
+// colliding or not, is probed by plain bare-name callers/callees. Reusing
+// duplicateNameWarning's text here would tell the user a mitigation
+// happened that didn't, which is worse than no warning at all — this is a
+// dedicated, honest version for --diff's actual (unmitigated) behavior.
+function diffDuplicateNameWarning(symbols) {
+  const dupes = duplicateNames(symbols);
+  if (!dupes.size) return null;
+  const names = [...dupes];
+  return `codeshot: --diff: ${names.length} symbol name(s) among the changed/pulled-in symbols appear in more than one file (e.g. ${names.slice(0, 3).join(', ')}) — probed by bare name only (--diff mode does not re-probe with codegraph's file-qualified 'node -f' the way --architecture does), so an edge may be attributed to the wrong file.`;
+}
+
 // Unlike emptyGraphWarning (one queried symbol, so one warning reads
 // naturally), --diff can have many roots — a per-root warning would be
 // noise on a large diff, so this reports the aggregate count instead of
@@ -1059,7 +1085,19 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
 
   const allSymbols = await enumerateAllSymbols(repoPath);
   const matched = matchRootSymbols(allSymbols, changedFiles);
-  if (matched.length === 0) console.error(diffNoSymbolsWarning(repoPath, changedFiles.length));
+  if (matched.length === 0) {
+    // Same data-loss risk the changedFiles.length===0 branch above guards
+    // against, different cause: real changed files, but none define a
+    // symbol codegraph indexed (docs/config-only diff, unsupported
+    // language). Still zero roots → still a blank graph → still must not
+    // silently clobber a committed diagram.
+    if (embedFile) {
+      console.error(diffEmbedRefusalNoSymbols(repoPath, changedFiles.length, embedFile));
+      process.exit(1);
+    }
+    console.error(diffNoSymbolsWarning(repoPath, changedFiles.length));
+    return buildDiffDot([], [], { maxRender, tooltips });
+  }
 
   const budgetWarning = diffSymbolBudgetWarning(matched.length, maxSymbols);
   if (budgetWarning) console.error(budgetWarning);
@@ -1070,13 +1108,14 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
   // bare-name callers/callees query. Scoped to ALL of allSymbols whose name
   // matches a root's — not just roots-vs-roots — so a root colliding with
   // an unrelated, unchanged symbol elsewhere in the repo is caught too;
-  // duplicateNameWarning(roots) alone would miss that (a diff touching just
-  // one `parse` finds no duplicate among a 1-symbol root set even if the
-  // repo has three). Reusing the existing warning rather than
-  // reimplementing --architecture's heavier node -f fix keeps this v1
-  // honest about the gap instead of hiding it.
+  // duplicateNames(roots) alone would miss that (a diff touching just one
+  // `parse` finds no duplicate among a 1-symbol root set even if the repo
+  // has three). Uses diffDuplicateNameWarning, NOT duplicateNameWarning —
+  // the latter's text claims a file-qualified 'node -f' re-probe that only
+  // --architecture actually performs; --diff never does, so reusing it here
+  // would tell the user a mitigation happened that didn't.
   const rootNames = new Set(roots.map(r => r.name));
-  const dupeWarning = duplicateNameWarning(allSymbols.filter(s => rootNames.has(s.name)));
+  const dupeWarning = diffDuplicateNameWarning(allSymbols.filter(s => rootNames.has(s.name)));
   if (dupeWarning) console.error(dupeWarning);
 
   const edges = [];
@@ -1592,5 +1631,5 @@ module.exports = {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning,
 };
