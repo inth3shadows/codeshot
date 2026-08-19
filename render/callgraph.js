@@ -233,11 +233,24 @@ function emptyGraphWarning(symbol, callers, callees) {
   return `codeshot: '${symbol}' has no callers or callees in codegraph's index — the diagram is just the symbol itself. It may be unused (dead code) or an entry point, or codegraph's index may be incomplete for its file.`;
 }
 
+// A node's identity key for dedup/set-membership purposes — (name, filePath)
+// pairs, since neither alone uniquely identifies a symbol (see
+// nodeIdentities' collision handling below for the graphviz-id-specific
+// version of this same problem). Single source of truth for this string
+// format: dedupeNodes/dedupeEdges/collectTransitive (pre-existing) and
+// buildDiffDot/runDiffMode (--diff mode) all key on exactly this, formerly
+// each with their own inline copy — a future format change (e.g. folding in
+// `kind` so a same-named function and file-kind entry stop colliding) now
+// only needs one edit instead of finding every copy.
+function nodeKey(n) {
+  return `${n.name} ${n.filePath}`;
+}
+
 function dedupeNodes(nodes) {
   const seen = new Set();
   const result = [];
   for (const n of nodes) {
-    const key = `${n.name} ${n.filePath}`;
+    const key = nodeKey(n);
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(n);
@@ -249,7 +262,7 @@ function dedupeEdges(edges) {
   const seen = new Set();
   const result = [];
   for (const e of edges) {
-    const key = `${e.from.name} ${e.from.filePath} -> ${e.to.name} ${e.to.filePath}`;
+    const key = `${nodeKey(e.from)} -> ${nodeKey(e.to)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(e);
@@ -459,7 +472,7 @@ async function collectTransitive(direction, repoPath, limit, maxDepth, seedNodes
         continue; // one node's callers/callees query failing (e.g. an ambiguous name) shouldn't abort the whole traversal
       }
       for (const r of dedupeNodes(results || [])) {
-        const rKey = `${r.name} ${r.filePath}`;
+        const rKey = nodeKey(r);
         edges.push(direction === 'callers' ? { from: r, to: node, depth: hop } : { from: node, to: r, depth: hop });
         if (discovered.has(rKey)) continue;
         if (discovered.size >= budget) { truncated = true; continue; }
@@ -919,7 +932,13 @@ function gitDiffFiles(repoPath, ref) {
   // git's diff output always uses forward slashes internally regardless of
   // platform, so no separator normalization is needed on this side (unlike
   // matchRootSymbols' defensive normalization of codegraph's OWN filePath).
-  return out.split('\0').map(l => l.trim()).filter(Boolean);
+  // Deliberately no .trim() here: -z's NUL-terminated entries carry no
+  // surrounding whitespace to strip, and trimming would silently corrupt a
+  // (legal, if rare) filename with real leading/trailing spaces — exactly
+  // the kind of mangling -z was chosen to avoid in the first place. The
+  // trailing empty string from the final NUL terminator is what
+  // filter(Boolean) exists to drop.
+  return out.split('\0').filter(Boolean);
 }
 
 // Pure: which enumerated symbols live in one of the changed files. Split out
@@ -928,7 +947,15 @@ function gitDiffFiles(repoPath, ref) {
 // shelling out to git or codegraph.
 function matchRootSymbols(symbols, changedFiles) {
   const changedSet = new Set((changedFiles || []).map(f => String(f).replace(/\\/g, '/')));
-  return (symbols || []).filter(s => s.filePath && changedSet.has(String(s.filePath).replace(/\\/g, '/')));
+  // `symbols` (from enumerateAllSymbols/unwrapQueryNodes) deliberately keeps
+  // "kind":"file" entries — needed for --architecture's anonymous-callback
+  // probing — but one has filePath equal to the file it represents, so
+  // without this exclusion a changed file itself would match and get drawn
+  // as a bold diff root alongside its real symbols: undocumented, and it
+  // would eat into --max-symbols/--max-render budget meant for actual
+  // changed symbols. Confirmed live: --diff drew "callgraph.js"/"run.js"
+  // as roots before this filter.
+  return (symbols || []).filter(s => s.kind !== 'file' && s.filePath && changedSet.has(String(s.filePath).replace(/\\/g, '/')));
 }
 
 function diffNoChangesWarning(diffRef) {
@@ -944,6 +971,23 @@ function diffNoChangesWarning(diffRef) {
 // the kind of quiet data loss a script or pre-commit hook could easily miss.
 function diffEmbedRefusal(diffRef, embedFile) {
   return `codeshot: --diff found no changed files${diffRef ? ` for '${diffRef}'` : ' (working tree matches HEAD)'} — refusing to overwrite the existing diagram embedded in '${embedFile}' with a blank one. Pass --diff-ref to target a specific range, or drop --embed to render a (blank) image on its own.`;
+}
+
+// Shared by both "zero roots" branches in runDiffMode (empty diff, and
+// changed-but-unmatched files) so their identical refuse-vs-warn control
+// flow lives in one place. `check` matters here: --embed --check never
+// WRITES anything (finishOutput's check branch only compares and reports),
+// so the refusal's whole rationale — "don't silently overwrite a committed
+// diagram" — doesn't apply. Without this, --check would always hit the
+// refusal on an empty/unmatched diff instead of running its intended
+// stale/fresh comparison, breaking exactly the CI drift-guard workflow the
+// docs recommend (`--diff --diff-ref <range> --embed doc.md --check`).
+function diffRefuseOrWarn(embedFile, check, refusalMsg, warnMsg) {
+  if (embedFile && !check) {
+    console.error(refusalMsg);
+    process.exit(1);
+  }
+  console.error(warnMsg);
 }
 
 // Sibling of diffEmbedRefusal for the OTHER way a --diff can end up with
@@ -969,7 +1013,21 @@ function diffDuplicateNameWarning(symbols) {
   const dupes = duplicateNames(symbols);
   if (!dupes.size) return null;
   const names = [...dupes];
-  return `codeshot: --diff: ${names.length} symbol name(s) among the changed/pulled-in symbols appear in more than one file (e.g. ${names.slice(0, 3).join(', ')}) — probed by bare name only (--diff mode does not re-probe with codegraph's file-qualified 'node -f' the way --architecture does), so an edge may be attributed to the wrong file.`;
+  // Understating this as "an edge may be attributed to the wrong file"
+  // would be misleading in the specific case of two ROOTS sharing a name:
+  // both run the identical bare-name query, so codegraph's ambiguous
+  // merged result set is attached to BOTH in full — e.g. a caller of only
+  // root B's `parse` is drawn as calling root A's `parse` too, not a single
+  // misattributed edge.
+  return `codeshot: --diff: ${names.length} symbol name(s) among the changed/pulled-in symbols appear in more than one file (e.g. ${names.slice(0, 3).join(', ')}) — probed by bare name only (--diff mode does not re-probe with codegraph's file-qualified 'node -f' the way --architecture does). If two of these are both diagram roots, codegraph's ambiguous merged result is attached to BOTH in full, not split between them; otherwise, an edge may simply land on the wrong one.`;
+}
+
+// Mirrors truncationWarning's "hit --limit exactly" signal, but aggregated
+// across all changed roots (not one line per root×direction) — the same
+// noise tradeoff diffEmptyRootsWarning already makes for a large diff.
+function diffTruncationWarning(truncatedRootNames, limit) {
+  if (truncatedRootNames.length === 0) return null;
+  return `codeshot: ${truncatedRootNames.length} changed symbol(s) had a callers/callees fetch return exactly --limit (${limit}) results (e.g. ${truncatedRootNames.slice(0, 3).join(', ')}) — codegraph's --limit may have cut off more for these; rerun with a larger --limit to see the rest.`;
 }
 
 // Unlike emptyGraphWarning (one queried symbol, so one warning reads
@@ -1005,7 +1063,7 @@ function diffSymbolBudgetWarning(matchedCount, budget) {
 // takes for symbol mode.
 function buildDiffDot(roots, edges, { maxRender, tooltips = false } = {}) {
   const esc = s => String(s).replace(/"/g, '\\"');
-  const keyOf = n => `${n.name} ${n.filePath}`;
+  const keyOf = nodeKey; // local alias, kept for readability at call sites below
   const rootKeys = new Set(roots.map(keyOf));
   const dedupedEdges = dedupeEdges(edges);
 
@@ -1065,18 +1123,10 @@ function buildDiffDot(roots, edges, { maxRender, tooltips = false } = {}) {
 // parallel codegraph calls against one index race on its schema_versions
 // table. `fatal: false` on each probe lets one bad root (an ambiguous or
 // since-deleted name) skip past without aborting the rest of the diff.
-async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, tooltips, embedFile }) {
+async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, tooltips, embedFile, check }) {
   const changedFiles = gitDiffFiles(repoPath, diffRef);
   if (changedFiles.length === 0) {
-    // With --embed, rendering the blank graph anyway would silently
-    // overwrite a real, previously-committed diagram — see
-    // diffEmbedRefusal. Without --embed there's nothing to protect, so
-    // this stays the same warn-and-render-blank behavior as before.
-    if (embedFile) {
-      console.error(diffEmbedRefusal(diffRef, embedFile));
-      process.exit(1);
-    }
-    console.error(diffNoChangesWarning(diffRef));
+    diffRefuseOrWarn(embedFile, check, diffEmbedRefusal(diffRef, embedFile), diffNoChangesWarning(diffRef));
     // No point running enumerateAllSymbols' full-index query (potentially
     // slow/large, per its own comment) when there is nothing it could match —
     // an empty diff can only ever produce an empty root set.
@@ -1091,11 +1141,7 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
     // symbol codegraph indexed (docs/config-only diff, unsupported
     // language). Still zero roots → still a blank graph → still must not
     // silently clobber a committed diagram.
-    if (embedFile) {
-      console.error(diffEmbedRefusalNoSymbols(repoPath, changedFiles.length, embedFile));
-      process.exit(1);
-    }
-    console.error(diffNoSymbolsWarning(repoPath, changedFiles.length));
+    diffRefuseOrWarn(embedFile, check, diffEmbedRefusalNoSymbols(repoPath, changedFiles.length, embedFile), diffNoSymbolsWarning(repoPath, changedFiles.length));
     return buildDiffDot([], [], { maxRender, tooltips });
   }
 
@@ -1119,23 +1165,32 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
   if (dupeWarning) console.error(dupeWarning);
 
   const edges = [];
+  const truncatedRootNames = [];
   for (const root of roots) {
     const callersResult = await runCodegraph(['callers', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
-    for (const c of (callersResult?.callers || [])) edges.push({ from: c, to: root });
+    const callersArr = callersResult?.callers || [];
+    for (const c of callersArr) edges.push({ from: c, to: root });
     const calleesResult = await runCodegraph(['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
-    for (const c of (calleesResult?.callees || [])) edges.push({ from: root, to: c });
+    const calleesArr = calleesResult?.callees || [];
+    for (const c of calleesArr) edges.push({ from: root, to: c });
+    // Same "hit --limit exactly" heuristic truncationWarning uses for
+    // symbol mode — codegraph's JSON has no total/truncated field, so a
+    // result count landing exactly on --limit is the only signal available.
+    if (callersArr.length >= limit || calleesArr.length >= limit) truncatedRootNames.push(root.name);
   }
+  const diffTruncWarning = diffTruncationWarning(truncatedRootNames, limit);
+  if (diffTruncWarning) console.error(diffTruncWarning);
 
   const dedupedEdges = dedupeEdges(edges);
-  const rootKeys = new Set(roots.map(r => `${r.name} ${r.filePath}`));
+  const rootKeys = new Set(roots.map(nodeKey));
   const nonRootNodes = dedupeNodes(dedupedEdges.flatMap(e => [e.from, e.to]))
-    .filter(n => !rootKeys.has(`${n.name} ${n.filePath}`));
+    .filter(n => !rootKeys.has(nodeKey(n)));
   const note = renderTruncationNote('callers/callees', nonRootNodes.length, maxRender);
   if (note) console.error(note);
 
   const rootsWithEdges = new Set();
   for (const e of dedupedEdges) {
-    const fk = `${e.from.name} ${e.from.filePath}`, tk = `${e.to.name} ${e.to.filePath}`;
+    const fk = nodeKey(e.from), tk = nodeKey(e.to);
     if (rootKeys.has(fk)) rootsWithEdges.add(fk);
     if (rootKeys.has(tk)) rootsWithEdges.add(tk);
   }
@@ -1386,6 +1441,10 @@ async function main() {
 
   const symbol = positionals[0];
   const diffMode = values.diff || values['diff-ref'] !== undefined;
+  // Shared by the --depth/--max-depth-nodes rejection messages below, so
+  // the "which of the two modes is active" label can't drift out of sync
+  // between them.
+  const otherModeLabel = values.architecture ? '--architecture' : '--diff';
   if (values.architecture && diffMode) {
     console.error('codeshot: --architecture cannot be combined with --diff');
     console.error(USAGE);
@@ -1440,9 +1499,8 @@ async function main() {
     process.exit(1);
   }
   if ((values.architecture || diffMode) && values.depth !== '1') {
-    const mode = values.architecture ? '--architecture' : '--diff';
     const reason = values.architecture ? 'there is no multi-hop file traversal' : 'diff mode only draws direct callers/callees around each changed symbol';
-    console.error(`codeshot: --depth has no effect with ${mode} (${reason})`);
+    console.error(`codeshot: --depth has no effect with ${otherModeLabel} (${reason})`);
     process.exit(1);
   }
   let maxDepthNodes = DEFAULT_NODE_BUDGET;
@@ -1453,8 +1511,7 @@ async function main() {
       process.exit(1);
     }
     if ((values.architecture || diffMode) && maxDepthNodes !== DEFAULT_NODE_BUDGET) {
-      const mode = values.architecture ? '--architecture' : '--diff';
-      console.error(`codeshot: --max-depth-nodes has no effect with ${mode} (there is no multi-hop traversal)`);
+      console.error(`codeshot: --max-depth-nodes has no effect with ${otherModeLabel} (there is no multi-hop traversal)`);
       process.exit(1);
     }
   }
@@ -1535,7 +1592,7 @@ async function main() {
   const tooltips = SVG_TOOLTIP_FORMATS.has(format.toLowerCase());
 
   if (diffMode) {
-    const dot = await runDiffMode(repoPath, { diffRef: values['diff-ref'] || null, limit, maxSymbols, maxRender, tooltips, embedFile });
+    const dot = await runDiffMode(repoPath, { diffRef: values['diff-ref'] || null, limit, maxSymbols, maxRender, tooltips, embedFile, check: values.check });
     const alt = `Diff-scoped call graph${values['diff-ref'] ? ` (${values['diff-ref']})` : ''} — generated by codeshot`;
     finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: diffMarkerId, alt });
     return;
@@ -1632,4 +1689,5 @@ module.exports = {
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
   diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning,
+  diffRefuseOrWarn, diffTruncationWarning, nodeKey,
 };

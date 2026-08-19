@@ -14,6 +14,7 @@ const {
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
   diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning,
+  diffRefuseOrWarn, diffTruncationWarning, nodeKey,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -1334,6 +1335,44 @@ test('CLI --diff --embed on an empty diff refuses to overwrite an existing embed
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('CLI --diff --embed --check on an empty diff runs the normal drift comparison instead of refusing (regression: --check was never wired to runDiffMode)', () => {
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const repoRoot = path.join(__dirname, '..');
+  const callgraphJs = path.join(repoRoot, 'render', 'callgraph.js');
+
+  try {
+    execFileSync('codegraph', ['callers', '--path', repoRoot, '--limit', '1', '--json', '--', 'buildDot'], { stdio: 'pipe' });
+  } catch {
+    console.log('  # skipped: `codegraph` not on PATH or this repo is not codegraph-indexed');
+    return;
+  }
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codeshot-diff-embed-check-'));
+  const doc = path.join(dir, 'DOC.md');
+  // A deliberately stale block — this isn't what a fresh blank render's
+  // markdown looks like, so --check should report drift (exit 1) via
+  // finishOutput's normal comparison, NOT via diffEmbedRefusal's "refusing
+  // to overwrite" message (--check never writes, so that refusal's whole
+  // rationale doesn't apply here — see diffRefuseOrWarn).
+  const original = '# Doc\n\n<!-- codeshot:diff:start -->\nstale\n<!-- codeshot:diff:end -->\n';
+  fs.writeFileSync(doc, original, 'utf8');
+  let threw = false;
+  try {
+    execFileSync('node', [callgraphJs, '--diff', '--diff-ref', 'HEAD..HEAD', '--path', repoRoot, '--embed', doc, '--check', '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    threw = true;
+    assert.doesNotMatch(err.stderr, /refusing to overwrite/, '--check must never hit the embed-refusal path');
+    assert.match(err.stderr, /out of date/, 'expected the normal --check drift report instead');
+  }
+  assert.strictEqual(threw, true, 'expected --check to report drift against the deliberately stale stub block');
+  // --check must never write, on either code path.
+  assert.strictEqual(fs.readFileSync(doc, 'utf8'), original);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('CLI --embed --architecture round-trips: writes image + block, --check then passes, drift then fails', () => {
   const { execFileSync } = require('child_process');
   const path = require('path');
@@ -1573,6 +1612,49 @@ test('diffDuplicateNameWarning fires on a real cross-file collision and never cl
   assert.match(msg, /1 symbol name\(s\).*parse/);
   assert.doesNotMatch(msg, /re-probes/);
   assert.strictEqual(diffDuplicateNameWarning([{ name: 'unique', filePath: 'c.js' }]), null);
+});
+
+test('nodeKey pairs name and filePath so distinct symbols never collide by name alone', () => {
+  assert.strictEqual(nodeKey({ name: 'foo', filePath: 'a.js' }), 'foo a.js');
+  assert.notStrictEqual(
+    nodeKey({ name: 'foo', filePath: 'a.js' }),
+    nodeKey({ name: 'foo', filePath: 'b.js' }),
+  );
+});
+
+test('diffTruncationWarning is null with no truncated roots, fires with the aggregate count and examples otherwise', () => {
+  assert.strictEqual(diffTruncationWarning([], 50), null);
+  const msg = diffTruncationWarning(['foo', 'bar'], 50);
+  assert.match(msg, /2 changed symbol\(s\)/);
+  assert.match(msg, /--limit \(50\)/);
+  assert.match(msg, /foo, bar/);
+});
+
+test('diffRefuseOrWarn logs only the warn message (never exits) when there is no embedFile, or when check is true even with one', () => {
+  const originalError = console.error;
+  for (const [embedFile, check] of [[null, false], ['doc.md', true]]) {
+    const logs = [];
+    console.error = (msg) => logs.push(msg);
+    try {
+      diffRefuseOrWarn(embedFile, check, 'REFUSAL', 'WARN');
+    } finally {
+      console.error = originalError;
+    }
+    assert.deepStrictEqual(logs, ['WARN'], `expected only the warn message for embedFile=${embedFile}, check=${check}`);
+  }
+  // The actual embedFile && !check → refusal + process.exit(1) branch is
+  // exercised via the real CLI (see the --diff --embed CLI tests below) —
+  // calling process.exit(1) directly in-process here would kill the test
+  // runner itself.
+});
+
+test('matchRootSymbols excludes "kind":"file" index entries — a changed FILE itself must not become a diagram root', () => {
+  const symbols = [
+    { name: 'a.js', filePath: 'a.js', kind: 'file' },
+    { name: 'realSymbol', filePath: 'a.js' },
+  ];
+  const roots = matchRootSymbols(symbols, ['a.js']);
+  assert.deepStrictEqual(roots.map(r => r.name), ['realSymbol']);
 });
 
 test('buildDiffDot bolds every root and draws caller -> root / root -> callee edges', () => {
