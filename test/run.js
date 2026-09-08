@@ -3,7 +3,7 @@
 
 const assert = require('assert');
 const {
-  buildDot, nodeIdentities, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
+  buildDot, nodeIdentities, isTestRef, truncationWarning, readTruncation, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, duplicateNames, parseNodeCalls, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
@@ -310,6 +310,34 @@ test('renderTruncationNote is null when maxRender is unset or not exceeded', () 
 test('truncationWarning fires when results hit the limit', () => {
   const results = Array.from({ length: 20 }, (_, i) => ({ name: `Fn${i}` }));
   assert.match(truncationWarning('callers', results, 20), /showing 20 callers/);
+});
+
+test('truncationWarning prefers codegraph\'s reported truncated/total over the count heuristic', () => {
+  const results = new Array(20).fill({ name: 'x' });
+  // Authoritative yes: says how many were cut and what --limit would show them.
+  const cut = truncationWarning('callers', results, 20, { callers: results, total: 57, limit: 20, truncated: true });
+  assert.match(cut, /showing 20 of 57 callers/);
+  assert.match(cut, /cut off 37/);
+  assert.match(cut, /--limit 57/);
+  // Authoritative no: exactly --limit results that ARE all of them. The
+  // heuristic warns here; the reported field is what stops the false warning.
+  assert.strictEqual(
+    truncationWarning('callers', results, 20, { callers: results, total: 20, limit: 20, truncated: false }),
+    null
+  );
+  // A version that reports neither field falls back to the heuristic.
+  assert.match(truncationWarning('callers', results, 20, { callers: results }), /may have cut off more/);
+});
+
+test('readTruncation reads truncated by type, so `false` is not mistaken for absent', () => {
+  const results = new Array(5).fill({ name: 'x' });
+  assert.deepStrictEqual(readTruncation({ truncated: false, total: 5 }, results, 5), { truncated: false, total: 5 });
+  assert.deepStrictEqual(readTruncation({ truncated: true, total: 9 }, results, 5), { truncated: true, total: 9 });
+  // total missing or not an integer -> unknown, but `truncated` still stands.
+  assert.deepStrictEqual(readTruncation({ truncated: true }, results, 5), { truncated: true, total: null });
+  // No fields at all -> heuristic.
+  assert.deepStrictEqual(readTruncation(undefined, results, 5), { truncated: true, total: null });
+  assert.deepStrictEqual(readTruncation({}, results.slice(0, 2), 5), { truncated: false, total: null });
 });
 
 test('truncationWarning is null when under the limit', () => {
