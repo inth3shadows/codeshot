@@ -216,9 +216,39 @@ function isTestRef(node) {
   return nameLooksLikeTest || inTestDir || testFilename;
 }
 
-function truncationWarning(kind, results, limit) {
-  if (!Array.isArray(results) || results.length < limit) return null;
-  return `codeshot: showing ${results.length} ${kind} — codegraph's --limit (${limit}) may have cut off more; rerun with --limit <n> to see additional ${kind}.`;
+// Did a callers/callees fetch leave matches unshown? Returns
+// { truncated, total } with total null when it isn't knowable.
+//
+// codegraph now reports this outright: its callers/callees --json carries
+// `truncated` and `total` alongside the array. Older versions carry neither,
+// and codeshot has to fall back to "the result count landed exactly on
+// --limit" — a guess in BOTH directions: a symbol with exactly --limit callers
+// and no more trips it (a false warning), and it can never say how many were
+// cut. Prefer the reported fields whenever they are present; keep the
+// heuristic only for versions that don't have them, since `truncated: false`
+// is real information the heuristic cannot express.
+//
+// Read `truncated` by type, not truthiness: `false` is the authoritative "no,
+// nothing was cut" answer, and treating it as absent would fall back to the
+// heuristic and re-introduce the false warning it exists to remove.
+function readTruncation(response, results, limit) {
+  if (response && typeof response.truncated === 'boolean') {
+    return {
+      truncated: response.truncated,
+      total: Number.isInteger(response.total) ? response.total : null,
+    };
+  }
+  return { truncated: Array.isArray(results) && results.length >= limit, total: null };
+}
+
+function truncationWarning(kind, results, limit, response) {
+  const { truncated, total } = readTruncation(response, results, limit);
+  if (!truncated) return null;
+  const shown = Array.isArray(results) ? results.length : 0;
+  if (total !== null) {
+    return `codeshot: showing ${shown} of ${total} ${kind} — codegraph's --limit (${limit}) cut off ${total - shown}; rerun with --limit ${total} to see the rest.`;
+  }
+  return `codeshot: showing ${shown} ${kind} — codegraph's --limit (${limit}) may have cut off more; rerun with --limit <n> to see additional ${kind}.`;
 }
 
 // A symbol with no callers AND no callees renders as a lone box — a valid but
@@ -1064,7 +1094,7 @@ function diffDuplicateNameWarning(symbols) {
 // noise tradeoff diffEmptyRootsWarning already makes for a large diff.
 function diffTruncationWarning(truncatedRootNames, limit) {
   if (truncatedRootNames.length === 0) return null;
-  return `codeshot: ${truncatedRootNames.length} changed symbol(s) had a callers/callees fetch return exactly --limit (${limit}) results (e.g. ${truncatedRootNames.slice(0, 3).join(', ')}) — codegraph's --limit may have cut off more for these; rerun with a larger --limit to see the rest.`;
+  return `codeshot: ${truncatedRootNames.length} changed symbol(s) had a callers/callees fetch cut off by --limit (${limit}) (e.g. ${truncatedRootNames.slice(0, 3).join(', ')}); rerun with a larger --limit to see the rest.`;
 }
 
 // Unlike emptyGraphWarning (one queried symbol, so one warning reads
@@ -1232,10 +1262,11 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
     const calleesResult = await runCodegraph(['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
     const calleesArr = calleesResult?.callees || [];
     for (const c of calleesArr) edges.push({ from: root, to: c });
-    // Same "hit --limit exactly" heuristic truncationWarning uses for
-    // symbol mode — codegraph's JSON has no total/truncated field, so a
-    // result count landing exactly on --limit is the only signal available.
-    if (callersArr.length >= limit || calleesArr.length >= limit) truncatedRootNames.push(root.name);
+    // Same signal truncationWarning uses for symbol mode, via the same
+    // helper: codegraph's reported `truncated` when the installed version
+    // has it, the "landed exactly on --limit" heuristic when it doesn't.
+    if (readTruncation(callersResult, callersArr, limit).truncated
+      || readTruncation(calleesResult, calleesArr, limit).truncated) truncatedRootNames.push(root.name);
   }
   const diffTruncWarning = diffTruncationWarning(truncatedRootNames, limit);
   if (diffTruncWarning) console.error(diffTruncWarning);
@@ -1692,11 +1723,15 @@ async function main() {
   // '--' before the symbol: codegraph's own arg parser otherwise misreads a
   // symbol starting with '-' (e.g. a mangled/generated name) as a flag.
   const resolvedSymbol = await resolveSymbol(symbol, repoPath);
-  const { callers } = await runCodegraph(['callers', '--path', repoPath, '--limit', String(limit), '--json', '--', resolvedSymbol]);
-  const { callees } = await runCodegraph(['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', resolvedSymbol]);
+  // Keep the whole response, not just the array: it also carries `truncated`
+  // and `total`, which is how truncationWarning avoids guessing.
+  const callersResponse = await runCodegraph(['callers', '--path', repoPath, '--limit', String(limit), '--json', '--', resolvedSymbol]);
+  const calleesResponse = await runCodegraph(['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', resolvedSymbol]);
+  const callers = callersResponse?.callers;
+  const callees = calleesResponse?.callees;
 
-  for (const [kind, results] of [['callers', callers || []], ['callees', callees || []]]) {
-    const warning = truncationWarning(kind, results, limit);
+  for (const [kind, results, response] of [['callers', callers || [], callersResponse], ['callees', callees || [], calleesResponse]]) {
+    const warning = truncationWarning(kind, results, limit, response);
     if (warning) console.error(warning);
   }
 
@@ -1744,7 +1779,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  buildDot, nodeIdentities, isTestRef, truncationWarning, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
+  buildDot, nodeIdentities, isTestRef, truncationWarning, readTruncation, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, duplicateNames, parseNodeCalls, aggregateFileEdges,
   topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
