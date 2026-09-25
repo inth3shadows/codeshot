@@ -88,9 +88,13 @@ two extra flags exist specifically for this mode:
 mode (callees fetched per probed symbol; distinct nodes actually drawn,
 here ranked by busiest file rather than caller/callee priority).
 
-See [TECHNICAL.md](TECHNICAL.md#architecture) for the known limitation
-around same-named symbols across files, and why the graph can be slow on
-larger repos.
+A symbol name that exists in more than one file (two `handle`s, say) is
+re-probed with CodeGraph's file-qualified `codegraph node -f`, so its edges
+land on the right file instead of on the union of both. Two *files* sharing a
+basename (two `index.js`) still can't be told apart; Codeshot warns when that
+applies. See [TECHNICAL.md](TECHNICAL.md#known-limitations) for the details,
+including the cases where the file-qualified probe falls back, and why the
+graph can be slow on larger repos.
 
 ## Diff-scoped diagram
 
@@ -129,10 +133,11 @@ once for the one you named.
   same pattern `--group-depth` uses for `--architecture`), so a release-range
   diagram and a PR-range diagram can live in the same doc without one
   silently overwriting the other; a bare `--diff` keeps the plain `codeshot:diff` id.
-- Same same-named-symbol caveat as `--architecture` (see TECHNICAL.md):
-  codegraph's `callers`/`callees` take a bare name, so two changed symbols
-  sharing a name in different files can be ambiguous; codeshot warns when
-  this applies rather than silently misattributing an edge.
+- Unlike `--architecture`, this mode does **not** re-probe same-named
+  symbols by file (see TECHNICAL.md): codegraph's `callers`/`callees` take a
+  bare name, so two changed symbols sharing a name in different files can be
+  ambiguous; codeshot warns when this applies rather than silently
+  misattributing an edge.
 
 ## Design decisions
 
