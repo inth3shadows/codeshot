@@ -561,10 +561,9 @@ function emptyArchitectureWarning(fileEdges) {
   return `codeshot: --architecture found no cross-file call edges — the diagram is blank. codegraph's index has no resolved calls between files in this repo (it may be small or single-file, or the index may be missing — run 'codegraph init <path>' to build it, then 'codegraph status' to confirm).`;
 }
 
-// The set of names that appear in more than one distinct FILE. Shared by
-// probeFileEdges (which re-probes exactly these, file-qualified) and by
-// duplicateNameWarning, so the fix and the warning can never disagree about
-// what counts as a duplicate.
+// The set of names that appear in more than one distinct FILE: the names
+// probeFileEdges and --diff attribute by file rather than taking the
+// bare-name union.
 //
 // Counting distinct files, not symbol occurrences, is load-bearing: two symbols
 // sharing a name inside ONE file (Go's `String()` on two types in one file, two
@@ -651,7 +650,7 @@ function parseNodeCalls(out, expectedFile) {
 function duplicateNameWarning(unresolvedNames) {
   const names = [...new Set(unresolvedNames || [])];
   if (!names.length) return null;
-  return `codeshot: ${names.length} name(s) defined in more than one file (e.g. ${names.slice(0, 3).join(', ')}) got no per-file answer from codegraph, so their callees are the union across every same-named definition and some edges may be attributed to the wrong file. Per-definition results need a codegraph with upstream #1801 (not in any npm release through 1.6.0); without it, same-named files (e.g. two index.js) can't be told apart at all.`;
+  return `codeshot: ${names.length} name(s) defined in more than one file (e.g. ${names.slice(0, 3).join(', ')}) got no per-file answer from codegraph, so their callees are the union across every same-named definition and some edges may be attributed to the wrong file. Per-definition results need a codegraph with upstream #1801 (not in any npm release through 1.6.0); on npm codegraph, same-named files (e.g. two index.js) always land here.`;
 }
 
 // Drops self-file edges (intra-file calls aren't cross-module architecture)
@@ -864,7 +863,11 @@ async function probeSymbolCallees(s, dupe, repoPath, limit) {
     }
   }
   if (result === null) return null;
-  return { callees: realCalls(result.callees), unresolved: dupe };
+  const callees = realCalls(result.callees);
+  // An empty union has nothing to misattribute (a duplicated constant, a file
+  // that calls nothing), so it isn't worth a warning that would crowd out the
+  // names that really drew union edges.
+  return { callees, unresolved: dupe && callees.length > 0 };
 }
 
 // Sequential — same concurrency hazard as collectTransitive: parallel
@@ -1066,10 +1069,9 @@ function diffNothingToCheckNoSymbols(repoPath, changedCount, embedFile) {
   return `codeshot: --diff found ${changedCount} changed file(s) but no matching symbols in codegraph's index — nothing to diagram, so nothing to check. The diagram embedded in '${embedFile}' reflects a different invocation and is left untouched. (They may not define top-level symbols, may be in a language codegraph doesn't index, or the index may be stale — run 'codegraph sync ${repoPath}' to confirm.)`;
 }
 
-// Separate from duplicateNameWarning, whose text describes --architecture's
-// 'node -f' re-probe. --diff resolves collisions through pickDefinitionResult
-// instead, so this names only the roots where that failed and the bare-name
-// union was drawn — never the ones that were actually resolved.
+// --diff's counterpart to duplicateNameWarning: names only the roots where
+// pickDefinitionResult failed and the bare-name union was drawn — never the
+// ones that were actually resolved.
 function diffDuplicateNameWarning(unresolvedRootNames) {
   const names = [...new Set(unresolvedRootNames || [])];
   if (!names.length) return null;
