@@ -1,16 +1,28 @@
 # Codeshot
 
-**A picture of what calls what.** Renders a symbol's [CodeGraph](https://github.com/colbymchenry/codegraph) call trail (who calls it, what it calls) — or a whole repo's file-level dependency graph — as an image.
+**Architecture diagrams that fail CI when they go stale.** Codeshot generates call-graph and dependency diagrams from your code's [CodeGraph](https://github.com/colbymchenry/codegraph) index, embeds them in your docs, and `--check` fails the build the moment the code drifts from the committed picture. A diagram in your README stops being a guess and becomes something tested.
 
 ---
 
 ## What it does
 
 ```bash
+# embed (or refresh) a file-level architecture diagram in your docs
+codeshot --architecture --embed TECHNICAL.md --format svg
+
+# in CI: exit 1 if that diagram no longer matches the code
+codeshot --architecture --embed TECHNICAL.md --format svg --check
+```
+
+For `svg`, `--check` compares graph structure (which nodes, which edges), not bytes, so a laptop and CI with different graphviz versions agree. It never writes, and it refuses to replace a real committed diagram with a blank one.
+
+Three things can be drawn: a whole repo's file-level architecture, the symbols a diff touches (`--diff`), or one symbol's call trail:
+
+```bash
 codeshot RollAutoSnapshot --path ~/code/myrepo --out callgraph.png
 ```
 
-Pulls the symbol's callers/callees straight from CodeGraph's index (`codegraph callers`/`callees --json`) and renders them through [graphviz](https://graphviz.org/) — a real diagram, not hand-drawn ASCII. Test callers are shown dashed so production call paths stand out; a module-level/import reference CodeGraph couldn't resolve to a real call site is shown dotted-gray instead of looking like a confirmed call.
+Everything comes straight from CodeGraph's index and renders through [graphviz](https://graphviz.org/), so it works for whatever languages CodeGraph indexes. Test callers are drawn dashed so production paths stand out; a module-level reference CodeGraph couldn't resolve to a real call site is drawn dotted-gray instead of looking like a confirmed call.
 
 ## Why this exists
 
@@ -41,7 +53,7 @@ codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-re
 - `--max-render` — cap how many distinct nodes are drawn in the image, independent of `--limit` (unset by default: no cap). This is one shared budget across callers, callees, and `--depth`'s transitive edges combined — not a separate `N` for each. Useful for symbols with hundreds of callers, where a high `--limit` keeps the truncation warning accurate but would otherwise produce an unreadably tall image.
 - `--format` — output format, passed straight to `dot -T<fmt>` (defaults to `png`). `svg` is a good alternative for large graphs — it stays crisp at any zoom level and keeps text selectable, unlike a raster PNG. In `svg` (and `svgz`) output, each node also carries the file its symbol lives in as a hover tooltip, so you can tell same-named symbols apart without cluttering the boxes (open the file in a browser to see them; GitHub's SVG sanitizer may strip tooltips when the image is embedded in a README). Any format `dot -T` supports works; an unsupported one fails with `dot`'s own error listing the valid ones.
 - `--embed <file.md>` — instead of just writing an image, insert (or, on re-runs, refresh in place) the diagram inside an existing markdown doc, using idempotent `<!-- codeshot:<id>:start/end -->` markers (the `doctoc`/`terraform-docs` pattern). The image is written to a stable path next to the doc so the relative link resolves and both can be committed. Refreshes an existing doc — it won't create one. Works in both symbol and `--architecture` mode. See [USAGE.md](USAGE.md#embedding-a-diagram-in-your-docs-and-keeping-it-fresh).
-- `--check` — (only with `--embed`) verify the committed diagram and its doc block are current without changing anything: exit `0` if up to date, exit `1` if the code has drifted from the committed image. Built for a CI job / pre-commit hook so a stale diagram fails the build. Compares rendered bytes, so it needs the same `graphviz` version that generated the committed image.
+- `--check` — (only with `--embed`) verify the committed diagram and its doc block are current without changing anything: exit `0` if up to date, exit `1` if the code has drifted from the committed image. Built for a CI job / pre-commit hook so a stale diagram fails the build. For `svg` it compares graph structure, so CI needs no pinned `graphviz`; other formats compare bytes and do need the same `graphviz` version that generated the committed image.
 - `--depth` — how many hops of callers-of-callers / callees-of-callees to draw beyond the direct trail (defaults to `1`, i.e. today's direct-only behavior; must be a positive integer). Codeshot fetches this itself, one sequential `codegraph` call per newly discovered node — CodeGraph has no multi-hop traversal of its own for `callers`/`callees`. Each additional hop is drawn in a progressively lighter shade so you can tell how far a node is from the symbol at a glance. There's a safety cap on total nodes discovered (a well-connected symbol at `--depth 3`+ can otherwise mean hundreds of sequential `codegraph` calls); Codeshot warns on stderr if it hit that cap before finishing — see `--max-depth-nodes` below to raise it, or [TECHNICAL.md](TECHNICAL.md#configuration) for the default and rationale.
 - `--max-depth-nodes` — raises (or lowers) `--depth`'s safety cap on total discovered nodes (defaults to `200`; must be a positive integer). Only applies with `--depth > 1`; has no effect with `--architecture` and is rejected if passed alongside it. Useful for a genuinely well-connected symbol whose graph is real but incomplete at the default cap — see the depth-budget warning it's meant to answer.
 
