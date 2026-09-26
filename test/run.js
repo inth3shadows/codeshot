@@ -1240,20 +1240,29 @@ test('CLI --diff runs end-to-end against this repo\'s own real codegraph index a
     return;
   }
 
+  // Diff against the parent of the last commit that touched render/callgraph.js,
+  // so the committed diff always changes real symbols. HEAD~1 did not guarantee
+  // that: a docs- or CI-only commit (or a PR merge commit on one) left zero
+  // roots and a blank graph. Needs that parent in history — a shallow clone
+  // (actions/checkout's default depth 1) lacks it, so skip rather than fail.
+  let ref;
+  try {
+    const sha = execFileSync('git', ['-C', repoRoot, 'log', '-1', '--format=%H', '--', 'render/callgraph.js'], { encoding: 'utf8', stdio: 'pipe' }).trim();
+    execFileSync('git', ['-C', repoRoot, 'rev-parse', '--verify', '--quiet', `${sha}~1^{commit}`], { stdio: 'pipe' });
+    ref = `${sha}~1`;
+  } catch {
+    console.log('  # skipped: git history too shallow to find the parent of the last render/callgraph.js change');
+    return;
+  }
+
   const out = path.join(os.tmpdir(), `codeshot-diff-selftest-${Date.now()}.svg`);
   try {
-    // --diff-ref HEAD~1 means `git diff HEAD~1` — working tree vs that
-    // commit, NOT a two-commit HEAD~1-vs-HEAD comparison, so this is NOT
-    // fully independent of the ambient working tree (uncommitted changes,
-    // if any, are included on top). What IS guaranteed regardless of that
-    // state: HEAD~1..HEAD always touched render/callgraph.js in this repo's
-    // real history, so the committed diff alone is enough for the
-    // assertions below (non-blank SVG, at least one bold root) to hold —
-    // they don't depend on exactly what's staged/unstaged, just that it's
-    // never LESS than that committed floor. Also exercises the actual
-    // `git diff --name-only -z --end-of-options <ref>` invocation
+    // `git diff <ref>` is working tree vs that commit, so uncommitted changes
+    // are included on top — never LESS than the committed floor the assertions
+    // below (non-blank SVG, at least one bold root) rely on. Also exercises the
+    // actual `git diff --name-only -z --end-of-options <ref>` invocation
     // end-to-end, not just buildDiffDot's pure rendering.
-    execFileSync('node', [callgraphJs, '--diff', '--diff-ref', 'HEAD~1', '--path', repoRoot, '--out', out, '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
+    execFileSync('node', [callgraphJs, '--diff', '--diff-ref', ref, '--path', repoRoot, '--out', out, '--format', 'svg'], { encoding: 'utf8', stdio: 'pipe' });
     const svg = fs.readFileSync(out, 'utf8');
     assert.match(svg, /<svg/, 'expected --diff to produce real SVG output');
     // Graphviz renders a bolded root as font-weight="bold" in SVG (DOT's

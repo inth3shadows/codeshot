@@ -5,6 +5,13 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  # Weekly canary: the npm-codegraph job below runs unpinned `@latest`, so a new
+  # codegraph release that changes output codeshot parses, or ships the
+  # per-definition JSON (upstream #1801) the diagrams job needs the fork for,
+  # surfaces here instead of in a user's bug report.
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read # least privilege — the workflow only reads the repo
@@ -29,6 +36,40 @@ jobs:
       # CI has neither — so no codegraph install is needed here.
       - name: Install graphviz (codeshot renders via `dot`)
         run: sudo apt-get update && sudo apt-get install -y graphviz
+      - run: npm test
+
+  # The test job above has no codegraph, so every end-to-end test self-skips.
+  # This runs the full suite against the npm releases users actually install:
+  # the supported floor and the latest pinned release (pinned per repo
+  # convention; the weekly schedule swaps in unpinned `@latest`). It does NOT
+  # run the diagram --check: the committed diagrams are rendered with the
+  # inth3shadows fork (see the diagrams job), which npm codegraph legitimately
+  # renders differently.
+  test-npm-codegraph:
+    name: Tests (npm codegraph ${{ matrix.codegraph }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        codegraph: ${{ github.event_name == 'schedule' && fromJSON('["latest"]') || fromJSON('["1.5.0", "1.6.0"]') }}
+    steps:
+      # Full history: the --diff self-test diffs against the parent of the last
+      # commit that touched render/callgraph.js, which a depth-1 clone lacks.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Install graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+      - name: Install codegraph ${{ matrix.codegraph }} from npm
+        run: |
+          npm install -g "@colbymchenry/codegraph@${{ matrix.codegraph }}"
+          codegraph --version
+      # The self-tests read this repo's own index; without it they self-skip.
+      - name: Build the codegraph index
+        run: codegraph init .
       - run: npm test
 
   diagrams:
