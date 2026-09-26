@@ -686,38 +686,16 @@ test('symbolBudgetWarning fires only when enumeration was truncated', () => {
   assert.match(symbolBudgetWarning(true, 500), /stopped enumerating after 500 symbols/);
 });
 
-test('duplicateNameWarning fires when a name appears in more than one file', () => {
-  const symbols = [
-    { name: 'render', filePath: 'a.js' },
-    { name: 'render', filePath: 'b.js' },
-    { name: 'unique', filePath: 'c.js' },
-  ];
-  assert.match(duplicateNameWarning(symbols), /render/);
-});
-
-test('duplicateNameWarning is null when every name is unique', () => {
-  const symbols = [{ name: 'A', filePath: 'a.js' }, { name: 'B', filePath: 'b.js' }];
-  assert.strictEqual(duplicateNameWarning(symbols), null);
-});
-
-test('duplicateNameWarning reports ordinary duplicates as re-probed, not as possibly-wrong', () => {
-  const symbols = [
-    { name: 'render', kind: 'function', filePath: 'a.js' },
-    { name: 'render', kind: 'function', filePath: 'b.js' },
-  ];
-  const warning = duplicateNameWarning(symbols);
-  assert.match(warning, /file-qualified/);
-  assert.doesNotMatch(warning, /may be attributed to the wrong file/);
-});
-
-test('duplicateNameWarning still warns about duplicate file names, which node -f cannot disambiguate', () => {
-  const symbols = [
-    { name: 'index.js', kind: 'file', filePath: 'a/index.js' },
-    { name: 'index.js', kind: 'file', filePath: 'b/index.js' },
-  ];
-  const warning = duplicateNameWarning(symbols);
+test('duplicateNameWarning names only the names that fell back to the union, deduped', () => {
+  const warning = duplicateNameWarning(['render', 'render', 'index.js']);
+  assert.match(warning, /2 name\(s\).*render, index\.js/);
   assert.match(warning, /may be attributed to the wrong file/);
-  assert.match(warning, /index\.js/);
+  assert.match(warning, /#1801/);
+});
+
+test('duplicateNameWarning is null when every duplicate was resolved', () => {
+  assert.strictEqual(duplicateNameWarning([]), null);
+  assert.strictEqual(duplicateNameWarning(undefined), null);
 });
 
 test('duplicateNames returns only names seen in more than one file', () => {
@@ -1183,6 +1161,13 @@ test('--architecture attributes a duplicate-named symbol\'s edges to its own fil
     // same-file collision with two concatenated trail blocks.
     fs.mkdirSync(path.join(dir, 'c'));
     fs.writeFileSync(path.join(dir, 'c', 'dual.js'), 'const { alpha } = require("../a/alpha");\nconst { beta } = require("../b/beta");\nclass A { run() { return alpha(); } }\nclass B { run() { return beta(); } }\nmodule.exports = { A, B };\n');
+    // Two FILES named index.js, each making a top-level call to a different
+    // function. Only codegraph's per-definition JSON (upstream #1801) can tell
+    // them apart; `node -f` answers a file node in file mode.
+    fs.mkdirSync(path.join(dir, 'd'));
+    fs.mkdirSync(path.join(dir, 'e'));
+    fs.writeFileSync(path.join(dir, 'd', 'index.js'), 'const { alpha } = require("../a/alpha");\nalpha();\n');
+    fs.writeFileSync(path.join(dir, 'e', 'index.js'), 'const { beta } = require("../b/beta");\nbeta();\n');
 
     try {
       execFileSync('codegraph', ['init', dir], { stdio: 'pipe', timeout: 180000 });
@@ -1201,6 +1186,16 @@ test('--architecture attributes a duplicate-named symbol\'s edges to its own fil
     assert.doesNotMatch(dot, /"b\/svc\.js" -> "a\/alpha\.js"/, 'b/svc.js does not call alpha — this is the misattributed edge the fix removes');
     assert.match(dot, /"c\/dual\.js" -> "a\/alpha\.js"/, 'same-file duplicates must keep both edges, not just the last trail block');
     assert.match(dot, /"c\/dual\.js" -> "b\/beta\.js"/, 'same-file duplicates must keep both edges, not just the last trail block');
+
+    const probe = JSON.parse(execFileSync('codegraph', ['callees', '--path', dir, '--json', '--', 'index.js'], { encoding: 'utf8', stdio: 'pipe' }));
+    if (Array.isArray(probe.definitions)) {
+      assert.match(dot, /"d\/index\.js" -> "a\/alpha\.js"/, 'expected the real edge from d/index.js');
+      assert.match(dot, /"e\/index\.js" -> "b\/beta\.js"/, 'expected the real edge from e/index.js');
+      assert.doesNotMatch(dot, /"d\/index\.js" -> "b\/beta\.js"/, 'same-named files must not share the union of their callees');
+      assert.doesNotMatch(dot, /"e\/index\.js" -> "a\/alpha\.js"/, 'same-named files must not share the union of their callees');
+    } else {
+      console.log('  # partially skipped: this codegraph has no per-definition JSON (upstream #1801), so same-named files are expected to fall back to the union');
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

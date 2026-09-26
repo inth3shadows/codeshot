@@ -100,11 +100,12 @@ two extra flags exist specifically for this mode:
 mode (callees fetched per probed symbol; distinct nodes actually drawn,
 here ranked by busiest file rather than caller/callee priority).
 
-A symbol name that exists in more than one file (two `handle`s, say) is
-re-probed with CodeGraph's file-qualified `codegraph node -f`, so its edges
-land on the right file instead of on the union of both. Two *files* sharing a
-basename (two `index.js`) still can't be told apart; Codeshot warns when that
-applies. See [TECHNICAL.md](TECHNICAL.md#known-limitations) for the details,
+A name that exists in more than one file (two `handle`s, or two `index.js`
+files) has its edges attributed to the right file instead of to the union of
+both. With a CodeGraph that reports callees per definition (upstream #1801, not
+yet in an npm release) this covers everything; on npm CodeGraph it falls back
+to the file-qualified `codegraph node -f`, which can't handle two same-named
+*files*, and Codeshot warns about whatever it couldn't resolve. See [TECHNICAL.md](TECHNICAL.md#known-limitations) for the details,
 including the cases where the file-qualified probe falls back, and why the
 graph can be slow on larger repos.
 
