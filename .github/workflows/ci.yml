@@ -52,8 +52,12 @@ jobs:
       # silently fabricates cross-file edges from unrelated builtin calls whose
       # name happens to collide with a real project symbol — confirmed on this
       # exact repo (see README.md#install and TECHNICAL.md's Known Limitations).
+      # Pinned at 1.6.0 (not the 1.5.0 floor) so CI exercises --diff's per-definition
+      # attribution (pickDefinitionResult), which only exists from 1.6.0; the 1.5.0
+      # fallback path is covered by unit tests only. The committed diagrams are
+      # rendered with this version, so bumping it may require regenerating them.
       - name: Install codegraph
-        run: npm install -g @colbymchenry/codegraph@1.5.0
+        run: npm install -g @colbymchenry/codegraph@1.6.0
 
       # `init` builds the initial index in a fresh checkout (`index` rebuilds an
       # existing one and errors if the repo was never initialized — which a CI

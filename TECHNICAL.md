@@ -251,7 +251,7 @@ node render/callgraph.js --architecture --path . --format svg --out docs/archite
 node render/callgraph.js buildDot --path . --format svg --out docs/buildDot-callgraph.svg --embed TECHNICAL.md
 ```
 
-CI (`.github/workflows/ci.yml`) runs `npm test` and, as a separate blocking job, builds a fresh codegraph index (codegraph pinned to 1.5.0) and runs both diagram commands above with `--check`, so a PR that changes the call graph without regenerating the committed SVGs fails. Pushing a `v*` tag runs `.github/workflows/release.yml`, which fails unless the tag matches `package.json`'s version (bump with `npm version`), then publishes an `npm pack` tarball as a GitHub Release.
+CI (`.github/workflows/ci.yml`) runs `npm test` and, as a separate blocking job, builds a fresh codegraph index (codegraph pinned to 1.6.0 — above the supported 1.5.0 floor, so `--diff`'s per-definition path runs in CI; the committed diagrams must be regenerated with the pinned version) and runs both diagram commands above with `--check`, so a PR that changes the call graph without regenerating the committed SVGs fails. Pushing a `v*` tag runs `.github/workflows/release.yml`, which fails unless the tag matches `package.json`'s version (bump with `npm version`), then publishes an `npm pack` tarball as a GitHub Release.
 
 There is no service to restart, no rollback beyond `npm uninstall -g codeshot` / reinstalling a prior git ref, and no other services, logs, or scheduled jobs to maintain — see [README.md](README.md#install) for the install command itself.
 
