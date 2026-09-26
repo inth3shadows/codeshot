@@ -6,7 +6,7 @@ const {
   buildDot, nodeIdentities, isTestRef, truncationWarning, readTruncation, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, duplicateNames, parseNodeCalls, aggregateFileEdges,
-  topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
+  topFilesByWeight, buildArchitectureDot, countOnceKey, architectureOutputBaseName,
   groupPath, rollupFileEdges, groupCollapseWarning, sortSymbolsForEnumeration,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
@@ -1186,6 +1186,10 @@ test('--architecture attributes a duplicate-named symbol\'s edges to its own fil
     assert.doesNotMatch(dot, /"b\/svc\.js" -> "a\/alpha\.js"/, 'b/svc.js does not call alpha — this is the misattributed edge the fix removes');
     assert.match(dot, /"c\/dual\.js" -> "a\/alpha\.js"/, 'same-file duplicates must keep both edges, not just the last trail block');
     assert.match(dot, /"c\/dual\.js" -> "b\/beta\.js"/, 'same-file duplicates must keep both edges, not just the last trail block');
+    // Each `run` calls its callee once, so each edge weighs 1. Handing both
+    // methods the shared per-file answer used to count every edge twice.
+    assert.match(dot, /"c\/dual\.js" -> "a\/alpha\.js"\s*\[label="?1"?[,\]]/, 'same-file duplicates must not multiply edge weights');
+    assert.match(dot, /"c\/dual\.js" -> "b\/beta\.js"\s*\[label="?1"?[,\]]/, 'same-file duplicates must not multiply edge weights');
 
     const probe = JSON.parse(execFileSync('codegraph', ['callees', '--path', dir, '--json', '--', 'index.js'], { encoding: 'utf8', stdio: 'pipe' }));
     if (Array.isArray(probe.definitions)) {
@@ -1943,7 +1947,7 @@ testAsync('probeSymbolCallees skips node -f for a file node and does not flag an
   const { run, calls } = fakeRun({ callees: { symbol: 'index.js', callees: [] }, node: npmHandleNodeA });
   const r = await probeSymbolCallees({ name: 'index.js', kind: 'file', filePath: 'd/index.js' }, true, '/repo', 20, run);
   assert.deepStrictEqual(calls, ['callees']);
-  assert.deepStrictEqual(r, { callees: [], unresolved: false });
+  assert.deepStrictEqual(r, { callees: [], unresolved: false, perDefinition: false });
 });
 
 testAsync('probeSymbolCallees still uses node -f when the JSON probe returns nothing', async () => {
@@ -1951,6 +1955,49 @@ testAsync('probeSymbolCallees still uses node -f when the JSON probe returns not
   const r = await probeSymbolCallees(handleA, true, '/repo', 20, run);
   assert.deepStrictEqual(r.callees, [{ name: 'alpha', filePath: 'a/alpha.js' }]);
   assert.strictEqual(await probeSymbolCallees(handleA, false, '/repo', 20, fakeRun({ callees: null }).run), null);
+});
+
+testAsync('probeSymbolCallees answers from the definition whose id matches, even among same-file duplicates', async () => {
+  const alpha = { name: 'alpha', kind: 'function', filePath: 'a/alpha.js' };
+  const beta = { name: 'beta', kind: 'function', filePath: 'b/beta.js' };
+  const sameFile = {
+    callees: [alpha, beta],
+    definitions: [
+      { definition: { id: 'method:A', filePath: 'c/dual.js' }, callees: [alpha] },
+      { definition: { id: 'method:B', filePath: 'c/dual.js' }, callees: [beta] },
+    ],
+  };
+  const { run, calls } = fakeRun({ callees: sameFile });
+  const r = await probeSymbolCallees({ id: 'method:B', name: 'run', kind: 'method', filePath: 'c/dual.js' }, false, '/repo', 20, run);
+  assert.deepStrictEqual(calls, ['callees']);
+  assert.deepStrictEqual(r, { callees: [beta], unresolved: false, perDefinition: true, definitionId: 'method:B' });
+  // No id (or no match) is a shared answer, which probeFileEdges counts once per file.
+  const shared = await probeSymbolCallees({ name: 'run', kind: 'method', filePath: 'c/dual.js' }, false, '/repo', 20, run);
+  assert.deepStrictEqual(shared, { callees: [alpha, beta], unresolved: false, perDefinition: false });
+});
+
+testAsync('probeSymbolCallees matches an overload through roots, and every overload counts once', async () => {
+  const alpha = { name: 'alpha', kind: 'function', filePath: 'a/alpha.ts' };
+  const grouped = {
+    callees: [alpha],
+    definitions: [{ definition: { id: 'method:f1', filePath: 'c/over.ts' }, roots: ['method:f1', 'method:f2', 'method:f3'], callees: [alpha] }],
+  };
+  const { run } = fakeRun({ callees: grouped });
+  const keys = new Set();
+  for (const id of ['method:f1', 'method:f2', 'method:f3']) {
+    const s = { id, name: 'f', kind: 'method', filePath: 'c/over.ts' };
+    const r = await probeSymbolCallees(s, false, '/repo', 20, run);
+    assert.strictEqual(r.perDefinition, true, `${id} must match its grouped definition`);
+    keys.add(countOnceKey(s, r));
+  }
+  assert.deepStrictEqual([...keys], ['def:method:f1']);
+});
+
+test('countOnceKey counts a shared answer once per name and file', () => {
+  const shared = { perDefinition: false };
+  const a = countOnceKey({ name: 'run', filePath: 'c/dual.js' }, shared);
+  assert.strictEqual(a, countOnceKey({ name: 'run', filePath: 'c/dual.js' }, shared));
+  assert.notStrictEqual(a, countOnceKey({ name: 'run', filePath: 'd/dual.js' }, shared));
 });
 
 (async () => {
