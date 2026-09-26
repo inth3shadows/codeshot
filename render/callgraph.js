@@ -561,10 +561,9 @@ function emptyArchitectureWarning(fileEdges) {
   return `codeshot: --architecture found no cross-file call edges — the diagram is blank. codegraph's index has no resolved calls between files in this repo (it may be small or single-file, or the index may be missing — run 'codegraph init <path>' to build it, then 'codegraph status' to confirm).`;
 }
 
-// The set of names that appear in more than one distinct FILE. Shared by
-// probeFileEdges (which re-probes exactly these, file-qualified) and by
-// duplicateNameWarning, so the fix and the warning can never disagree about
-// what counts as a duplicate.
+// The set of names that appear in more than one distinct FILE: the names
+// probeFileEdges and --diff attribute by file rather than taking the
+// bare-name union.
 //
 // Counting distinct files, not symbol occurrences, is load-bearing: two symbols
 // sharing a name inside ONE file (Go's `String()` on two types in one file, two
@@ -582,10 +581,10 @@ function duplicateNames(symbols) {
 
 // Parses the trail that `codegraph node -f <file> <name>` prints at the end of
 // its output, into file-qualified callees. This is the ONLY file-disambiguated
-// callee probe codegraph 1.5.0 offers — `codegraph callees` takes a bare name with
-// no --file flag there — so it's how --architecture resolves same-named symbols in
-// different files instead of guessing. (Upstream #1801, after 1.6.0, adds per-definition JSON, which
-// --diff uses via pickDefinitionResult; --architecture has not moved over.)
+// callee probe npm codegraph (through 1.6.0) offers — `codegraph callees` takes a
+// bare name with no --file flag there. --architecture uses it only as the fallback
+// when codegraph has no per-definition JSON (upstream #1801; see
+// probeSymbolCallees), so npm users still get same-named symbols attributed.
 //
 // Returns null whenever the response can't be trusted to be a COMPLETE call list
 // for exactly the symbol in `expectedFile`, so the caller falls back to the
@@ -643,28 +642,15 @@ function parseNodeCalls(out, expectedFile) {
   return calls;
 }
 
-// codegraph's callers/callees take a bare name with no --file disambiguation, so
-// two same-named symbols in different files are ambiguous to a bare-name probe —
-// a real risk at --architecture's scale (probing hundreds of names), not a corner
-// case. probeFileEdges now resolves that for ordinary symbols via `node -f`, so
-// this reports the fix for those and warns only about the residue it still can't
-// disambiguate: file nodes, which unwrapQueryNodes deliberately keeps in the
-// probed set and which `node -f` answers in a different (file-mode) shape.
-function duplicateNameWarning(symbols) {
-  const dupes = duplicateNames(symbols);
-  if (!dupes.size) return null;
-  const fileDupes = [...new Set((symbols || [])
-    .filter(s => s.kind === 'file' && dupes.has(s.name))
-    .map(s => s.name))];
-  const resolved = [...dupes].filter(n => !fileDupes.includes(n));
-  const parts = [];
-  if (resolved.length) {
-    parts.push(`${resolved.length} symbol name(s) appear in more than one file (e.g. ${resolved.slice(0, 3).join(', ')}) — codeshot re-probes these with a file-qualified 'codegraph node -f' so their edges land on the right file, falling back to the bare name (which over-reports rather than under-reports) where that probe can't answer completely.`);
-  }
-  if (fileDupes.length) {
-    parts.push(`${fileDupes.length} file name(s) appear in more than one directory (e.g. ${fileDupes.slice(0, 3).join(', ')}) — these are still probed by bare name, so their edges may be attributed to the wrong file.`);
-  }
-  return `codeshot: ${parts.join(' ')}`;
+// codegraph's bare-name callees answers a name defined in several files with the
+// union of every definition's callees. probeFileEdges resolves those names to
+// the right file (per-definition JSON, else `node -f` for non-file symbols), so
+// this names only the ones where both failed and the union was drawn — never the
+// resolved ones, so it never claims a mitigation that didn't happen.
+function duplicateNameWarning(unresolvedNames) {
+  const names = [...new Set(unresolvedNames || [])];
+  if (!names.length) return null;
+  return `codeshot: ${names.length} name(s) defined in more than one file (e.g. ${names.slice(0, 3).join(', ')}) got no per-file answer from codegraph, so their callees are the union across every same-named definition and some edges may be attributed to the wrong file. Per-definition results need a codegraph with upstream #1801 (not in any npm release through 1.6.0); on npm codegraph, same-named files (e.g. two index.js) always land here.`;
 }
 
 // Drops self-file edges (intra-file calls aren't cross-module architecture)
@@ -849,60 +835,74 @@ async function probeCallsInFile(symbol, repoPath) {
   return out === null ? null : parseNodeCalls(out, symbol.filePath);
 }
 
+// One symbol's callees for --architecture, attributed to its own file where the
+// name is ambiguous. For a name defined in more than one file (`dupe`), the
+// cheapest exact answer comes first: the per-definition slice of the bare-name
+// JSON response the probe needs anyway (codegraph with upstream #1801), which
+// also separates same-named FILES; then `node -f` (npm 1.5.0/1.6.0, non-file
+// symbols only — it answers a file node in file mode); then the union, flagged
+// `unresolved`. Returns null when codegraph had no answer at all.
+//
+// A "kind":"file" callee is a module-level/import reference codegraph couldn't
+// resolve to a real call site — symbol mode already treats these as unverified
+// (edgeStyleAttrs draws them dotted/gray); counting one as a full-weight
+// file-to-file edge would fabricate exactly the edge file-node probing exists
+// to stop fabricating, so every JSON route filters them out.
+async function probeSymbolCallees(s, dupe, repoPath, limit) {
+  const result = await runCodegraph(
+    ['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', s.name],
+    { fatal: false }
+  );
+  const realCalls = list => (list || []).filter(c => c.kind !== 'file');
+  if (dupe) {
+    const own = pickDefinitionResult(result, 'callees', s.filePath);
+    if (own) return { callees: realCalls(own.callees), unresolved: false };
+    if (s.kind !== 'file' && s.filePath) {
+      const fromTrail = await probeCallsInFile(s, repoPath);
+      if (fromTrail !== null) return { callees: fromTrail, unresolved: false };
+    }
+  }
+  if (result === null) return null;
+  const callees = realCalls(result.callees);
+  // An empty union has nothing to misattribute (a duplicated constant, a file
+  // that calls nothing), so it isn't worth a warning that would crowd out the
+  // names that really drew union edges.
+  return { callees, unresolved: dupe && callees.length > 0 };
+}
+
 // Sequential — same concurrency hazard as collectTransitive: parallel
 // codegraph calls against one index race on its schema_versions table.
-// fatal:false + the null checks below are what let one ambiguous/not-found
-// probed name (real and expected at this scale — see duplicateNameWarning)
-// skip past without aborting the whole multi-minute scan.
-//
-// Duplicate-named symbols take the file-qualified `node -f` route; everything
-// else keeps the cheaper bare-name `callees --json` route. That split is
-// deliberate: `node -f` returns the symbol's full source on every call, which is
-// only affordable because duplicates are a small slice of a repo (~2% measured
-// on a real ~1,900-node Go index), and it keeps the text-parsing path off 98% of
-// the scan.
+// fatal:false + the null check let one not-found probed name skip past
+// without aborting the whole multi-minute scan. Returns the file edges plus
+// the duplicate names that fell back to the bare-name union, for
+// duplicateNameWarning.
 async function probeFileEdges(symbols, repoPath, limit) {
   const edges = [];
+  const unresolved = [];
   const dupes = duplicateNames(symbols);
   for (let i = 0; i < symbols.length; i++) {
     const s = symbols[i];
-    // File nodes are excluded: `node -f` answers those in file mode, a different
-    // output shape parseNodeCalls deliberately rejects.
-    let callees = dupes.has(s.name) && s.kind !== 'file' && s.filePath
-      ? await probeCallsInFile(s, repoPath)
-      : null;
-    if (callees === null) {
-      const result = await runCodegraph(
-        ['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', s.name],
-        { fatal: false }
-      );
-      if (result === null) continue;
-      // A "kind":"file" callee is a module-level/import reference codegraph
-      // couldn't resolve to a real call site — symbol mode already treats
-      // these as unverified (edgeStyleAttrs draws them dotted/gray, not a
-      // real call edge); counting one as a full-weight file-to-file edge
-      // here would fabricate exactly the kind of edge this file-node-probing
-      // change exists to stop fabricating.
-      callees = (result.callees || []).filter(c => c.kind !== 'file');
-    }
-    for (const c of callees) {
-      edges.push({ fromFile: s.filePath, toFile: c.filePath });
+    const probed = await probeSymbolCallees(s, dupes.has(s.name), repoPath, limit);
+    if (probed) {
+      if (probed.unresolved) unresolved.push(s.name);
+      for (const c of probed.callees) {
+        edges.push({ fromFile: s.filePath, toFile: c.filePath });
+      }
     }
     if ((i + 1) % 25 === 0) {
       console.error(`codeshot: scanned ${i + 1}/${symbols.length} symbols...`);
     }
   }
-  return edges;
+  return { edges, unresolved };
 }
 
 async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, groupDepth }) {
   const { symbols, truncated } = await enumerateSymbols(repoPath, maxSymbols);
   const symbolWarning = symbolBudgetWarning(truncated, maxSymbols);
   if (symbolWarning) console.error(symbolWarning);
-  const dupeWarning = duplicateNameWarning(symbols);
+  const { edges: symbolEdges, unresolved } = await probeFileEdges(symbols, repoPath, limit);
+  const dupeWarning = duplicateNameWarning(unresolved);
   if (dupeWarning) console.error(dupeWarning);
-
-  const symbolEdges = await probeFileEdges(symbols, repoPath, limit);
   const rawFileEdges = aggregateFileEdges(symbolEdges);
   // The rollup happens here, on aggregated edges, rather than by rewriting
   // filePaths at probe time: probing must stay file-exact (parseNodeCalls'
@@ -1069,10 +1069,9 @@ function diffNothingToCheckNoSymbols(repoPath, changedCount, embedFile) {
   return `codeshot: --diff found ${changedCount} changed file(s) but no matching symbols in codegraph's index — nothing to diagram, so nothing to check. The diagram embedded in '${embedFile}' reflects a different invocation and is left untouched. (They may not define top-level symbols, may be in a language codegraph doesn't index, or the index may be stale — run 'codegraph sync ${repoPath}' to confirm.)`;
 }
 
-// Separate from duplicateNameWarning, whose text describes --architecture's
-// 'node -f' re-probe. --diff resolves collisions through pickDefinitionResult
-// instead, so this names only the roots where that failed and the bare-name
-// union was drawn — never the ones that were actually resolved.
+// --diff's counterpart to duplicateNameWarning: names only the roots where
+// pickDefinitionResult failed and the bare-name union was drawn — never the
+// ones that were actually resolved.
 function diffDuplicateNameWarning(unresolvedRootNames) {
   const names = [...new Set(unresolvedRootNames || [])];
   if (!names.length) return null;
