@@ -1089,9 +1089,12 @@ function diffDuplicateNameWarning(symbols) {
   return `codeshot: --diff: ${names.length} symbol name(s) among the changed/pulled-in symbols appear in more than one file (e.g. ${names.slice(0, 3).join(', ')}) — probed by bare name only (--diff mode does not re-probe with codegraph's file-qualified 'node -f' the way --architecture does). If two of these are both diagram roots, codegraph's ambiguous merged result is attached to BOTH in full, not split between them; otherwise, an edge may simply land on the wrong one.`;
 }
 
-// Mirrors truncationWarning's "hit --limit exactly" signal, but aggregated
-// across all changed roots (not one line per root×direction) — the same
-// noise tradeoff diffEmptyRootsWarning already makes for a large diff.
+// truncationWarning's counterpart for --diff, aggregated across all changed
+// roots (not one line per root×direction) — the same noise tradeoff
+// diffEmptyRootsWarning already makes for a large diff. The caller decides
+// "cut off" through readTruncation, same as symbol mode: codegraph's reported
+// `truncated` when present, the hit-exactly-`--limit` heuristic only when not.
+// Names no totals, since across many roots there is no single one to give.
 function diffTruncationWarning(truncatedRootNames, limit) {
   if (truncatedRootNames.length === 0) return null;
   return `codeshot: ${truncatedRootNames.length} changed symbol(s) had a callers/callees fetch cut off by --limit (${limit}) (e.g. ${truncatedRootNames.slice(0, 3).join(', ')}); rerun with a larger --limit to see the rest.`;
