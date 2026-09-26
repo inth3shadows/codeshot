@@ -1399,6 +1399,33 @@ function embedRelLink(embedFile, imagePath) {
   return (rel || path.basename(imagePath)).split(path.sep).join('/');
 }
 
+// Every builder (buildDot, buildArchitectureDot, buildDiffDot) emits each node
+// as a statement starting with its quoted id, so a DOT with no such line draws
+// nothing. Read off the DOT itself rather than off each mode's own data, so a
+// mode added later is covered without having to remember to opt in. Pure.
+function isBlankDot(dot) {
+  return !/^\s*"/m.test(String(dot));
+}
+
+// The one guard against --embed replacing a committed diagram with a blank one
+// (issue #27). --diff hit this first and got its own refusal inside
+// runDiffMode; --architecture had the same hole, warning about an empty graph
+// and then writing it over the committed image at exit 0. Lives in
+// finishOutput so no mode can reach the write without passing it.
+//
+// Also applies under --check: a blank fresh render compared against a real
+// committed diagram would otherwise report "out of date — rerun with --embed",
+// sending the user to the exact command this refuses. Exit 1 either way, so a
+// CI gate still fails. The mode has already printed WHY the graph is empty, so
+// this names only what it refuses. Pure: returns the message or null.
+function blankEmbedRefusal(dot, { embedFile, check }) {
+  if (!embedFile || !isBlankDot(dot)) return null;
+  const why = 'codeshot: the graph is blank (see the warning above).';
+  return check
+    ? `${why} --check: a blank render is not compared against the diagram embedded in '${embedFile}' — fix the cause above; rerunning with --embed would be refused too.`
+    : `${why} Refusing to overwrite the existing diagram embedded in '${embedFile}' with a blank one; drop --embed to render the (blank) image on its own.`;
+}
+
 // The single output tail for both modes: plain render, --embed (render + update
 // the doc in place), or --embed --check (regenerate in memory and verify the
 // committed image AND doc block are current, mutating nothing — the drift guard
@@ -1424,6 +1451,12 @@ function finishOutput(dot, { format, outFile, embedFile, check, markerId, alt })
     expected = applyEmbed(docContent, markerId, markdown); // also validates markers
   } catch (err) {
     console.error(`codeshot: ${err.message}`);
+    process.exit(1);
+  }
+
+  const refusal = blankEmbedRefusal(dot, { embedFile, check });
+  if (refusal) {
+    console.error(refusal);
     process.exit(1);
   }
 
@@ -1779,6 +1812,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  isBlankDot, blankEmbedRefusal,
   buildDot, nodeIdentities, isTestRef, truncationWarning, readTruncation, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, duplicateNames, parseNodeCalls, aggregateFileEdges,

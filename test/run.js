@@ -15,6 +15,7 @@ const {
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
   diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
+  isBlankDot, blankEmbedRefusal,
 } = require('../render/callgraph.js');
 
 let passed = 0;
@@ -351,6 +352,25 @@ test('emptyGraphWarning fires only when a symbol has neither callers nor callees
   assert.strictEqual(emptyGraphWarning('Foo', [], [{ name: 'b' }]), null);
   // undefined arrays (codegraph returned nothing) count as empty, not a crash
   assert.match(emptyGraphWarning('Foo', undefined, undefined), /has no callers or callees/);
+});
+
+test('isBlankDot is true only for a DOT that draws no node, across every builder', () => {
+  assert.strictEqual(isBlankDot(buildArchitectureDot([], { maxRender: 50 })), true);
+  assert.strictEqual(isBlankDot(buildDiffDot([], [], { maxRender: 50 })), true);
+  assert.strictEqual(isBlankDot(buildArchitectureDot([{ from: 'a.js', to: 'b.js', weight: 1 }], { maxRender: 50 })), false);
+  // symbol mode always draws the queried symbol, even with no callers/callees
+  assert.strictEqual(isBlankDot(buildDot('foo', [], [], { maxRender: 50 })), false);
+});
+
+test('blankEmbedRefusal refuses a blank --embed and a blank --check, and nothing else (#27)', () => {
+  const blank = buildArchitectureDot([], { maxRender: 50 });
+  const real = buildArchitectureDot([{ from: 'a.js', to: 'b.js', weight: 1 }], { maxRender: 50 });
+  assert.match(blankEmbedRefusal(blank, { embedFile: 'docs.md', check: false }), /refusing to overwrite the existing diagram embedded in 'docs\.md'/i);
+  // --check must not send the user to the --embed invocation that is refused
+  assert.match(blankEmbedRefusal(blank, { embedFile: 'docs.md', check: true }), /would be refused too/);
+  assert.strictEqual(blankEmbedRefusal(blank, { embedFile: null, check: false }), null, 'a plain render may be blank');
+  assert.strictEqual(blankEmbedRefusal(real, { embedFile: 'docs.md', check: false }), null);
+  assert.strictEqual(blankEmbedRefusal(real, { embedFile: 'docs.md', check: true }), null);
 });
 
 test('emptyArchitectureWarning fires only when there are zero cross-file edges', () => {
