@@ -13,7 +13,7 @@ const {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
   isBlankDot, blankEmbedRefusal,
 } = require('../render/callgraph.js');
@@ -1659,16 +1659,91 @@ test('diffEmbedRefusalNoSymbols reports the changed-file count, the embed target
   assert.doesNotMatch(msg, /found no changed files/);
 });
 
-test('diffDuplicateNameWarning fires on a real cross-file collision and never claims the node -f re-probe --architecture does', () => {
-  const symbols = [
-    { name: 'parse', filePath: 'a.js' },
-    { name: 'parse', filePath: 'b.js' },
-    { name: 'unique', filePath: 'c.js' },
-  ];
-  const msg = diffDuplicateNameWarning(symbols);
-  assert.match(msg, /1 symbol name\(s\).*parse/);
+test('diffDuplicateNameWarning names only the roots that fell back, deduped, and is null when none did', () => {
+  const msg = diffDuplicateNameWarning(['parse', 'parse', 'run']);
+  assert.match(msg, /2 changed symbol name\(s\).*parse, run/);
+  assert.match(msg, /1\.6\.0/);
   assert.doesNotMatch(msg, /re-probes/);
-  assert.strictEqual(diffDuplicateNameWarning([{ name: 'unique', filePath: 'c.js' }]), null);
+  assert.strictEqual(diffDuplicateNameWarning([]), null);
+});
+
+// Shape copied from codegraph 1.6.0's real `callers --json -- parse` on a fixture
+// with `parse` defined in both a/parse.js and b/parse.js.
+const twoParseCallers = {
+  symbol: 'parse', ambiguous: true,
+  callers: [
+    { name: 'useA', kind: 'function', filePath: 'a/use.js' },
+    { name: 'useB', kind: 'function', filePath: 'b/use.js' },
+  ],
+  total: 2, truncated: false,
+  definitions: [
+    { definition: { name: 'parse', filePath: 'a/parse.js' }, callers: [{ name: 'useA', kind: 'function', filePath: 'a/use.js' }], total: 1, truncated: false },
+    { definition: { name: 'parse', filePath: 'b/parse.js' }, callers: [{ name: 'useB', kind: 'function', filePath: 'b/use.js' }], total: 1, truncated: false },
+  ],
+};
+
+test('pickDefinitionResult keeps only the definition in the root\'s file, not the bare-name union', () => {
+  const r = pickDefinitionResult(twoParseCallers, 'callers', 'a/parse.js');
+  assert.deepStrictEqual(r.callers.map(c => c.name), ['useA']);
+  assert.deepStrictEqual(readTruncation(r, r.callers, 20), { truncated: false, total: 1 });
+});
+
+test('pickDefinitionResult unions every definition in the same file — a same-file collision is one identity', () => {
+  const sameFile = {
+    definitions: [
+      { definition: { filePath: 'x.go' }, callees: [{ name: 'a' }], total: 1, truncated: false },
+      { definition: { filePath: 'x.go' }, callees: [{ name: 'b' }], total: 3, truncated: true },
+      { definition: { filePath: 'y.go' }, callees: [{ name: 'c' }], total: 1, truncated: false },
+    ],
+  };
+  const r = pickDefinitionResult(sameFile, 'callees', 'x.go');
+  assert.deepStrictEqual(r.callees.map(c => c.name), ['a', 'b']);
+  assert.deepStrictEqual(readTruncation(r, r.callees, 20), { truncated: true, total: 4 });
+});
+
+test('pickDefinitionResult returns null — fall back to the union — without definitions (codegraph 1.5.0) or without a match', () => {
+  assert.strictEqual(pickDefinitionResult({ callers: [{ name: 'useA' }] }, 'callers', 'a/parse.js'), null);
+  assert.strictEqual(pickDefinitionResult(null, 'callers', 'a/parse.js'), null);
+  assert.strictEqual(pickDefinitionResult(twoParseCallers, 'callers', 'c/parse.js'), null);
+});
+
+test('pickDefinitionResult leaves total/truncated unknown when a kept definition does not report them', () => {
+  const r = pickDefinitionResult({ definitions: [{ definition: { filePath: 'a.js' }, callers: [], truncated: false }] }, 'callers', 'a.js');
+  assert.strictEqual(r.total, undefined);
+  const noTrunc = pickDefinitionResult({ definitions: [{ definition: { filePath: 'a.js' }, callers: [1, 2] }] }, 'callers', 'a.js');
+  assert.strictEqual(noTrunc.truncated, undefined);
+  assert.deepStrictEqual(readTruncation(noTrunc, noTrunc.callers, 2), { truncated: true, total: null });
+});
+
+const twoParseCallees = {
+  callees: [{ name: 'alpha', filePath: 'a/parse.js' }, { name: 'beta', filePath: 'b/parse.js' }],
+  definitions: [
+    { definition: { filePath: 'a/parse.js' }, callees: [{ name: 'alpha', filePath: 'a/parse.js' }], total: 1, truncated: false },
+    { definition: { filePath: 'b/parse.js' }, callees: [{ name: 'beta', filePath: 'b/parse.js' }], total: 1, truncated: false },
+  ],
+};
+
+test('resolveRootResults narrows both directions to the root\'s file and reports it resolved', () => {
+  const r = resolveRootResults(twoParseCallers, twoParseCallees, 'a/parse.js');
+  assert.deepStrictEqual(r.callersResult.callers.map(c => c.name), ['useA']);
+  assert.deepStrictEqual(r.calleesResult.callees.map(c => c.name), ['alpha']);
+  assert.strictEqual(r.unresolved, false);
+});
+
+test('resolveRootResults keeps the union and flags the root when codegraph gives no per-file answer (1.5.0 shape)', () => {
+  const union = { callers: twoParseCallers.callers };
+  const r = resolveRootResults(union, twoParseCallees, 'a/parse.js');
+  assert.strictEqual(r.callersResult, union);
+  assert.deepStrictEqual(r.calleesResult.callees.map(c => c.name), ['alpha']);
+  assert.strictEqual(r.unresolved, true);
+});
+
+test('resolveRootResults: a null direction adds no edges and does not drag the other direction back to the union', () => {
+  const r = resolveRootResults(twoParseCallers, null, 'a/parse.js');
+  assert.deepStrictEqual(r.callersResult.callers.map(c => c.name), ['useA']);
+  assert.strictEqual(r.calleesResult, null);
+  assert.strictEqual(r.unresolved, false);
+  assert.strictEqual(resolveRootResults(null, null, 'a/parse.js').unresolved, false);
 });
 
 test('nodeKey pairs name and filePath so distinct symbols never collide by name alone', () => {

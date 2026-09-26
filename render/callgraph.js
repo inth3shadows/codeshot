@@ -582,9 +582,10 @@ function duplicateNames(symbols) {
 
 // Parses the trail that `codegraph node -f <file> <name>` prints at the end of
 // its output, into file-qualified callees. This is the ONLY file-disambiguated
-// callee probe codegraph offers — `codegraph callees` takes a bare name with no
-// --file flag — so it's how --architecture resolves same-named symbols in
-// different files instead of guessing.
+// callee probe codegraph 1.5.0 offers — `codegraph callees` takes a bare name with
+// no --file flag there — so it's how --architecture resolves same-named symbols in
+// different files instead of guessing. (1.6.0 adds per-definition JSON, which
+// --diff uses via pickDefinitionResult; --architecture has not moved over.)
 //
 // Returns null whenever the response can't be trusted to be a COMPLETE call list
 // for exactly the symbol in `expectedFile`, so the caller falls back to the
@@ -1068,25 +1069,70 @@ function diffNothingToCheckNoSymbols(repoPath, changedCount, embedFile) {
   return `codeshot: --diff found ${changedCount} changed file(s) but no matching symbols in codegraph's index — nothing to diagram, so nothing to check. The diagram embedded in '${embedFile}' reflects a different invocation and is left untouched. (They may not define top-level symbols, may be in a language codegraph doesn't index, or the index may be stale — run 'codegraph sync ${repoPath}' to confirm.)`;
 }
 
-// duplicateNameWarning's "resolved" message explicitly claims codeshot
-// re-probes a colliding name with codegraph's file-qualified 'node -f' —
-// true for --architecture's probeFileEdges, but --diff mode never does
-// that re-probe (see TECHNICAL.md's Known Limitations): every root,
-// colliding or not, is probed by plain bare-name callers/callees. Reusing
-// duplicateNameWarning's text here would tell the user a mitigation
-// happened that didn't, which is worse than no warning at all — this is a
-// dedicated, honest version for --diff's actual (unmitigated) behavior.
-function diffDuplicateNameWarning(symbols) {
-  const dupes = duplicateNames(symbols);
-  if (!dupes.size) return null;
-  const names = [...dupes];
+// Separate from duplicateNameWarning, whose text describes --architecture's
+// 'node -f' re-probe. --diff resolves collisions through pickDefinitionResult
+// instead, so this names only the roots where that failed and the bare-name
+// union was drawn — never the ones that were actually resolved.
+function diffDuplicateNameWarning(unresolvedRootNames) {
+  const names = [...new Set(unresolvedRootNames || [])];
+  if (!names.length) return null;
   // Understating this as "an edge may be attributed to the wrong file"
   // would be misleading in the specific case of two ROOTS sharing a name:
   // both run the identical bare-name query, so codegraph's ambiguous
   // merged result set is attached to BOTH in full — e.g. a caller of only
   // root B's `parse` is drawn as calling root A's `parse` too, not a single
   // misattributed edge.
-  return `codeshot: --diff: ${names.length} symbol name(s) among the changed/pulled-in symbols appear in more than one file (e.g. ${names.slice(0, 3).join(', ')}) — probed by bare name only (--diff mode does not re-probe with codegraph's file-qualified 'node -f' the way --architecture does). If two of these are both diagram roots, codegraph's ambiguous merged result is attached to BOTH in full, not split between them; otherwise, an edge may simply land on the wrong one.`;
+  return `codeshot: --diff: ${names.length} changed symbol name(s) also exist in another file (e.g. ${names.slice(0, 3).join(', ')}) and codegraph gave no per-file answer for them (per-definition results need codegraph 1.6.0+; on 1.6.0 this means no definition matched the root's file), so they fell back to the bare-name probe: codegraph's merged result for every same-named definition is attached to each such root in full, not split between them.`;
+}
+
+// Resolves one root's callers/callees responses to its own file where it can.
+// Each direction is decided independently: a direction whose response carries a
+// slice for `filePath` uses it, one that doesn't keeps the bare-name union and
+// marks the root unresolved, and a null response (fatal:false not-found or
+// unparseable) contributes no edges either way, so it never forces the other
+// direction back onto the union. Only called for roots whose name exists in
+// more than one file; a unique name's union is already exact. Pure.
+function resolveRootResults(callersResult, calleesResult, filePath) {
+  let unresolved = false;
+  const pick = (result, key) => {
+    if (!result) return result;
+    const own = pickDefinitionResult(result, key, filePath);
+    if (own) return own;
+    unresolved = true;
+    return result;
+  };
+  const callers = pick(callersResult, 'callers');
+  const callees = pick(calleesResult, 'callees');
+  return { callersResult: callers, calleesResult: callees, unresolved };
+}
+
+// Picks the slice of a bare-name callers/callees --json response that belongs to
+// the definition in `filePath`. codegraph 1.6.0+ groups the response per
+// definition (`definitions[]`, each with its own list, `total` and `truncated`)
+// alongside the top-level union; measured on a two-`parse` fixture, the union
+// carries both files' edges and each definition carries exactly its own. Every
+// definition in `filePath` is kept, not just the first: two same-named symbols in
+// ONE file are a single identity everywhere else (see duplicateNames), and the
+// union of their lists is what the bare-name probe already gave them.
+//
+// Returns null — "no per-file answer, fall back to the union" — when the
+// response predates `definitions` (1.5.0) or none of them is in `filePath`.
+// Returns a response-shaped object so readTruncation reads it unchanged:
+// `truncated` is true if any kept definition was cut, `total` their sum when
+// every one reports it.
+function pickDefinitionResult(result, key, filePath) {
+  const defs = Array.isArray(result?.definitions) ? result.definitions : null;
+  if (!defs) return null;
+  const mine = defs.filter(d => d?.definition?.filePath === filePath);
+  if (!mine.length) return null;
+  const totals = mine.map(d => d.total);
+  return {
+    [key]: mine.flatMap(d => d[key] || []),
+    // Only authoritative when every kept definition reports it; otherwise leave it
+    // absent so readTruncation falls back to its hit-the-limit heuristic.
+    truncated: mine.every(d => typeof d.truncated === 'boolean') ? mine.some(d => d.truncated) : undefined,
+    total: totals.every(t => typeof t === 'number') ? totals.reduce((a, b) => a + b, 0) : undefined,
+  };
 }
 
 // truncationWarning's counterpart for --diff, aggregated across all changed
@@ -1241,28 +1287,31 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
   // and probing/probing the same symbol twice wasted a codegraph call.
   const roots = dedupeNodes(matched.slice(0, maxSymbols));
 
-  // Same known limitation --architecture's bare-name probing has: two
-  // symbols sharing a name across files are ambiguous to codegraph's
-  // bare-name callers/callees query. Scoped to ALL of allSymbols whose name
-  // matches a root's — not just roots-vs-roots — so a root colliding with
-  // an unrelated, unchanged symbol elsewhere in the repo is caught too;
-  // duplicateNames(roots) alone would miss that (a diff touching just one
-  // `parse` finds no duplicate among a 1-symbol root set even if the repo
-  // has three). Uses diffDuplicateNameWarning, NOT duplicateNameWarning —
-  // the latter's text claims a file-qualified 'node -f' re-probe that only
-  // --architecture actually performs; --diff never does, so reusing it here
-  // would tell the user a mitigation happened that didn't.
+  // A root whose bare name also exists in another file is ambiguous to a
+  // bare-name callers/callees query, which answers with the union across every
+  // same-named definition. Scoped to ALL of allSymbols, not just roots-vs-roots,
+  // so a root colliding with an unrelated, unchanged symbol elsewhere in the
+  // repo is caught too; duplicateNames(roots) alone would miss that (a diff
+  // touching just one `parse` finds no duplicate among a 1-symbol root set even
+  // if the repo has three). Those roots take their own definition's slice via
+  // pickDefinitionResult; only the ones that can't are warned about, after
+  // probing, so the warning never claims a mitigation that didn't happen.
   const rootNames = new Set(roots.map(r => r.name));
-  const dupeWarning = diffDuplicateNameWarning(allSymbols.filter(s => rootNames.has(s.name)));
-  if (dupeWarning) console.error(dupeWarning);
+  const dupes = duplicateNames(allSymbols.filter(s => rootNames.has(s.name)));
+  const unresolvedDupeRoots = [];
 
   const edges = [];
   const truncatedRootNames = [];
   for (const root of roots) {
-    const callersResult = await runCodegraph(['callers', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
+    let callersResult = await runCodegraph(['callers', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
+    let calleesResult = await runCodegraph(['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
+    if (dupes.has(root.name)) {
+      const resolved = resolveRootResults(callersResult, calleesResult, root.filePath);
+      ({ callersResult, calleesResult } = resolved);
+      if (resolved.unresolved) unresolvedDupeRoots.push(root.name);
+    }
     const callersArr = callersResult?.callers || [];
     for (const c of callersArr) edges.push({ from: c, to: root });
-    const calleesResult = await runCodegraph(['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', root.name], { fatal: false });
     const calleesArr = calleesResult?.callees || [];
     for (const c of calleesArr) edges.push({ from: root, to: c });
     // Same signal truncationWarning uses for symbol mode, via the same
@@ -1271,6 +1320,8 @@ async function runDiffMode(repoPath, { diffRef, limit, maxSymbols, maxRender, to
     if (readTruncation(callersResult, callersArr, limit).truncated
       || readTruncation(calleesResult, calleesArr, limit).truncated) truncatedRootNames.push(root.name);
   }
+  const dupeWarning = diffDuplicateNameWarning(unresolvedDupeRoots);
+  if (dupeWarning) console.error(dupeWarning);
   const diffTruncWarning = diffTruncationWarning(truncatedRootNames, limit);
   if (diffTruncWarning) console.error(diffTruncWarning);
 
@@ -1826,6 +1877,6 @@ module.exports = {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
 };

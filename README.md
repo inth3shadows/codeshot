@@ -145,11 +145,11 @@ once for the one you named.
   same pattern `--group-depth` uses for `--architecture`), so a release-range
   diagram and a PR-range diagram can live in the same doc without one
   silently overwriting the other; a bare `--diff` keeps the plain `codeshot:diff` id.
-- Unlike `--architecture`, this mode does **not** re-probe same-named
-  symbols by file (see TECHNICAL.md): codegraph's `callers`/`callees` take a
-  bare name, so two changed symbols sharing a name in different files can be
-  ambiguous; codeshot warns when this applies rather than silently
-  misattributing an edge.
+- A changed symbol whose name also exists in another file gets only its own
+  file's callers/callees on codegraph 1.6.0+, which reports them per
+  definition. On 1.5.0 it gets the merged result for every same-named
+  definition, and codeshot warns rather than silently misattributing edges
+  (see TECHNICAL.md).
 
 ## Design decisions
 
