@@ -10,7 +10,8 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node test/run.js"
+    "test": "node test/run.js",
+    "fixtures:record": "node test/record-npm-fixtures.js"
   },
   "keywords": ["codegraph", "call-graph", "graphviz", "visualization", "developer-tools"],
   "license": "MIT"

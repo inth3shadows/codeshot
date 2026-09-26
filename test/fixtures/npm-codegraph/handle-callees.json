@@ -1,0 +1,17 @@
+{
+  "symbol": "handle",
+  "callees": [
+    {
+      "name": "alpha",
+      "kind": "function",
+      "filePath": "a/alpha.js",
+      "startLine": 1
+    },
+    {
+      "name": "beta",
+      "kind": "function",
+      "filePath": "b/beta.js",
+      "startLine": 1
+    }
+  ]
+}

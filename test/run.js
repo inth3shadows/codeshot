@@ -1886,22 +1886,13 @@ const asyncTests = [];
 function testAsync(name, fn) { asyncTests.push({ name, fn }); }
 
 // The npm-codegraph (<= 1.6.0) duplicate-name route for --architecture, replayed
-// from output recorded against real npm 1.6.0 on a two-`handle` fixture (a/svc.js
-// calls alpha, b/svc.js calls beta). CI's codegraph has per-definition JSON, so
-// this is the only place the `node -f` fallback wiring runs there.
-const npmHandleCallees = {
-  symbol: 'handle',
-  callees: [
-    { name: 'alpha', kind: 'function', filePath: 'a/alpha.js', startLine: 1 },
-    { name: 'beta', kind: 'function', filePath: 'b/beta.js', startLine: 1 },
-  ],
-};
-const npmHandleNodeA = [
-  '**handle** (function)', '', '**Location:** a/svc.js:2', '**Signature:** `()`', '',
-  '```javascript', '2\tfunction handle() { return alpha(); }', '```',
-  '**Trail — codegraph_node any of these to follow it (no Read needed)**',
-  '**Calls →** alpha (a/alpha.js:1)',
-].join('\n');
+// from output recorded against real npm codegraph on a two-`handle` fixture
+// (a/svc.js calls alpha, b/svc.js calls beta). Re-record with
+// `node test/record-npm-fixtures.js --codegraph <npm codegraph>`; never hand-edit.
+// The plain Node test jobs have no codegraph, so this is where they cover it.
+const npmFixtureDir = require('path').join(__dirname, 'fixtures', 'npm-codegraph');
+const npmHandleCallees = JSON.parse(require('fs').readFileSync(require('path').join(npmFixtureDir, 'handle-callees.json'), 'utf8'));
+const npmHandleNodeA = require('fs').readFileSync(require('path').join(npmFixtureDir, 'handle-node-a.txt'), 'utf8');
 
 // A fake runCodegraph: answers `callees --json` and `node -f` from fixtures and
 // records every call so a test can assert which route ran.

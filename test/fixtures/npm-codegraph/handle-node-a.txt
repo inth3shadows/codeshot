@@ -1,0 +1,10 @@
+**handle** (function)
+
+**Location:** a/svc.js:2
+**Signature:** `()`
+
+```javascript
+2	function handle() { return alpha(); }
+```
+**Trail — codegraph_node any of these to follow it (no Read needed)**
+**Calls →** alpha (a/alpha.js:1)
