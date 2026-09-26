@@ -36,9 +36,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      # Node 22 to match the pinned Node the local codegraph fork wrapper runs.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       # codeshot renders through graphviz. --check compares diagram STRUCTURE
       # (node/edge set) for svg, not rendered bytes, so the CI graphviz version
@@ -46,14 +47,33 @@ jobs:
       - name: Install graphviz
         run: sudo apt-get update && sudo apt-get install -y graphviz
 
-      # The index codeshot reads. Pinned (repo convention: pin dependency versions).
-      # Floor is 1.5.0, not just latest-at-time-of-writing: 1.4.1 has a real call-
-      # resolution bug (fixed by codegraph's LITERAL_RECEIVER_TYPES change) that
-      # silently fabricates cross-file edges from unrelated builtin calls whose
-      # name happens to collide with a real project symbol — confirmed on this
-      # exact repo (see README.md#install and TECHNICAL.md's Known Limitations).
-      - name: Install codegraph
-        run: npm install -g @colbymchenry/codegraph@1.5.0
+      # The index codeshot reads: the inth3shadows/codegraph fork, built from source
+      # at tag v1.6.0-em.8, pinned by commit SHA (tags are mutable). It is public
+      # npm 1.6.0 plus upstream fixes merged but not yet released, notably #1801
+      # (callers/callees --json grouped per definition), which --diff's
+      # pickDefinitionResult needs; public 1.6.0 lacks it, so CI on npm would only
+      # ever test the fallback. Same build as the local `codegraph`, so committed
+      # diagrams regenerate identically. The 1.5.0 fallback path is unit-tested only.
+      # (1.5.0 remains the supported floor: 1.4.1 fabricates cross-file edges via a
+      # call-resolution bug fixed by codegraph's LITERAL_RECEIVER_TYPES change.)
+      # Cloned into $RUNNER_TEMP, not the workspace: `codegraph init .` below would
+      # otherwise index the fork's own source into this repo's diagrams.
+      # WASM-only: CODEGRAPH_KERNEL=0, as the local wrapper does. The fork's native
+      # kernel still carries a fabricated-edge bug its TS extractor fix doesn't
+      # cover, so it must not be picked up here either.
+      - name: Build codegraph fork (v1.6.0-em.8)
+        env:
+          FORK_SHA: ceefd258adcaf6cbdb743bf4574d3cf501dd58d5
+        run: |
+          FORK="$RUNNER_TEMP/codegraph-fork"
+          git init -q "$FORK"
+          git -C "$FORK" fetch -q --depth 1 https://github.com/inth3shadows/codegraph.git "$FORK_SHA"
+          git -C "$FORK" checkout -q FETCH_HEAD
+          (cd "$FORK" && npm ci && npm run build)
+          mkdir -p "$RUNNER_TEMP/bin"
+          printf '#!/usr/bin/env bash\nexport CODEGRAPH_KERNEL=0\nexec node "%s/dist/bin/codegraph.js" "$@"\n' "$FORK" > "$RUNNER_TEMP/bin/codegraph"
+          chmod +x "$RUNNER_TEMP/bin/codegraph"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       # `init` builds the initial index in a fresh checkout (`index` rebuilds an
       # existing one and errors if the repo was never initialized — which a CI

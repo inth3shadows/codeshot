@@ -36,7 +36,7 @@ npm install -g github:inth3shadows/codeshot
 
 **Requirements:**
 - Node.js ≥ 18
-- [`codegraph`](https://github.com/colbymchenry/codegraph) CLI on PATH, **1.5.0 or later**, with the target repo indexed (`codegraph init`). `--architecture` mode needs 1.5.0+ specifically: earlier versions have a call-resolution bug (fixed by codegraph's `LITERAL_RECEIVER_TYPES` fix) that can silently fabricate cross-file edges from unrelated builtin method calls (e.g. `/regex/.test(x)`) whose name happens to collide with a real project symbol.
+- [`codegraph`](https://github.com/colbymchenry/codegraph) CLI on PATH, **1.5.0 or later**, with the target repo indexed (`codegraph init`). `--architecture` mode needs 1.5.0+ specifically: earlier versions have a call-resolution bug (fixed by codegraph's `LITERAL_RECEIVER_TYPES` fix) that can silently fabricate cross-file edges from unrelated builtin method calls (e.g. `/regex/.test(x)`) whose name happens to collide with a real project symbol. Using a codegraph build with upstream PR #1801 (merged after 1.6.0, not yet in an npm release; the inth3shadows/codegraph fork has it) additionally lets `--diff` attribute same-named symbols to the right file; CI runs that fork.
 - `graphviz` (`dot`) on PATH — `brew install graphviz` / `apt install graphviz`
 
 Codeshot checks for both on startup and tells you exactly what's missing and how to install it.
@@ -146,8 +146,9 @@ once for the one you named.
   diagram and a PR-range diagram can live in the same doc without one
   silently overwriting the other; a bare `--diff` keeps the plain `codeshot:diff` id.
 - A changed symbol whose name also exists in another file gets only its own
-  file's callers/callees on codegraph 1.6.0+, which reports them per
-  definition. On 1.5.0 it gets the merged result for every same-named
+  file's callers/callees on a codegraph that reports them per definition
+  (upstream #1801, unreleased after 1.6.0). Otherwise, including npm
+  1.5.0/1.6.0, it gets the merged result for every same-named
   definition, and codeshot warns rather than silently misattributing edges
   (see TECHNICAL.md).
 

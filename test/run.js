@@ -1667,7 +1667,7 @@ test('diffDuplicateNameWarning names only the roots that fell back, deduped, and
   assert.strictEqual(diffDuplicateNameWarning([]), null);
 });
 
-// Shape copied from codegraph 1.6.0's real `callers --json -- parse` on a fixture
+// Shape copied from the real (upstream #1801, post-1.6.0 fork build) `callers --json -- parse` on a fixture
 // with `parse` defined in both a/parse.js and b/parse.js.
 const twoParseCallers = {
   symbol: 'parse', ambiguous: true,
