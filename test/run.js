@@ -13,7 +13,7 @@ const {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
   isBlankDot, blankEmbedRefusal,
 } = require('../render/callgraph.js');
@@ -1872,5 +1872,99 @@ test('buildDiffDot styles a root-to-root edge the same way regardless of push or
   }
 });
 
-console.log(`\n${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
+// --- async tests: queued, run in order after every sync test above ---
+const asyncTests = [];
+function testAsync(name, fn) { asyncTests.push({ name, fn }); }
+
+// The npm-codegraph (<= 1.6.0) duplicate-name route for --architecture, replayed
+// from output recorded against real npm 1.6.0 on a two-`handle` fixture (a/svc.js
+// calls alpha, b/svc.js calls beta). CI's codegraph has per-definition JSON, so
+// this is the only place the `node -f` fallback wiring runs there.
+const npmHandleCallees = {
+  symbol: 'handle',
+  callees: [
+    { name: 'alpha', kind: 'function', filePath: 'a/alpha.js', startLine: 1 },
+    { name: 'beta', kind: 'function', filePath: 'b/beta.js', startLine: 1 },
+  ],
+};
+const npmHandleNodeA = [
+  '**handle** (function)', '', '**Location:** a/svc.js:2', '**Signature:** `()`', '',
+  '```javascript', '2\tfunction handle() { return alpha(); }', '```',
+  '**Trail — codegraph_node any of these to follow it (no Read needed)**',
+  '**Calls →** alpha (a/alpha.js:1)',
+].join('\n');
+
+// A fake runCodegraph: answers `callees --json` and `node -f` from fixtures and
+// records every call so a test can assert which route ran.
+function fakeRun({ callees, node }) {
+  const calls = [];
+  const run = async args => {
+    calls.push(args[0]);
+    if (args[0] === 'callees') return callees;
+    if (args[0] === 'node') return node;
+    throw new Error(`unexpected codegraph command ${args[0]}`);
+  };
+  return { run, calls };
+}
+
+const handleA = { name: 'handle', kind: 'function', filePath: 'a/svc.js' };
+
+testAsync('probeSymbolCallees falls back to node -f on npm codegraph and attributes a duplicate name to its own file', async () => {
+  const { run, calls } = fakeRun({ callees: npmHandleCallees, node: npmHandleNodeA });
+  const r = await probeSymbolCallees(handleA, true, '/repo', 20, run);
+  assert.deepStrictEqual(calls, ['callees', 'node']);
+  assert.deepStrictEqual(r.callees, [{ name: 'alpha', filePath: 'a/alpha.js' }]);
+  assert.strictEqual(r.unresolved, false);
+});
+
+testAsync('probeSymbolCallees uses the per-definition slice when present and never calls node -f', async () => {
+  const withDefs = {
+    ...npmHandleCallees,
+    definitions: [
+      { definition: { filePath: 'a/svc.js' }, callees: [npmHandleCallees.callees[0]], total: 1, truncated: false },
+      { definition: { filePath: 'b/svc.js' }, callees: [npmHandleCallees.callees[1]], total: 1, truncated: false },
+    ],
+  };
+  const { run, calls } = fakeRun({ callees: withDefs, node: npmHandleNodeA });
+  const r = await probeSymbolCallees(handleA, true, '/repo', 20, run);
+  assert.deepStrictEqual(calls, ['callees']);
+  assert.deepStrictEqual(r.callees.map(c => c.name), ['alpha']);
+  assert.strictEqual(r.unresolved, false);
+});
+
+testAsync('probeSymbolCallees takes the union, flagged unresolved, when node -f cannot answer', async () => {
+  const { run } = fakeRun({ callees: npmHandleCallees, node: 'Symbol "handle" not found in the codebase' });
+  const r = await probeSymbolCallees(handleA, true, '/repo', 20, run);
+  assert.deepStrictEqual(r.callees.map(c => c.name), ['alpha', 'beta']);
+  assert.strictEqual(r.unresolved, true);
+});
+
+testAsync('probeSymbolCallees skips node -f for a file node and does not flag an empty union', async () => {
+  const { run, calls } = fakeRun({ callees: { symbol: 'index.js', callees: [] }, node: npmHandleNodeA });
+  const r = await probeSymbolCallees({ name: 'index.js', kind: 'file', filePath: 'd/index.js' }, true, '/repo', 20, run);
+  assert.deepStrictEqual(calls, ['callees']);
+  assert.deepStrictEqual(r, { callees: [], unresolved: false });
+});
+
+testAsync('probeSymbolCallees still uses node -f when the JSON probe returns nothing', async () => {
+  const { run } = fakeRun({ callees: null, node: npmHandleNodeA });
+  const r = await probeSymbolCallees(handleA, true, '/repo', 20, run);
+  assert.deepStrictEqual(r.callees, [{ name: 'alpha', filePath: 'a/alpha.js' }]);
+  assert.strictEqual(await probeSymbolCallees(handleA, false, '/repo', 20, fakeRun({ callees: null }).run), null);
+});
+
+(async () => {
+  for (const { name, fn } of asyncTests) {
+    try {
+      await fn();
+      passed++;
+      console.log(`ok - ${name}`);
+    } catch (err) {
+      failed++;
+      console.log(`not ok - ${name}`);
+      console.error(err);
+    }
+  }
+  console.log(`\n${passed} passed, ${failed} failed`);
+  if (failed > 0) process.exit(1);
+})();

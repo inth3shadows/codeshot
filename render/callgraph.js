@@ -827,8 +827,8 @@ function sortSymbolsForEnumeration(symbols) {
 // to the bare-name probe. The fallback is over-inclusive (it's the union across
 // same-named symbols, the very thing this fix narrows) but never under-inclusive,
 // which is the right way round to fail.
-async function probeCallsInFile(symbol, repoPath) {
-  const out = await runCodegraph(
+async function probeCallsInFile(symbol, repoPath, run = runCodegraph) {
+  const out = await run(
     ['node', '--path', repoPath, '-f', symbol.filePath, '--', symbol.name],
     { fatal: false, json: false }
   );
@@ -848,8 +848,12 @@ async function probeCallsInFile(symbol, repoPath) {
 // (edgeStyleAttrs draws them dotted/gray); counting one as a full-weight
 // file-to-file edge would fabricate exactly the edge file-node probing exists
 // to stop fabricating, so every JSON route filters them out.
-async function probeSymbolCallees(s, dupe, repoPath, limit) {
-  const result = await runCodegraph(
+//
+// `run` stands in for runCodegraph so tests can replay recorded codegraph output
+// — CI builds a codegraph with per-definition JSON, so without that the npm
+// `node -f` route would never execute there.
+async function probeSymbolCallees(s, dupe, repoPath, limit, run = runCodegraph) {
+  const result = await run(
     ['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', s.name],
     { fatal: false }
   );
@@ -858,7 +862,7 @@ async function probeSymbolCallees(s, dupe, repoPath, limit) {
     const own = pickDefinitionResult(result, 'callees', s.filePath);
     if (own) return { callees: realCalls(own.callees), unresolved: false };
     if (s.kind !== 'file' && s.filePath) {
-      const fromTrail = await probeCallsInFile(s, repoPath);
+      const fromTrail = await probeCallsInFile(s, repoPath, run);
       if (fromTrail !== null) return { callees: fromTrail, unresolved: false };
     }
   }
@@ -1877,6 +1881,6 @@ module.exports = {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
 };
