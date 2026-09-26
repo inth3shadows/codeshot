@@ -568,8 +568,9 @@ function emptyArchitectureWarning(fileEdges) {
 // Counting distinct files, not symbol occurrences, is load-bearing: two symbols
 // sharing a name inside ONE file (Go's `String()` on two types in one file, two
 // class methods, overloads) have no file-attribution ambiguity at all — the
-// bare-name probe's union of their callees is already exactly right, and
-// routing them through the file-qualified probe would only lose edges. Pure.
+// bare-name probe's union of their callees has the right files (probeFileEdges
+// counts it once per file, see probeSymbolCallees), and routing them through
+// the file-qualified probe would only lose edges. Pure.
 function duplicateNames(symbols) {
   const files = new Map();
   for (const s of symbols || []) {
@@ -854,20 +855,26 @@ async function probeCallsInFile(symbol, repoPath, run = runCodegraph) {
 // `node -f` route would never execute there.
 //
 // `perDefinition` says whether the answer is this one symbol's own list (its
-// definition matched by the enumerated `id`) or one shared by every same-named
-// symbol in its file (every other route). probeFileEdges counts a shared answer
-// once per file: two `run` methods in one file each given the whole list would
-// double every edge weight, even for a callee only one of them calls.
+// definition matched by the enumerated `id`, or by `roots` for an overload) or
+// one shared by every same-named symbol in its file (every other route).
+// probeFileEdges counts a definition once (overloads share one) and a shared
+// answer once per file: two `run` methods in one file each given the whole list
+// would double every edge weight, even for a callee only one of them calls. On
+// codegraph without per-definition JSON the shared list is deduplicated by
+// callee, so two same-file `run`s that both call alpha count 1, not 2 — the
+// fork and npm can draw different weights for such a file (TECHNICAL.md).
 async function probeSymbolCallees(s, dupe, repoPath, limit, run = runCodegraph) {
   const result = await run(
     ['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', s.name],
     { fatal: false }
   );
   const realCalls = list => (list || []).filter(c => c.kind !== 'file');
+  // codegraph groups overloads (same file + qualified name) into one definition:
+  // `definition.id` is the first member's, `roots` lists every member's id.
   const byId = s.id && Array.isArray(result?.definitions)
-    ? result.definitions.find(d => d?.definition?.id === s.id)
+    ? result.definitions.find(d => d?.definition?.id === s.id || (Array.isArray(d?.roots) && d.roots.includes(s.id)))
     : null;
-  if (byId) return { callees: realCalls(byId.callees), unresolved: false, perDefinition: true };
+  if (byId) return { callees: realCalls(byId.callees), unresolved: false, perDefinition: true, definitionId: byId.definition?.id ?? s.id };
   if (dupe) {
     const own = pickDefinitionResult(result, 'callees', s.filePath);
     if (own) return { callees: realCalls(own.callees), unresolved: false, perDefinition: false };
@@ -884,6 +891,12 @@ async function probeSymbolCallees(s, dupe, repoPath, limit, run = runCodegraph) 
   return { callees, unresolved: dupe && callees.length > 0, perDefinition: false };
 }
 
+// The key probeFileEdges counts an answer under at most once: the matched
+// definition's id (overloads share one), or name+file for a shared answer. Pure.
+function countOnceKey(s, probed) {
+  return probed.perDefinition ? `def:${probed.definitionId}` : `file:${nodeKey(s)}`;
+}
+
 // Sequential — same concurrency hazard as collectTransitive: parallel
 // codegraph calls against one index race on its schema_versions table.
 // fatal:false + the null check let one not-found probed name skip past
@@ -898,9 +911,9 @@ async function probeFileEdges(symbols, repoPath, limit) {
   for (let i = 0; i < symbols.length; i++) {
     const s = symbols[i];
     const probed = await probeSymbolCallees(s, dupes.has(s.name), repoPath, limit);
-    const shared = probed && !probed.perDefinition ? nodeKey(s) : null;
-    if (probed && !(shared && sharedCounted.has(shared))) {
-      if (shared) sharedCounted.add(shared);
+    const countKey = probed && countOnceKey(s, probed);
+    if (probed && !(countKey && sharedCounted.has(countKey))) {
+      if (countKey) sharedCounted.add(countKey);
       if (probed.unresolved) unresolved.push(s.name);
       for (const c of probed.callees) {
         edges.push({ fromFile: s.filePath, toFile: c.filePath });
@@ -1887,7 +1900,7 @@ module.exports = {
   buildDot, nodeIdentities, isTestRef, truncationWarning, readTruncation, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, duplicateNames, parseNodeCalls, aggregateFileEdges,
-  topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
+  topFilesByWeight, buildArchitectureDot, countOnceKey, architectureOutputBaseName,
   groupPath, rollupFileEdges, groupCollapseWarning, sortSymbolsForEnumeration,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,

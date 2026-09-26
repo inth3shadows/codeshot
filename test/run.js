@@ -6,7 +6,7 @@ const {
   buildDot, nodeIdentities, isTestRef, truncationWarning, readTruncation, dedupeNodes, renderTruncationNote, dedupeEdges, depthColor,
   depthBudgetWarning, allocateRenderBudget, formatMismatchWarning, matchSymbolNotFound,
   unwrapQueryNodes, symbolBudgetWarning, duplicateNameWarning, duplicateNames, parseNodeCalls, aggregateFileEdges,
-  topFilesByWeight, buildArchitectureDot, architectureOutputBaseName,
+  topFilesByWeight, buildArchitectureDot, countOnceKey, architectureOutputBaseName,
   groupPath, rollupFileEdges, groupCollapseWarning, sortSymbolsForEnumeration,
   applyEmbed, embedMarkers, embedRelLink, parseUnresolvedRefs,
   svgStructure, decodeXmlEntities,
@@ -1970,10 +1970,34 @@ testAsync('probeSymbolCallees answers from the definition whose id matches, even
   const { run, calls } = fakeRun({ callees: sameFile });
   const r = await probeSymbolCallees({ id: 'method:B', name: 'run', kind: 'method', filePath: 'c/dual.js' }, false, '/repo', 20, run);
   assert.deepStrictEqual(calls, ['callees']);
-  assert.deepStrictEqual(r, { callees: [beta], unresolved: false, perDefinition: true });
+  assert.deepStrictEqual(r, { callees: [beta], unresolved: false, perDefinition: true, definitionId: 'method:B' });
   // No id (or no match) is a shared answer, which probeFileEdges counts once per file.
   const shared = await probeSymbolCallees({ name: 'run', kind: 'method', filePath: 'c/dual.js' }, false, '/repo', 20, run);
   assert.deepStrictEqual(shared, { callees: [alpha, beta], unresolved: false, perDefinition: false });
+});
+
+testAsync('probeSymbolCallees matches an overload through roots, and every overload counts once', async () => {
+  const alpha = { name: 'alpha', kind: 'function', filePath: 'a/alpha.ts' };
+  const grouped = {
+    callees: [alpha],
+    definitions: [{ definition: { id: 'method:f1', filePath: 'c/over.ts' }, roots: ['method:f1', 'method:f2', 'method:f3'], callees: [alpha] }],
+  };
+  const { run } = fakeRun({ callees: grouped });
+  const keys = new Set();
+  for (const id of ['method:f1', 'method:f2', 'method:f3']) {
+    const s = { id, name: 'f', kind: 'method', filePath: 'c/over.ts' };
+    const r = await probeSymbolCallees(s, false, '/repo', 20, run);
+    assert.strictEqual(r.perDefinition, true, `${id} must match its grouped definition`);
+    keys.add(countOnceKey(s, r));
+  }
+  assert.deepStrictEqual([...keys], ['def:method:f1']);
+});
+
+test('countOnceKey counts a shared answer once per name and file', () => {
+  const shared = { perDefinition: false };
+  const a = countOnceKey({ name: 'run', filePath: 'c/dual.js' }, shared);
+  assert.strictEqual(a, countOnceKey({ name: 'run', filePath: 'c/dual.js' }, shared));
+  assert.notStrictEqual(a, countOnceKey({ name: 'run', filePath: 'd/dual.js' }, shared));
 });
 
 (async () => {

@@ -137,8 +137,9 @@ once for the one you named.
 - `--limit`, `--max-render`, and `--max-symbols` are reused with the same
   meaning as symbol/architecture mode: `--limit` still bounds each changed
   symbol's callers/callees fetch (per definition, with a codegraph that
-  reports them — so two same-named symbols in one changed file can together
-  bring in more than `--limit`), `--max-symbols` now caps how many *changed*
+  reports them — so a changed symbol whose name also exists in another file,
+  and has two definitions in its own, can bring in more than `--limit`),
+  `--max-symbols` now caps how many *changed*
   symbols get probed (not the whole repo), and `--max-render` bounds only the
   callers/callees pulled in around the changed symbols — every changed symbol
   itself is always drawn, since it's the reason the diagram exists.
