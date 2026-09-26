@@ -902,15 +902,15 @@ function countOnceKey(s, probed) {
 // fatal:false + the null check let one not-found probed name skip past
 // without aborting the whole multi-minute scan. Returns the file edges plus
 // the duplicate names that fell back to the bare-name union, for
-// duplicateNameWarning.
-async function probeFileEdges(symbols, repoPath, limit) {
+// duplicateNameWarning. `run` is injectable for tests, as in probeSymbolCallees.
+async function probeFileEdges(symbols, repoPath, limit, run = runCodegraph) {
   const edges = [];
   const unresolved = [];
   const dupes = duplicateNames(symbols);
   const sharedCounted = new Set();
   for (let i = 0; i < symbols.length; i++) {
     const s = symbols[i];
-    const probed = await probeSymbolCallees(s, dupes.has(s.name), repoPath, limit);
+    const probed = await probeSymbolCallees(s, dupes.has(s.name), repoPath, limit, run);
     const countKey = probed && countOnceKey(s, probed);
     if (probed && !(countKey && sharedCounted.has(countKey))) {
       if (countKey) sharedCounted.add(countKey);
@@ -1907,6 +1907,6 @@ module.exports = {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, probeFileEdges,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
 };

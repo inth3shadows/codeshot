@@ -13,7 +13,7 @@ const {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, probeFileEdges,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
   isBlankDot, blankEmbedRefusal,
 } = require('../render/callgraph.js');
@@ -1998,6 +1998,77 @@ test('countOnceKey counts a shared answer once per name and file', () => {
   const a = countOnceKey({ name: 'run', filePath: 'c/dual.js' }, shared);
   assert.strictEqual(a, countOnceKey({ name: 'run', filePath: 'c/dual.js' }, shared));
   assert.notStrictEqual(a, countOnceKey({ name: 'run', filePath: 'd/dual.js' }, shared));
+});
+
+// probeFileEdges: each answer adds its edges once per countOnceKey, so the
+// weight of a file edge is the number of distinct definitions (or shared
+// per-file answers) that call into it.
+const alphaFn = { name: 'alpha', kind: 'function', filePath: 'a/alpha.js' };
+const betaFn = { name: 'beta', kind: 'function', filePath: 'b/beta.js' };
+
+testAsync('probeFileEdges counts a shared answer once per file, not once per same-file duplicate', async () => {
+  const { run } = fakeRun({ callees: { callees: [alphaFn] } });
+  const symbols = [
+    { name: 'run', kind: 'method', filePath: 'c/dual.js' },
+    { name: 'run', kind: 'method', filePath: 'c/dual.js' },
+  ];
+  const r = await probeFileEdges(symbols, '/repo', 20, run);
+  assert.deepStrictEqual(r.edges, [{ fromFile: 'c/dual.js', toFile: 'a/alpha.js' }]);
+  assert.deepStrictEqual(r.unresolved, []);
+});
+
+testAsync('probeFileEdges counts each id-matched same-file definition, but only for what it calls', async () => {
+  const defs = {
+    callees: [alphaFn, betaFn],
+    definitions: [
+      { definition: { id: 'method:A', filePath: 'c/dual.js' }, callees: [alphaFn] },
+      { definition: { id: 'method:B', filePath: 'c/dual.js' }, callees: [alphaFn, betaFn] },
+    ],
+  };
+  const { run } = fakeRun({ callees: defs });
+  const symbols = [
+    { id: 'method:A', name: 'run', kind: 'method', filePath: 'c/dual.js' },
+    { id: 'method:B', name: 'run', kind: 'method', filePath: 'c/dual.js' },
+  ];
+  const r = await probeFileEdges(symbols, '/repo', 20, run);
+  assert.deepStrictEqual(r.edges, [
+    { fromFile: 'c/dual.js', toFile: 'a/alpha.js' },
+    { fromFile: 'c/dual.js', toFile: 'a/alpha.js' },
+    { fromFile: 'c/dual.js', toFile: 'b/beta.js' },
+  ]);
+});
+
+testAsync('probeFileEdges counts a group of overloads once', async () => {
+  const grouped = {
+    callees: [alphaFn],
+    definitions: [{ definition: { id: 'method:f1', filePath: 'c/over.ts' }, roots: ['method:f1', 'method:f2'], callees: [alphaFn] }],
+  };
+  const { run } = fakeRun({ callees: grouped });
+  const symbols = ['method:f1', 'method:f2'].map(id => ({ id, name: 'f', kind: 'method', filePath: 'c/over.ts' }));
+  const r = await probeFileEdges(symbols, '/repo', 20, run);
+  assert.deepStrictEqual(r.edges, [{ fromFile: 'c/over.ts', toFile: 'a/alpha.js' }]);
+});
+
+testAsync('probeFileEdges gives each file its own count of an unresolved union and names it once per symbol', async () => {
+  // Same name in two files, no per-definition JSON and no node -f answer: the
+  // union is drawn from both files, and the per-file key keeps them apart.
+  const { run } = fakeRun({ callees: { callees: [alphaFn] }, node: null });
+  const symbols = [
+    { name: 'run', kind: 'method', filePath: 'c/dual.js' },
+    { name: 'run', kind: 'method', filePath: 'd/dual.js' },
+  ];
+  const r = await probeFileEdges(symbols, '/repo', 20, run);
+  assert.deepStrictEqual(r.edges, [
+    { fromFile: 'c/dual.js', toFile: 'a/alpha.js' },
+    { fromFile: 'd/dual.js', toFile: 'a/alpha.js' },
+  ]);
+  assert.deepStrictEqual(r.unresolved, ['run', 'run']);
+});
+
+testAsync('probeFileEdges skips a symbol codegraph has no answer for', async () => {
+  const { run } = fakeRun({ callees: null });
+  const r = await probeFileEdges([{ name: 'gone', kind: 'function', filePath: 'x.js' }], '/repo', 20, run);
+  assert.deepStrictEqual(r, { edges: [], unresolved: [] });
 });
 
 (async () => {
