@@ -98,7 +98,9 @@ two extra flags exist specifically for this mode:
 
 `--limit` and `--max-render` are reused with the same meaning as symbol
 mode (callees fetched per probed symbol; distinct nodes actually drawn,
-here ranked by busiest file rather than caller/callee priority).
+here ranked by busiest file rather than caller/callee priority). With a
+codegraph that reports per-definition results, `--limit` applies to each
+definition of a name separately.
 
 A name that exists in more than one file (two `handle`s, or two `index.js`
 files) has its edges attributed to the right file instead of to the union of
@@ -134,7 +136,9 @@ once for the one you named.
   and the default would make the check flap for reasons unrelated to the code.
 - `--limit`, `--max-render`, and `--max-symbols` are reused with the same
   meaning as symbol/architecture mode: `--limit` still bounds each changed
-  symbol's callers/callees fetch, `--max-symbols` now caps how many *changed*
+  symbol's callers/callees fetch (per definition, with a codegraph that
+  reports them — so two same-named symbols in one changed file can together
+  bring in more than `--limit`), `--max-symbols` now caps how many *changed*
   symbols get probed (not the whole repo), and `--max-render` bounds only the
   callers/callees pulled in around the changed symbols — every changed symbol
   itself is always drawn, since it's the reason the diagram exists.

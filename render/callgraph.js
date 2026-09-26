@@ -852,18 +852,28 @@ async function probeCallsInFile(symbol, repoPath, run = runCodegraph) {
 // `run` stands in for runCodegraph so tests can replay recorded codegraph output
 // — CI builds a codegraph with per-definition JSON, so without that the npm
 // `node -f` route would never execute there.
+//
+// `perDefinition` says whether the answer is this one symbol's own list (its
+// definition matched by the enumerated `id`) or one shared by every same-named
+// symbol in its file (every other route). probeFileEdges counts a shared answer
+// once per file: two `run` methods in one file each given the whole list would
+// double every edge weight, even for a callee only one of them calls.
 async function probeSymbolCallees(s, dupe, repoPath, limit, run = runCodegraph) {
   const result = await run(
     ['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', s.name],
     { fatal: false }
   );
   const realCalls = list => (list || []).filter(c => c.kind !== 'file');
+  const byId = s.id && Array.isArray(result?.definitions)
+    ? result.definitions.find(d => d?.definition?.id === s.id)
+    : null;
+  if (byId) return { callees: realCalls(byId.callees), unresolved: false, perDefinition: true };
   if (dupe) {
     const own = pickDefinitionResult(result, 'callees', s.filePath);
-    if (own) return { callees: realCalls(own.callees), unresolved: false };
+    if (own) return { callees: realCalls(own.callees), unresolved: false, perDefinition: false };
     if (s.kind !== 'file' && s.filePath) {
       const fromTrail = await probeCallsInFile(s, repoPath, run);
-      if (fromTrail !== null) return { callees: fromTrail, unresolved: false };
+      if (fromTrail !== null) return { callees: fromTrail, unresolved: false, perDefinition: false };
     }
   }
   if (result === null) return null;
@@ -871,7 +881,7 @@ async function probeSymbolCallees(s, dupe, repoPath, limit, run = runCodegraph) 
   // An empty union has nothing to misattribute (a duplicated constant, a file
   // that calls nothing), so it isn't worth a warning that would crowd out the
   // names that really drew union edges.
-  return { callees, unresolved: dupe && callees.length > 0 };
+  return { callees, unresolved: dupe && callees.length > 0, perDefinition: false };
 }
 
 // Sequential — same concurrency hazard as collectTransitive: parallel
@@ -884,10 +894,13 @@ async function probeFileEdges(symbols, repoPath, limit) {
   const edges = [];
   const unresolved = [];
   const dupes = duplicateNames(symbols);
+  const sharedCounted = new Set();
   for (let i = 0; i < symbols.length; i++) {
     const s = symbols[i];
     const probed = await probeSymbolCallees(s, dupes.has(s.name), repoPath, limit);
-    if (probed) {
+    const shared = probed && !probed.perDefinition ? nodeKey(s) : null;
+    if (probed && !(shared && sharedCounted.has(shared))) {
+      if (shared) sharedCounted.add(shared);
       if (probed.unresolved) unresolved.push(s.name);
       for (const c of probed.callees) {
         edges.push({ fromFile: s.filePath, toFile: c.filePath });
