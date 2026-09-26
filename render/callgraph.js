@@ -584,7 +584,7 @@ function duplicateNames(symbols) {
 // its output, into file-qualified callees. This is the ONLY file-disambiguated
 // callee probe codegraph 1.5.0 offers — `codegraph callees` takes a bare name with
 // no --file flag there — so it's how --architecture resolves same-named symbols in
-// different files instead of guessing. (1.6.0 adds per-definition JSON, which
+// different files instead of guessing. (Upstream #1801, after 1.6.0, adds per-definition JSON, which
 // --diff uses via pickDefinitionResult; --architecture has not moved over.)
 //
 // Returns null whenever the response can't be trusted to be a COMPLETE call list
@@ -1082,7 +1082,7 @@ function diffDuplicateNameWarning(unresolvedRootNames) {
   // merged result set is attached to BOTH in full — e.g. a caller of only
   // root B's `parse` is drawn as calling root A's `parse` too, not a single
   // misattributed edge.
-  return `codeshot: --diff: ${names.length} changed symbol name(s) also exist in another file (e.g. ${names.slice(0, 3).join(', ')}) and codegraph gave no per-file answer for them (per-definition results need codegraph 1.6.0+; on 1.6.0 this means no definition matched the root's file), so they fell back to the bare-name probe: codegraph's merged result for every same-named definition is attached to each such root in full, not split between them.`;
+  return `codeshot: --diff: ${names.length} changed symbol name(s) also exist in another file (e.g. ${names.slice(0, 3).join(', ')}) and codegraph gave no per-file answer for them (per-definition results need a codegraph with upstream #1801, which no npm release through 1.6.0 has; with it, this means no definition matched the root's file), so they fell back to the bare-name probe: codegraph's merged result for every same-named definition is attached to each such root in full, not split between them.`;
 }
 
 // Resolves one root's callers/callees responses to its own file where it can.
@@ -1107,7 +1107,8 @@ function resolveRootResults(callersResult, calleesResult, filePath) {
 }
 
 // Picks the slice of a bare-name callers/callees --json response that belongs to
-// the definition in `filePath`. codegraph 1.6.0+ groups the response per
+// the definition in `filePath`. codegraph with upstream #1801 (merged after the
+// 1.6.0 npm release; in the inth3shadows fork) groups the response per
 // definition (`definitions[]`, each with its own list, `total` and `truncated`)
 // alongside the top-level union; measured on a two-`parse` fixture, the union
 // carries both files' edges and each definition carries exactly its own. Every
