@@ -963,6 +963,110 @@ async function probeFileEdges(symbols, repoPath, limit, run = runCodegraph) {
   return { edges, unresolved, truncated };
 }
 
+// --- direct index read: every probe in one SQL query ----------------------
+//
+// probeFileEdges spends ~0.6s per symbol starting a `codegraph callees`
+// process; codeshot's own work is well under a second. When Node has
+// node:sqlite (22.5+), --architecture instead reads the index codegraph already
+// built, in one query, and derives the same per-definition answer the fork's
+// callees JSON gives. Enumeration stays on the CLI, so the probed symbol set and
+// --max-symbols are unchanged. Anything unexpected returns null and the CLI
+// probes run exactly as before.
+
+// codegraph's own callee edge kinds (getCallees, src/graph/traversal.ts).
+const CALLEE_EDGE_KINDS = ['calls', 'references', 'imports', 'instantiates', 'navigates'];
+
+// node:sqlite prints an ExperimentalWarning when loaded; that one warning is
+// dropped so it doesn't read as a codeshot problem. Null where it doesn't exist.
+function loadNodeSqlite() {
+  const emit = process.emitWarning;
+  process.emitWarning = (warning, ...rest) => {
+    const text = typeof warning === 'string' ? warning : warning && warning.message;
+    if (/SQLite is an experimental feature/.test(String(text))) return;
+    return emit.call(process, warning, ...rest);
+  };
+  try {
+    return require('node:sqlite');
+  } catch {
+    return null;
+  } finally {
+    process.emitWarning = emit;
+  }
+}
+
+// One row per callee edge from any node: the source's definition identity
+// (name, file, qualified name) and the target's id, kind and file. Null means
+// "use the CLI": CODESHOT_INDEX_READ=cli, no node:sqlite (Node 18/20), no index
+// at <repoPath>/.codegraph (a --path below the project root, which the CLI
+// resolves upward), or any query failure (a schema change, a lock).
+function readIndexRows(repoPath) {
+  if (process.env.CODESHOT_INDEX_READ === 'cli') return null;
+  const dbPath = path.join(repoPath, '.codegraph', 'codegraph.db');
+  if (!fs.existsSync(dbPath)) return null;
+  const sqlite = loadNodeSqlite();
+  if (!sqlite || !sqlite.DatabaseSync) return null;
+  let db;
+  try {
+    db = new sqlite.DatabaseSync(dbPath, { readOnly: true });
+    return db.prepare(
+      `SELECT s.name AS name, s.file_path AS filePath, s.qualified_name AS qualifiedName,
+              e.target AS target, e.kind AS edgeKind, t.kind AS targetKind, t.file_path AS targetFile
+         FROM edges e
+         JOIN nodes s ON s.id = e.source
+         JOIN nodes t ON t.id = e.target
+        WHERE e.kind IN (${CALLEE_EDGE_KINDS.map(() => '?').join(', ')})`
+    ).all(...CALLEE_EDGE_KINDS);
+  } catch {
+    return null;
+  } finally {
+    try { if (db) db.close(); } catch { /* already closed or never opened */ }
+  }
+}
+
+// probeFileEdges' answer, from index rows instead of one process per symbol.
+// A definition is every node with the symbol's name, file and qualified name
+// (codegraph's groupDefinitions: overloads share one), its callees the distinct
+// targets across them, minus file-kind targets (as probeSymbolCallees) and
+// targets reached only by `imports`. This read sees EVERY edge to a
+// target, so unlike the CLI's one-edge-per-callee JSON it can tell an
+// import-only callee from an imported-and-called one. Each definition is
+// counted once, in enumeration order. The read is complete, so nothing is ever
+// unresolved or cut by --limit. Pure.
+function fileEdgesFromIndexRows(symbols, rows) {
+  const defKey = (name, filePath, qualifiedName) => `${name}\0${filePath}\0${qualifiedName}`;
+  const wanted = new Set(symbols.map(s => defKey(s.name, s.filePath, s.qualifiedName)));
+  const defs = new Map();
+  for (const r of rows) {
+    const key = defKey(r.name, r.filePath, r.qualifiedName);
+    if (!wanted.has(key)) continue;
+    if (!defs.has(key)) defs.set(key, new Map());
+    const targets = defs.get(key);
+    const t = targets.get(r.target) || { file: r.targetFile, kind: r.targetKind, called: false };
+    if (r.edgeKind !== 'imports') t.called = true;
+    targets.set(r.target, t);
+  }
+  const edges = [];
+  const counted = new Set();
+  for (const s of symbols) {
+    const key = defKey(s.name, s.filePath, s.qualifiedName);
+    if (counted.has(key)) continue;
+    counted.add(key);
+    for (const t of (defs.get(key) || new Map()).values()) {
+      if (t.kind === 'file' || !t.called) continue;
+      edges.push({ fromFile: s.filePath, toFile: t.file });
+    }
+  }
+  return { edges, unresolved: [], truncated: [] };
+}
+
+// The direct read needs each symbol's index identity; `query` carries it on the
+// fork and npm 1.6.0, but a build without it must use the CLI probes.
+async function collectFileEdges(symbols, repoPath, limit) {
+  const identified = symbols.every(s => typeof s.qualifiedName === 'string' && typeof s.filePath === 'string');
+  const rows = identified ? readIndexRows(repoPath) : null;
+  return rows ? fileEdgesFromIndexRows(symbols, rows) : probeFileEdges(symbols, repoPath, limit);
+}
+
 // truncationWarning's counterpart for --architecture, aggregated across every
 // probed symbol like diffTruncationWarning: a cut callee list means missing
 // file edges or understated weights, which the diagram itself can't show.
@@ -1013,7 +1117,7 @@ async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, gro
   const { symbols, truncated } = await enumerateSymbols(repoPath, maxSymbols);
   const symbolWarning = symbolBudgetWarning(truncated, maxSymbols);
   if (symbolWarning) console.error(symbolWarning);
-  const { edges: symbolEdges, unresolved, truncated: truncatedNames } = await probeFileEdges(symbols, repoPath, limit);
+  const { edges: symbolEdges, unresolved, truncated: truncatedNames } = await collectFileEdges(symbols, repoPath, limit);
   const dupeWarning = duplicateNameWarning(unresolved);
   if (dupeWarning) console.error(dupeWarning);
   const truncWarning = architectureTruncationWarning(truncatedNames, limit);
@@ -2013,6 +2117,6 @@ module.exports = {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, probeFileEdges, architectureTruncationWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, fileEdgesFromIndexRows, readIndexRows, probeFileEdges, architectureTruncationWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
 };

@@ -13,7 +13,7 @@ const {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, probeFileEdges, architectureTruncationWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, fileEdgesFromIndexRows, readIndexRows, probeFileEdges, architectureTruncationWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
   isBlankDot, blankEmbedRefusal,
 } = require('../render/callgraph.js');
@@ -504,6 +504,70 @@ test('explicit empty --path is rejected instead of silently falling through to c
     assert.match(err.stderr, /--path must not be empty/);
   }
   assert.strictEqual(threw, true, 'expected empty --path to be rejected');
+});
+
+// Index rows as readIndexRows returns them: one per callee edge.
+const row = (name, filePath, target, edgeKind, targetFile, targetKind = 'function', qualifiedName = name) =>
+  ({ name, filePath, qualifiedName, target, edgeKind, targetKind, targetFile });
+
+test('fileEdgesFromIndexRows counts each definition once, overloads together, in enumeration order', () => {
+  const symbols = [
+    { name: 'f', filePath: 'c/over.ts', qualifiedName: 'f' },
+    { name: 'f', filePath: 'c/over.ts', qualifiedName: 'f' },
+    { name: 'run', filePath: 'c/dual.js', qualifiedName: 'A.run' },
+    { name: 'run', filePath: 'c/dual.js', qualifiedName: 'B.run' },
+  ];
+  const rows = [
+    // Two overload nodes of f, both calling alpha: one definition, one edge.
+    row('f', 'c/over.ts', 'fn:alpha', 'calls', 'a/alpha.js'),
+    row('f', 'c/over.ts', 'fn:alpha', 'calls', 'a/alpha.js'),
+    // Two same-file methods are two definitions: each counts.
+    row('run', 'c/dual.js', 'fn:alpha', 'calls', 'a/alpha.js', 'function', 'A.run'),
+    row('run', 'c/dual.js', 'fn:alpha', 'calls', 'a/alpha.js', 'function', 'B.run'),
+    row('run', 'c/dual.js', 'fn:beta', 'references', 'b/beta.js', 'function', 'B.run'),
+  ];
+  assert.deepStrictEqual(fileEdgesFromIndexRows(symbols, rows), {
+    edges: [
+      { fromFile: 'c/over.ts', toFile: 'a/alpha.js' },
+      { fromFile: 'c/dual.js', toFile: 'a/alpha.js' },
+      { fromFile: 'c/dual.js', toFile: 'a/alpha.js' },
+      { fromFile: 'c/dual.js', toFile: 'b/beta.js' },
+    ],
+    unresolved: [],
+    truncated: [],
+  });
+});
+
+test('fileEdgesFromIndexRows drops file-kind and import-only targets, keeps an imported target that is also called, and ignores unenumerated sources', () => {
+  const file = { name: 'main.ts', filePath: 'src/main.ts', qualifiedName: 'src/main.ts' };
+  const rows = [
+    row('main.ts', 'src/main.ts', 'fn:alpha', 'imports', 'src/alpha.ts', 'function', 'src/main.ts'),
+    row('main.ts', 'src/main.ts', 'fn:beta', 'imports', 'src/alpha.ts', 'function', 'src/main.ts'),
+    row('main.ts', 'src/main.ts', 'fn:beta', 'calls', 'src/alpha.ts', 'function', 'src/main.ts'),
+    row('main.ts', 'src/main.ts', 'file:x', 'references', 'src/x.ts', 'file', 'src/main.ts'),
+    row('hidden', 'src/hidden.ts', 'fn:alpha', 'calls', 'src/alpha.ts'),
+  ];
+  assert.deepStrictEqual(fileEdgesFromIndexRows([file], rows).edges, [{ fromFile: 'src/main.ts', toFile: 'src/alpha.ts' }]);
+  assert.deepStrictEqual(fileEdgesFromIndexRows([file], []).edges, []);
+});
+
+test('readIndexRows defers to the CLI when told to or when there is no index', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const dir = fs.mkdtempSync(require('path').join(os.tmpdir(), 'codeshot-noindex-'));
+  try {
+    assert.strictEqual(readIndexRows(dir), null, 'no .codegraph/codegraph.db');
+    const prev = process.env.CODESHOT_INDEX_READ;
+    process.env.CODESHOT_INDEX_READ = 'cli';
+    try {
+      assert.strictEqual(readIndexRows(require('path').join(__dirname, '..')), null);
+    } finally {
+      if (prev === undefined) delete process.env.CODESHOT_INDEX_READ;
+      else process.env.CODESHOT_INDEX_READ = prev;
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('parseForbidRule reads FROM->TO, trims spaces and a leading ./, and rejects malformed rules', () => {
@@ -1276,6 +1340,18 @@ test('--architecture attributes a duplicate-named symbol\'s edges to its own fil
       assert.match(dot, /"e\/index\.js" -> "b\/beta\.js"/, 'expected the real edge from e/index.js');
       assert.doesNotMatch(dot, /"d\/index\.js" -> "b\/beta\.js"/, 'same-named files must not share the union of their callees');
       assert.doesNotMatch(dot, /"e\/index\.js" -> "a\/alpha\.js"/, 'same-named files must not share the union of their callees');
+      // With per-definition JSON the CLI probes attribute by file like the direct
+      // index read (Node with node:sqlite), so both must draw the same file edges.
+      // Weights may differ one way only: the CLI can't tell an import-only
+      // callee from a called one and counts it, the index read doesn't.
+      // npm's CLI answers draw the union instead, so there they legitimately differ.
+      const cliOut = path.join(dir, 'arch-cli.dot');
+      execFileSync('node', [callgraphJs, '--architecture', '--path', dir, '--out', cliOut, '--format', 'dot'], { encoding: 'utf8', stdio: 'pipe', timeout: 180000, env: { ...process.env, CODESHOT_INDEX_READ: 'cli' } });
+      const weights = d => new Map([...d.matchAll(/"([^"]+)" -> "([^"]+)"\s*\[label="?(\d+)/g)].map(m => [`${m[1]} -> ${m[2]}`, Number(m[3])]));
+      const viaIndex = weights(dot);
+      const viaCli = weights(fs.readFileSync(cliOut, 'utf8'));
+      assert.deepStrictEqual([...viaIndex.keys()].sort(), [...viaCli.keys()].sort(), 'the direct index read and the CLI probes must draw the same file edges');
+      for (const [edge, w] of viaIndex) assert.ok(w <= viaCli.get(edge), `${edge}: index weight ${w} exceeds the CLI's ${viaCli.get(edge)}`);
     } else {
       console.log('  # partially skipped: this codegraph has no per-definition JSON (upstream #1801), so same-named files are expected to fall back to the union');
     }
