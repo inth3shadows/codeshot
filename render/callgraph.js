@@ -1212,8 +1212,11 @@ function matchRootSymbols(symbols, changedFiles) {
   // as a bold diff root alongside its real symbols: undocumented, and it
   // would eat into --max-symbols/--max-render budget meant for actual
   // changed symbols. Confirmed live: --diff drew "callgraph.js"/"run.js"
-  // as roots before this filter.
-  return (symbols || []).filter(s => s.kind !== 'file' && s.filePath && changedSet.has(String(s.filePath).replace(/\\/g, '/')));
+  // as roots before this filter. "kind":"import" nodes are excluded for the
+  // same reason, plus one: an import statement's text probed as a name can
+  // resolve to another symbol and draw ITS callers/callees on the root
+  // (probeFileEdges skips them for --architecture, #46).
+  return (symbols || []).filter(s => s.kind !== 'file' && s.kind !== 'import' && s.filePath && changedSet.has(String(s.filePath).replace(/\\/g, '/')));
 }
 
 function diffNoChangesWarning(diffRef) {

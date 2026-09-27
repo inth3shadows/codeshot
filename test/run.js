@@ -1953,6 +1953,17 @@ test('diffHandleEmptyRoots logs only the warn message (never exits) when there i
   // process.exit directly in-process here would kill the test runner itself.
 });
 
+test('matchRootSymbols excludes "kind":"import" nodes — an import statement is not a changed symbol', () => {
+  // Measured: a changed test/t.ts drew its `import ... from "../src/mcp/tools"`
+  // as a bold root, and probing that text as a name can resolve to some other
+  // symbol and draw its callers/callees (the --architecture bug fixed in #46).
+  const symbols = [
+    { name: '../src/mcp/tools', kind: 'import', filePath: 'test/t.ts' },
+    { name: 'runTest', kind: 'function', filePath: 'test/t.ts' },
+  ];
+  assert.deepStrictEqual(matchRootSymbols(symbols, ['test/t.ts']).map(s => s.name), ['runTest']);
+});
+
 test('matchRootSymbols excludes "kind":"file" index entries — a changed FILE itself must not become a diagram root', () => {
   const symbols = [
     { name: 'a.js', filePath: 'a.js', kind: 'file' },
