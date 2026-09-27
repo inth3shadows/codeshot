@@ -897,6 +897,23 @@ function countOnceKey(s, probed) {
   return probed.perDefinition ? `def:${probed.definitionId}` : `file:${nodeKey(s)}`;
 }
 
+// Same-named symbols ask codegraph the identical question (`callees` takes a
+// bare name; `node -f` a name plus file), so a repeated name is asked once and
+// its answer reused. Only names that occur more than once are cached, so memory
+// holds just the answers that will be read again. Both probes end their args
+// with `-- <name>`.
+function memoizeRepeatedNames(run, symbols) {
+  const counts = new Map();
+  for (const s of symbols) counts.set(s.name, (counts.get(s.name) || 0) + 1);
+  const cache = new Map();
+  return async (args, opts) => {
+    if ((counts.get(args[args.length - 1]) || 0) < 2) return run(args, opts);
+    const key = JSON.stringify(args);
+    if (!cache.has(key)) cache.set(key, await run(args, opts));
+    return cache.get(key);
+  };
+}
+
 // Sequential — same concurrency hazard as collectTransitive: parallel
 // codegraph calls against one index race on its schema_versions table.
 // fatal:false + the null check let one not-found probed name skip past
@@ -904,13 +921,14 @@ function countOnceKey(s, probed) {
 // the duplicate names that fell back to the bare-name union, for
 // duplicateNameWarning. `run` is injectable for tests, as in probeSymbolCallees.
 async function probeFileEdges(symbols, repoPath, limit, run = runCodegraph) {
+  const cachedRun = memoizeRepeatedNames(run, symbols);
   const edges = [];
   const unresolved = [];
   const dupes = duplicateNames(symbols);
   const sharedCounted = new Set();
   for (let i = 0; i < symbols.length; i++) {
     const s = symbols[i];
-    const probed = await probeSymbolCallees(s, dupes.has(s.name), repoPath, limit, run);
+    const probed = await probeSymbolCallees(s, dupes.has(s.name), repoPath, limit, cachedRun);
     const countKey = probed && countOnceKey(s, probed);
     if (probed && !(countKey && sharedCounted.has(countKey))) {
       if (countKey) sharedCounted.add(countKey);
