@@ -13,7 +13,7 @@ const {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, probeFileEdges,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, probeFileEdges, architectureTruncationWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
   isBlankDot, blankEmbedRefusal,
 } = require('../render/callgraph.js');
@@ -1947,7 +1947,7 @@ testAsync('probeSymbolCallees skips node -f for a file node and does not flag an
   const { run, calls } = fakeRun({ callees: { symbol: 'index.js', callees: [] }, node: npmHandleNodeA });
   const r = await probeSymbolCallees({ name: 'index.js', kind: 'file', filePath: 'd/index.js' }, true, '/repo', 20, run);
   assert.deepStrictEqual(calls, ['callees']);
-  assert.deepStrictEqual(r, { callees: [], unresolved: false, perDefinition: false });
+  assert.deepStrictEqual(r, { callees: [], unresolved: false, perDefinition: false, truncated: false });
 });
 
 testAsync('probeSymbolCallees still uses node -f when the JSON probe returns nothing', async () => {
@@ -1970,10 +1970,10 @@ testAsync('probeSymbolCallees answers from the definition whose id matches, even
   const { run, calls } = fakeRun({ callees: sameFile });
   const r = await probeSymbolCallees({ id: 'method:B', name: 'run', kind: 'method', filePath: 'c/dual.js' }, false, '/repo', 20, run);
   assert.deepStrictEqual(calls, ['callees']);
-  assert.deepStrictEqual(r, { callees: [beta], unresolved: false, perDefinition: true, definitionId: 'method:B' });
+  assert.deepStrictEqual(r, { callees: [beta], unresolved: false, perDefinition: true, definitionId: 'method:B', truncated: false });
   // No id (or no match) is a shared answer, which probeFileEdges counts once per file.
   const shared = await probeSymbolCallees({ name: 'run', kind: 'method', filePath: 'c/dual.js' }, false, '/repo', 20, run);
-  assert.deepStrictEqual(shared, { callees: [alpha, beta], unresolved: false, perDefinition: false });
+  assert.deepStrictEqual(shared, { callees: [alpha, beta], unresolved: false, perDefinition: false, truncated: false });
 });
 
 testAsync('probeSymbolCallees matches an overload through roots, and every overload counts once', async () => {
@@ -2089,7 +2089,49 @@ testAsync('probeFileEdges asks codegraph once per repeated name (and once per na
 testAsync('probeFileEdges skips a symbol codegraph has no answer for', async () => {
   const { run } = fakeRun({ callees: null });
   const r = await probeFileEdges([{ name: 'gone', kind: 'function', filePath: 'x.js' }], '/repo', 20, run);
-  assert.deepStrictEqual(r, { edges: [], unresolved: [] });
+  assert.deepStrictEqual(r, { edges: [], unresolved: [], truncated: [] });
+});
+
+testAsync('probeSymbolCallees reads truncation from the slice it answered with, not the whole response', async () => {
+  const cutDefs = {
+    callees: [alphaFn, betaFn], truncated: true, total: 9,
+    definitions: [
+      { definition: { id: 'method:A', filePath: 'c/dual.js' }, callees: [alphaFn], total: 1, truncated: false },
+      { definition: { id: 'method:B', filePath: 'c/dual.js' }, callees: [betaFn], total: 8, truncated: true },
+    ],
+  };
+  const { run } = fakeRun({ callees: cutDefs });
+  const a = await probeSymbolCallees({ id: 'method:A', name: 'run', kind: 'method', filePath: 'c/dual.js' }, false, '/repo', 1, run);
+  const b = await probeSymbolCallees({ id: 'method:B', name: 'run', kind: 'method', filePath: 'c/dual.js' }, false, '/repo', 1, run);
+  const shared = await probeSymbolCallees({ name: 'run', kind: 'method', filePath: 'c/dual.js' }, false, '/repo', 1, run);
+  assert.deepStrictEqual([a.truncated, b.truncated, shared.truncated], [false, true, true]);
+});
+
+testAsync('probeSymbolCallees falls back to the hit-the-limit heuristic when codegraph reports no truncation (npm)', async () => {
+  // npm's fixture carries two callees and no truncated/total fields.
+  const { run } = fakeRun({ callees: npmHandleCallees });
+  assert.strictEqual((await probeSymbolCallees(handleA, false, '/repo', 2, run)).truncated, true);
+  assert.strictEqual((await probeSymbolCallees(handleA, false, '/repo', 3, run)).truncated, false);
+  // The node -f trail has no --limit, so its answer is never flagged.
+  const trail = fakeRun({ callees: npmHandleCallees, node: npmHandleNodeA });
+  assert.strictEqual((await probeSymbolCallees(handleA, true, '/repo', 2, trail.run)).truncated, false);
+});
+
+testAsync('probeFileEdges names each symbol whose counted answer was cut', async () => {
+  const { run } = fakeRun({ callees: { callees: [alphaFn], truncated: true, total: 4 } });
+  const symbols = [
+    { name: 'run', kind: 'method', filePath: 'c/dual.js' },
+    { name: 'run', kind: 'method', filePath: 'c/dual.js' },
+  ];
+  const r = await probeFileEdges(symbols, '/repo', 1, run);
+  assert.deepStrictEqual(r.truncated, ['run']);
+});
+
+test('architectureTruncationWarning names distinct symbols and the limit, and is silent when nothing was cut', () => {
+  assert.strictEqual(architectureTruncationWarning([], 50), null);
+  const w = architectureTruncationWarning(['run', 'run', 'main', 'parse', 'emit'], 50);
+  assert.match(w, /^codeshot: 4 symbol\(s\) had their callees cut off by --limit \(50\) \(e\.g\. run, main, parse\)/);
+  assert.match(w, /missing or underweighted/);
 });
 
 (async () => {

@@ -863,6 +863,11 @@ async function probeCallsInFile(symbol, repoPath, run = runCodegraph) {
 // codegraph without per-definition JSON the shared list is deduplicated by
 // callee, so two same-file `run`s that both call alpha count 1, not 2 — the
 // fork and npm can draw different weights for such a file (TECHNICAL.md).
+//
+// `truncated` says --limit cut the list this answer came from, read by
+// readTruncation from the same slice (a definition's own `truncated`, else the
+// response's, else the hit-the-limit heuristic). The node -f trail has no
+// --limit, and parseNodeCalls already refuses a trail cut at 12.
 async function probeSymbolCallees(s, dupe, repoPath, limit, run = runCodegraph) {
   const result = await run(
     ['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', s.name],
@@ -874,13 +879,14 @@ async function probeSymbolCallees(s, dupe, repoPath, limit, run = runCodegraph) 
   const byId = s.id && Array.isArray(result?.definitions)
     ? result.definitions.find(d => d?.definition?.id === s.id || (Array.isArray(d?.roots) && d.roots.includes(s.id)))
     : null;
-  if (byId) return { callees: realCalls(byId.callees), unresolved: false, perDefinition: true, definitionId: byId.definition?.id ?? s.id };
+  const cut = slice => readTruncation(slice, slice.callees, limit).truncated;
+  if (byId) return { callees: realCalls(byId.callees), unresolved: false, perDefinition: true, definitionId: byId.definition?.id ?? s.id, truncated: cut(byId) };
   if (dupe) {
     const own = pickDefinitionResult(result, 'callees', s.filePath);
-    if (own) return { callees: realCalls(own.callees), unresolved: false, perDefinition: false };
+    if (own) return { callees: realCalls(own.callees), unresolved: false, perDefinition: false, truncated: cut(own) };
     if (s.kind !== 'file' && s.filePath) {
       const fromTrail = await probeCallsInFile(s, repoPath, run);
-      if (fromTrail !== null) return { callees: fromTrail, unresolved: false, perDefinition: false };
+      if (fromTrail !== null) return { callees: fromTrail, unresolved: false, perDefinition: false, truncated: false };
     }
   }
   if (result === null) return null;
@@ -888,7 +894,7 @@ async function probeSymbolCallees(s, dupe, repoPath, limit, run = runCodegraph) 
   // An empty union has nothing to misattribute (a duplicated constant, a file
   // that calls nothing), so it isn't worth a warning that would crowd out the
   // names that really drew union edges.
-  return { callees, unresolved: dupe && callees.length > 0, perDefinition: false };
+  return { callees, unresolved: dupe && callees.length > 0, perDefinition: false, truncated: cut(result) };
 }
 
 // The key probeFileEdges counts an answer under at most once: the matched
@@ -919,11 +925,13 @@ function memoizeRepeatedNames(run, symbols) {
 // fatal:false + the null check let one not-found probed name skip past
 // without aborting the whole multi-minute scan. Returns the file edges plus
 // the duplicate names that fell back to the bare-name union, for
-// duplicateNameWarning. `run` is injectable for tests, as in probeSymbolCallees.
+// duplicateNameWarning, and the names whose callees --limit cut, for
+// architectureTruncationWarning. `run` is injectable for tests, as in probeSymbolCallees.
 async function probeFileEdges(symbols, repoPath, limit, run = runCodegraph) {
   const cachedRun = memoizeRepeatedNames(run, symbols);
   const edges = [];
   const unresolved = [];
+  const truncated = [];
   const dupes = duplicateNames(symbols);
   const sharedCounted = new Set();
   for (let i = 0; i < symbols.length; i++) {
@@ -933,6 +941,7 @@ async function probeFileEdges(symbols, repoPath, limit, run = runCodegraph) {
     if (probed && !(countKey && sharedCounted.has(countKey))) {
       if (countKey) sharedCounted.add(countKey);
       if (probed.unresolved) unresolved.push(s.name);
+      if (probed.truncated) truncated.push(s.name);
       for (const c of probed.callees) {
         edges.push({ fromFile: s.filePath, toFile: c.filePath });
       }
@@ -941,16 +950,27 @@ async function probeFileEdges(symbols, repoPath, limit, run = runCodegraph) {
       console.error(`codeshot: scanned ${i + 1}/${symbols.length} symbols...`);
     }
   }
-  return { edges, unresolved };
+  return { edges, unresolved, truncated };
+}
+
+// truncationWarning's counterpart for --architecture, aggregated across every
+// probed symbol like diffTruncationWarning: a cut callee list means missing
+// file edges or understated weights, which the diagram itself can't show.
+function architectureTruncationWarning(truncatedNames, limit) {
+  const names = [...new Set(truncatedNames || [])];
+  if (!names.length) return null;
+  return `codeshot: ${names.length} symbol(s) had their callees cut off by --limit (${limit}) (e.g. ${names.slice(0, 3).join(', ')}), so some file edges may be missing or underweighted; rerun with a larger --limit to see the rest.`;
 }
 
 async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, groupDepth }) {
   const { symbols, truncated } = await enumerateSymbols(repoPath, maxSymbols);
   const symbolWarning = symbolBudgetWarning(truncated, maxSymbols);
   if (symbolWarning) console.error(symbolWarning);
-  const { edges: symbolEdges, unresolved } = await probeFileEdges(symbols, repoPath, limit);
+  const { edges: symbolEdges, unresolved, truncated: truncatedNames } = await probeFileEdges(symbols, repoPath, limit);
   const dupeWarning = duplicateNameWarning(unresolved);
   if (dupeWarning) console.error(dupeWarning);
+  const truncWarning = architectureTruncationWarning(truncatedNames, limit);
+  if (truncWarning) console.error(truncWarning);
   const rawFileEdges = aggregateFileEdges(symbolEdges);
   // The rollup happens here, on aggregated edges, rather than by rewriting
   // filePaths at probe time: probing must stay file-exact (parseNodeCalls'
@@ -1925,6 +1945,6 @@ module.exports = {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, probeFileEdges,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, probeFileEdges, architectureTruncationWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
 };
