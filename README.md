@@ -98,8 +98,9 @@ specifically for this mode:
 - `--forbid <from>-><to>` — an architecture rule; repeat it for several. Each
   side is a repo-relative path: ending in `/` it means every file under that
   directory, otherwise one exact file (`--forbid 'src/ui/->src/db/'`). Any file
-  edge a rule matches is listed on stderr with its weight and the run exits 1,
-  after the diagram is written, so CI fails with the picture as evidence. Rules
+  edge a rule matches is listed on stderr with its weight and drawn red, and
+  the run exits 1 after the diagram is written, so CI fails with the picture as
+  evidence. Rules
   are checked on the per-file edges, before `--group-depth` and `--max-render`,
   so neither can hide a violation.
 - `--depth` has no effect here and is rejected if passed — there's no

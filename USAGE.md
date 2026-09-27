@@ -86,8 +86,10 @@ codeshot --architecture --path . --forbid 'src/ui/->src/db/' --out arch.svg --fo
 
 A side ending in `/` is a directory (every file under it); anything else is one
 exact file. Repeat `--forbid` for more rules. If any call crosses a forbidden
-line, Codeshot lists each offending file edge and its weight, still writes the
-diagram, and exits 1 — so a CI step fails and the image shows where. Rules are
+line, Codeshot lists each offending file edge and its weight, draws it red in
+the diagram (under `--group-depth`, the directory edge it rolls up into), and
+exits 1 — so a CI step fails and the image shows where. Without a broken rule
+nothing is red and the diagram is unchanged. Rules are
 checked on every per-file edge, even ones `--group-depth` merges or
 `--max-render` leaves out of the picture. They can only see calls the scan
 found, so raise `--limit`/`--max-symbols` if Codeshot warns the scan was cut.

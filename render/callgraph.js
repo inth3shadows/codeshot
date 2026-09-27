@@ -738,7 +738,37 @@ function topFilesByWeight(fileEdges, maxRender) {
   return new Set(ranked.map(([file]) => file));
 }
 
-function buildArchitectureDot(fileEdges, { maxRender } = {}) {
+// The key a drawn edge and a --forbid violation share, so buildArchitectureDot
+// can tell which drawn edges break a rule. Pure.
+function drawnEdgeKey(from, to) {
+  return `${from}\0${to}`;
+}
+
+// The drawn edges (after --group-depth) that carry a --forbid violation: a
+// violation is per file, so under --group-depth it marks the directory edge it
+// rolls up into. One that rolls up into a single group isn't drawn at all. Pure.
+function violatingDrawnKeys(violations, groupDepth) {
+  const at = f => (Number.isFinite(groupDepth) ? groupPath(f, groupDepth) : f);
+  const keys = new Set();
+  for (const v of violations || []) {
+    const from = at(v.from);
+    const to = at(v.to);
+    if (from !== to) keys.add(drawnEdgeKey(from, to));
+  }
+  return keys;
+}
+
+// How many violating drawn edges --max-render leaves out of the picture. The
+// run still fails on them; this only keeps the image from reading as clean. Pure.
+function hiddenViolationNote(fileEdges, violatingKeys, maxRender) {
+  const keep = topFilesByWeight(fileEdges, maxRender);
+  if (!keep || !violatingKeys || !violatingKeys.size) return null;
+  const hidden = fileEdges.filter(e => violatingKeys.has(drawnEdgeKey(e.from, e.to)) && !(keep.has(e.from) && keep.has(e.to))).length;
+  if (!hidden) return null;
+  return `codeshot: ${hidden} edge(s) that break a --forbid rule fall outside --max-render ${maxRender} and aren't drawn; they're listed above.`;
+}
+
+function buildArchitectureDot(fileEdges, { maxRender, violating } = {}) {
   const esc = s => String(s).replace(/"/g, '\\"');
   const keep = topFilesByWeight(fileEdges, maxRender);
   const kept = keep ? fileEdges.filter(e => keep.has(e.from) && keep.has(e.to)) : fileEdges;
@@ -760,7 +790,11 @@ function buildArchitectureDot(fileEdges, { maxRender } = {}) {
     lines.push(`  "${esc(file)}"${attrs};`);
   }
   for (const e of kept) {
-    lines.push(`  "${esc(e.from)}" -> "${esc(e.to)}" [label="${e.weight}"];`);
+    // A --forbid violation is the one loud color in the muted house style.
+    const alarm = violating && violating.has(drawnEdgeKey(e.from, e.to))
+      ? ', color="#dc2626", fontcolor="#dc2626", penwidth=1.8'
+      : '';
+    lines.push(`  "${esc(e.from)}" -> "${esc(e.to)}" [label="${e.weight}"${alarm}];`);
   }
   lines.push('}');
   return lines.join('\n');
@@ -1147,7 +1181,11 @@ async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, gro
   const note = renderTruncationNote(groupDepth ? 'groups' : 'files', totalFiles, maxRender);
   if (note) console.error(note);
 
-  return { dot: buildArchitectureDot(fileEdges, { maxRender }), violations };
+  const violating = violatingDrawnKeys(violations, groupDepth);
+  const hiddenNote = hiddenViolationNote(fileEdges, violating, maxRender);
+  if (hiddenNote) console.error(hiddenNote);
+
+  return { dot: buildArchitectureDot(fileEdges, { maxRender, violating }), violations };
 }
 
 // --- --diff mode: call graph scoped to a set of changed files ------------
@@ -2120,6 +2158,6 @@ module.exports = {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, fileEdgesFromIndexRows, readIndexRows, probeFileEdges, architectureTruncationWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, violatingDrawnKeys, hiddenViolationNote, fileEdgesFromIndexRows, readIndexRows, probeFileEdges, architectureTruncationWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
 };
