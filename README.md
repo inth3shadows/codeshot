@@ -100,7 +100,9 @@ two extra flags exist specifically for this mode:
 mode (callees fetched per probed symbol; distinct nodes actually drawn,
 here ranked by busiest file rather than caller/callee priority). With a
 codegraph that reports per-definition results, `--limit` applies to each
-definition of a name separately.
+definition of a name separately. When `--limit` cuts any probed symbol's
+callees, a single stderr warning names those symbols, since the diagram can't
+show edges that were never fetched.
 
 A name that exists in more than one file (two `handle`s, or two `index.js`
 files) has its edges attributed to the right file instead of to the union of
