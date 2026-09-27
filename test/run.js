@@ -13,7 +13,7 @@ const {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, probeFileEdges, importOnlyIds, architectureTruncationWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, probeFileEdges, architectureTruncationWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
   isBlankDot, blankEmbedRefusal,
 } = require('../render/callgraph.js');
@@ -2216,7 +2216,7 @@ test('architectureTruncationWarning names distinct symbols and the limit, and is
 // A TS file node on per-definition codegraph, shaped like the fork's real output:
 // main.ts imports alpha/beta/gamma, calls gamma() and beta() at top level, and
 // only its function `run` calls alpha. The per-definition edges list gives each
-// callee one edge, `calls` winning over `imports` when both exist.
+// callee ONE edge — whichever codegraph found first.
 const tsFile = { id: 'file:src/main.ts', name: 'main.ts', kind: 'file', filePath: 'src/main.ts' };
 const tsCallee = (id, name) => ({ id, name, kind: 'function', filePath: 'src/alpha.ts' });
 const tsFileCallees = {
@@ -2235,20 +2235,26 @@ const tsFileCallees = {
   }],
 };
 
-test('importOnlyIds keeps any target that also has a non-import edge, and knows nothing without edges', () => {
-  assert.deepStrictEqual([...importOnlyIds(tsFileCallees.definitions)].sort(), ['fn:alpha', 'imp:1']);
-  const both = [{ edges: [{ target: 'x', kind: 'imports' }, { target: 'x', kind: 'calls' }] }];
-  assert.deepStrictEqual([...importOnlyIds(both)], []);
-  assert.deepStrictEqual([...importOnlyIds([{ callees: [] }, null])], []);
-});
-
-testAsync('probeSymbolCallees drops a file node\'s import-only callees but keeps its top-level calls', async () => {
+testAsync('probeSymbolCallees keeps an imported callee even when its one listed edge is imports', async () => {
+  // Shaped like codegraph's own repo: the test file imports ToolHandler AND
+  // instantiates it, but the JSON lists one edge per callee, and here it is the
+  // import. Treating that as import-only dropped a real call.
   const { run } = fakeRun({ callees: tsFileCallees });
   const r = await probeSymbolCallees(tsFile, false, '/repo', 20, run);
-  assert.deepStrictEqual(r.callees.map(c => c.name), ['gamma', 'beta']);
-  // A same-named file routed by file (no id match) filters the same way.
+  assert.deepStrictEqual(r.callees.map(c => c.name), ['gamma', 'beta', './alpha', 'alpha']);
   const byFile = await probeSymbolCallees({ ...tsFile, id: undefined }, true, '/repo', 20, run);
-  assert.deepStrictEqual(byFile.callees.map(c => c.name), ['gamma', 'beta']);
+  assert.deepStrictEqual(byFile.callees.map(c => c.name), ['gamma', 'beta', './alpha', 'alpha']);
+});
+
+testAsync('probeFileEdges never probes an import node, whose name resolves to some other symbol', async () => {
+  const { run, calls } = fakeRun({ callees: { callees: [alphaFn] } });
+  const symbols = [
+    { id: 'import:1', name: '../src/mcp/tools', kind: 'import', filePath: 'test/t.ts' },
+    { id: 'import:2', name: 'terse.capture', kind: 'import', filePath: 'scripts/probe.py' },
+  ];
+  const r = await probeFileEdges(symbols, '/repo', 20, run);
+  assert.deepStrictEqual(calls, []);
+  assert.deepStrictEqual(r, { edges: [], unresolved: [], truncated: [] });
 });
 
 testAsync('probeSymbolCallees keeps imports when codegraph reports no edges (npm)', async () => {
