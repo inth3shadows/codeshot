@@ -73,6 +73,23 @@ corner of a big repo's diagram. `--limit` and
 `--max-render` carry over from symbol mode (see above); `--depth` doesn't
 apply here and is rejected if you pass it.
 
+### Enforcing architecture rules
+
+`--forbid` turns the diagram into a check. Say UI code must never reach the
+database layer directly:
+
+```bash
+codeshot --architecture --path . --forbid 'src/ui/->src/db/' --out arch.svg --format svg
+```
+
+A side ending in `/` is a directory (every file under it); anything else is one
+exact file. Repeat `--forbid` for more rules. If any call crosses a forbidden
+line, Codeshot lists each offending file edge and its weight, still writes the
+diagram, and exits 1 — so a CI step fails and the image shows where. Rules are
+checked on every per-file edge, even ones `--group-depth` merges or
+`--max-render` leaves out of the picture. They can only see calls the scan
+found, so raise `--limit`/`--max-symbols` if Codeshot warns the scan was cut.
+
 ## Diagramming just what a diff touched
 
 A third question, narrower than either of the above: "what does *this
