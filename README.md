@@ -75,9 +75,11 @@ structure. Test files render dashed, same visual language as symbol mode.
 
 This is a real, data-derived graph, not a hand-drawn architecture diagram —
 it won't look like a curated conceptual pipeline diagram, it'll look like
-what the code actually calls into. On a repo of any real size this is a
-slow operation (one sequential `codegraph` call per enumerated symbol), so
-three extra flags exist specifically for this mode:
+what the code actually calls into. On Node 22.5+ Codeshot reads codegraph's
+index directly, so the scan takes about a second (48.7s → 1.3s on this repo).
+On Node 18/20 it makes one sequential `codegraph` call per enumerated symbol,
+which is slow on a repo of any real size. Three extra flags exist
+specifically for this mode:
 - `--max-symbols` — cap how many symbols get probed (default 500). Codeshot
   warns on stderr if this cuts the scan short.
 - `--group-depth <n>` — roll files up into their first `n` directory segments
