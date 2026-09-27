@@ -77,7 +77,7 @@ This is a real, data-derived graph, not a hand-drawn architecture diagram —
 it won't look like a curated conceptual pipeline diagram, it'll look like
 what the code actually calls into. On a repo of any real size this is a
 slow operation (one sequential `codegraph` call per enumerated symbol), so
-two extra flags exist specifically for this mode:
+three extra flags exist specifically for this mode:
 - `--max-symbols` — cap how many symbols get probed (default 500). Codeshot
   warns on stderr if this cuts the scan short.
 - `--group-depth <n>` — roll files up into their first `n` directory segments
@@ -93,6 +93,13 @@ two extra flags exist specifically for this mode:
   lower than the per-file one's, often much lower — that's the intra-module
   traffic, not a lost edge. Repo-root files (no directory to roll into) stay
   themselves.
+- `--forbid <from>-><to>` — an architecture rule; repeat it for several. Each
+  side is a repo-relative path: ending in `/` it means every file under that
+  directory, otherwise one exact file (`--forbid 'src/ui/->src/db/'`). Any file
+  edge a rule matches is listed on stderr with its weight and the run exits 1,
+  after the diagram is written, so CI fails with the picture as evidence. Rules
+  are checked on the per-file edges, before `--group-depth` and `--max-render`,
+  so neither can hide a violation.
 - `--depth` has no effect here and is rejected if passed — there's no
   multi-hop file-traversal concept to apply it to.
 

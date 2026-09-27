@@ -13,7 +13,7 @@ const {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, probeFileEdges, importOnlyIds, architectureTruncationWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, probeFileEdges, importOnlyIds, architectureTruncationWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
   isBlankDot, blankEmbedRefusal,
 } = require('../render/callgraph.js');
@@ -504,6 +504,85 @@ test('explicit empty --path is rejected instead of silently falling through to c
     assert.match(err.stderr, /--path must not be empty/);
   }
   assert.strictEqual(threw, true, 'expected empty --path to be rejected');
+});
+
+test('parseForbidRule reads FROM->TO, trims spaces and a leading ./, and rejects malformed rules', () => {
+  assert.deepStrictEqual(parseForbidRule('render/->test/'), { from: 'render/', to: 'test/', raw: 'render/->test/' });
+  assert.deepStrictEqual(parseForbidRule(' ./src/ui/ -> src/db.js '), { from: 'src/ui/', to: 'src/db.js', raw: 'src/ui/->src/db.js' });
+  for (const bad of ['render/', '->test/', 'render/->', 'a->b->c', '']) {
+    assert.strictEqual(parseForbidRule(bad), null, `expected '${bad}' to be rejected`);
+  }
+});
+
+test('forbiddenEdges matches a trailing-slash side as a directory and any other side as one exact file', () => {
+  const edges = [
+    { from: 'src/ui/page.js', to: 'src/db/query.js', weight: 2 },
+    { from: 'src/ui/page.js', to: 'src/core/api.js', weight: 5 },
+    { from: 'src/uix/other.js', to: 'src/db/query.js', weight: 9 },
+    { from: 'src/core/api.js', to: 'src/db/query.js', weight: 4 },
+  ];
+  // src/ui/ must not match src/uix/ — a directory prefix ends at the slash.
+  assert.deepStrictEqual(forbiddenEdges(edges, [parseForbidRule('src/ui/->src/db/')]),
+    [{ rule: 'src/ui/->src/db/', from: 'src/ui/page.js', to: 'src/db/query.js', weight: 2 }]);
+  assert.deepStrictEqual(forbiddenEdges(edges, [parseForbidRule('src/core/api.js->src/db/query.js')]).map(v => v.weight), [4]);
+  assert.deepStrictEqual(forbiddenEdges(edges, [parseForbidRule('src/core->src/db/')]), [], 'no slash means an exact file, not a prefix');
+  // Heaviest first across rules.
+  assert.deepStrictEqual(forbiddenEdges(edges, [parseForbidRule('src/ui/->src/db/'), parseForbidRule('src/ui/->src/core/')]).map(v => v.weight), [5, 2]);
+  assert.deepStrictEqual(forbiddenEdges(edges, []), []);
+});
+
+test('forbidViolationReport lists each violating edge with its weight and rule, and is silent with none', () => {
+  assert.strictEqual(forbidViolationReport([]), null);
+  const r = forbidViolationReport([{ rule: 'a/->b/', from: 'a/x.js', to: 'b/y.js', weight: 3 }]);
+  assert.strictEqual(r, "codeshot: 1 file edge(s) break a --forbid rule:\n  a/x.js -> b/y.js (weight 3) breaks --forbid 'a/->b/'");
+});
+
+test('--forbid is rejected when malformed or outside --architecture, before any codegraph work', () => {
+  const { spawnSync } = require('child_process');
+  const cli = require('path').join(__dirname, '..', 'render', 'callgraph.js');
+  const bad = spawnSync('node', [cli, '--architecture', '--forbid', 'render/'], { encoding: 'utf8' });
+  assert.strictEqual(bad.status, 1);
+  assert.match(bad.stderr, /--forbid expects FROM->TO .* got 'render\/'/);
+  const wrongMode = spawnSync('node', [cli, 'buildDot', '--forbid', 'a/->b/'], { encoding: 'utf8' });
+  assert.strictEqual(wrongMode.status, 1);
+  assert.match(wrongMode.stderr, /--forbid only applies with --architecture/);
+});
+
+test('--architecture --forbid fails the run on a forbidden edge, still writes the diagram, and is not hidden by --group-depth', () => {
+  const { execFileSync, spawnSync } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const cli = path.join(__dirname, '..', 'render', 'callgraph.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codeshot-forbid-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'ui'));
+    fs.mkdirSync(path.join(dir, 'db'));
+    fs.writeFileSync(path.join(dir, 'db', 'query.js'), 'function query() { return 1; }\nmodule.exports = { query };\n');
+    fs.writeFileSync(path.join(dir, 'ui', 'page.js'), 'const { query } = require("../db/query");\nfunction render() { return query(); }\nmodule.exports = { render };\n');
+    try {
+      execFileSync('codegraph', ['init', dir], { stdio: 'pipe', timeout: 180000 });
+    } catch {
+      console.log('  # skipped: `codegraph` not on PATH or could not index the fixture repo');
+      return;
+    }
+    const out = path.join(dir, 'arch.dot');
+    const broken = spawnSync('node', [cli, '--architecture', '--path', dir, '--out', out, '--format', 'dot', '--forbid', 'ui/->db/'], { encoding: 'utf8', timeout: 180000 });
+    assert.strictEqual(broken.status, 1, `expected exit 1, got ${broken.status}: ${broken.stderr}`);
+    assert.match(broken.stderr, /ui\/page\.js -> db\/query\.js \(weight 1\) breaks --forbid 'ui\/->db\/'/);
+    assert.match(fs.readFileSync(out, 'utf8'), /"ui\/page\.js" -> "db\/query\.js"/, 'the diagram is still written as evidence');
+
+    // --group-depth 1 draws only ui/ -> db/, with no file names left in the
+    // graph; an exact-file rule still fires because rules read per-file edges.
+    const grouped = spawnSync('node', [cli, '--architecture', '--path', dir, '--out', out, '--format', 'dot', '--group-depth', '1', '--forbid', 'ui/page.js->db/query.js'], { encoding: 'utf8', timeout: 180000 });
+    assert.strictEqual(grouped.status, 1, `expected an exact-file rule to fire under --group-depth: ${grouped.stderr}`);
+
+    const clean = spawnSync('node', [cli, '--architecture', '--path', dir, '--out', out, '--format', 'dot', '--forbid', 'db/->ui/'], { encoding: 'utf8', timeout: 180000 });
+    assert.strictEqual(clean.status, 0, `expected exit 0 with no violations: ${clean.stderr}`);
+    assert.doesNotMatch(clean.stderr, /--forbid rule/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('explicit empty --format is rejected instead of silently defaulting to png', () => {

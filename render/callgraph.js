@@ -985,7 +985,44 @@ function architectureTruncationWarning(truncatedNames, limit) {
   return `codeshot: ${names.length} symbol(s) had their callees cut off by --limit (${limit}) (e.g. ${names.slice(0, 3).join(', ')}), so some file edges may be missing or underweighted; rerun with a larger --limit to see the rest.`;
 }
 
-async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, groupDepth }) {
+// --forbid: architecture rules checked against the file graph. A rule is
+// `FROM->TO`; each side is a repo-relative path, a directory when it ends in
+// `/` (matches every file under it) and an exact file otherwise. Returns
+// { from, to, raw }, or null when the rule is malformed. Pure.
+function parseForbidRule(raw) {
+  const parts = String(raw).split('->');
+  if (parts.length !== 2) return null;
+  const [from, to] = parts.map(p => p.trim().replace(/^\.\//, ''));
+  if (!from || !to) return null;
+  return { from, to, raw: `${from}->${to}` };
+}
+
+function pathMatchesRuleSide(side, filePath) {
+  return side.endsWith('/') ? filePath.startsWith(side) : filePath === side;
+}
+
+// Every file edge a rule forbids, heaviest first. Called on the per-file edges
+// before --group-depth and --max-render: both are view choices, and a rule must
+// not pass because the view hid the edge. Pure.
+function forbiddenEdges(fileEdges, rules) {
+  const hits = [];
+  for (const rule of rules || []) {
+    for (const e of fileEdges || []) {
+      if (pathMatchesRuleSide(rule.from, e.from) && pathMatchesRuleSide(rule.to, e.to)) {
+        hits.push({ rule: rule.raw, from: e.from, to: e.to, weight: e.weight });
+      }
+    }
+  }
+  return hits.sort((a, b) => b.weight - a.weight || a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
+}
+
+function forbidViolationReport(violations) {
+  if (!violations.length) return null;
+  const lines = violations.map(v => `  ${v.from} -> ${v.to} (weight ${v.weight}) breaks --forbid '${v.rule}'`);
+  return `codeshot: ${violations.length} file edge(s) break a --forbid rule:\n${lines.join('\n')}`;
+}
+
+async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, groupDepth, forbid = [] }) {
   const { symbols, truncated } = await enumerateSymbols(repoPath, maxSymbols);
   const symbolWarning = symbolBudgetWarning(truncated, maxSymbols);
   if (symbolWarning) console.error(symbolWarning);
@@ -995,6 +1032,9 @@ async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, gro
   const truncWarning = architectureTruncationWarning(truncatedNames, limit);
   if (truncWarning) console.error(truncWarning);
   const rawFileEdges = aggregateFileEdges(symbolEdges);
+  const violations = forbiddenEdges(rawFileEdges, forbid);
+  const violationReport = forbidViolationReport(violations);
+  if (violationReport) console.error(violationReport);
   // The rollup happens here, on aggregated edges, rather than by rewriting
   // filePaths at probe time: probing must stay file-exact (parseNodeCalls'
   // expectedFile check, isTestRef, the duplicate-name attribution all key off
@@ -1016,7 +1056,7 @@ async function runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, gro
   const note = renderTruncationNote(groupDepth ? 'groups' : 'files', totalFiles, maxRender);
   if (note) console.error(note);
 
-  return buildArchitectureDot(fileEdges, { maxRender });
+  return { dot: buildArchitectureDot(fileEdges, { maxRender }), violations };
 }
 
 // --- --diff mode: call graph scoped to a set of changed files ------------
@@ -1641,7 +1681,7 @@ function finishOutput(dot, { format, outFile, embedFile, check, markerId, alt })
   console.log(outFile);
 }
 
-const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]\n   or: callgraph.js --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--format <fmt>] [--embed <file.md> [--check]]\n   or: callgraph.js --diff [--diff-ref <range>] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]';
+const USAGE = 'Usage: callgraph.js <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]\n   or: callgraph.js --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--format <fmt>] [--embed <file.md> [--check]]\n   or: callgraph.js --diff [--diff-ref <range>] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]';
 
 async function main() {
   let values, positionals;
@@ -1664,6 +1704,7 @@ async function main() {
         'diff-ref': { type: 'string' },
         embed: { type: 'string' },
         check: { type: 'boolean', default: false },
+        forbid: { type: 'string', multiple: true },
       },
       allowPositionals: true,
     }));
@@ -1812,6 +1853,21 @@ async function main() {
       process.exit(1);
     }
   }
+  // Parsed before any codegraph work, like --embed below, so a typo fails fast
+  // instead of after a multi-minute scan.
+  const forbidRules = [];
+  for (const raw of values.forbid || []) {
+    const rule = parseForbidRule(raw);
+    if (!rule) {
+      console.error(`codeshot: --forbid expects FROM->TO (e.g. 'render/->test/'), got '${raw}'`);
+      process.exit(1);
+    }
+    forbidRules.push(rule);
+  }
+  if (forbidRules.length && !values.architecture) {
+    console.error('codeshot: --forbid only applies with --architecture (its rules are about file-to-file edges)');
+    process.exit(1);
+  }
   if (values.embed === '') {
     console.error('codeshot: --embed must not be empty');
     process.exit(1);
@@ -1874,7 +1930,7 @@ async function main() {
   }
 
   if (values.architecture) {
-    const dot = await runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, groupDepth });
+    const { dot, violations } = await runArchitectureMode(repoPath, { limit, maxSymbols, maxRender, groupDepth, forbid: forbidRules });
     // Fixed, path-independent alt: deriving it from the checkout's directory
     // basename made the embedded markdown vary by where the repo was cloned
     // (a bare-worktree dir, "master", a branch name...), which both read wrong
@@ -1891,6 +1947,8 @@ async function main() {
       ? `Architecture (grouped by directory, depth ${groupDepth}) — generated by codeshot`
       : 'Architecture — generated by codeshot';
     finishOutput(dot, { format, outFile, embedFile, check: values.check, markerId: groupDepth ? `arch-d${groupDepth}` : 'arch', alt });
+    // The diagram is still written (it is the evidence); the run fails after.
+    if (violations.length) process.exitCode = 1;
     return;
   }
 
@@ -1968,6 +2026,6 @@ module.exports = {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, probeFileEdges, importOnlyIds, architectureTruncationWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, probeFileEdges, importOnlyIds, architectureTruncationWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
 };
