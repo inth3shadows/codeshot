@@ -873,17 +873,21 @@ async function probeSymbolCallees(s, dupe, repoPath, limit, run = runCodegraph) 
     ['callees', '--path', repoPath, '--limit', String(limit), '--json', '--', s.name],
     { fatal: false }
   );
-  const realCalls = list => (list || []).filter(c => c.kind !== 'file');
+  const realCalls = (list, defs = []) => {
+    const importOnly = importOnlyIds(defs);
+    return (list || []).filter(c => c.kind !== 'file' && !(c.id && importOnly.has(c.id)));
+  };
   // codegraph groups overloads (same file + qualified name) into one definition:
   // `definition.id` is the first member's, `roots` lists every member's id.
   const byId = s.id && Array.isArray(result?.definitions)
     ? result.definitions.find(d => d?.definition?.id === s.id || (Array.isArray(d?.roots) && d.roots.includes(s.id)))
     : null;
   const cut = slice => readTruncation(slice, slice.callees, limit).truncated;
-  if (byId) return { callees: realCalls(byId.callees), unresolved: false, perDefinition: true, definitionId: byId.definition?.id ?? s.id, truncated: cut(byId) };
+  if (byId) return { callees: realCalls(byId.callees, [byId]), unresolved: false, perDefinition: true, definitionId: byId.definition?.id ?? s.id, truncated: cut(byId) };
   if (dupe) {
     const own = pickDefinitionResult(result, 'callees', s.filePath);
-    if (own) return { callees: realCalls(own.callees), unresolved: false, perDefinition: false, truncated: cut(own) };
+    // `own` is non-null only when result.definitions is an array.
+    if (own) return { callees: realCalls(own.callees, result.definitions.filter(d => d?.definition?.filePath === s.filePath)), unresolved: false, perDefinition: false, truncated: cut(own) };
     if (s.kind !== 'file' && s.filePath) {
       const fromTrail = await probeCallsInFile(s, repoPath, run);
       if (fromTrail !== null) return { callees: fromTrail, unresolved: false, perDefinition: false, truncated: false };
@@ -895,6 +899,25 @@ async function probeSymbolCallees(s, dupe, repoPath, limit, run = runCodegraph) 
   // that calls nothing), so it isn't worth a warning that would crowd out the
   // names that really drew union edges.
   return { callees, unresolved: dupe && callees.length > 0, perDefinition: false, truncated: cut(result) };
+}
+
+// codegraph lists a file's imported symbols among its callees through an
+// `imports` edge, so a function a file imports AND calls from inside one of its
+// functions weighed 2 on the file edge: 1 for the import, 1 for the call. With
+// per-definition JSON each slice carries `edges[]` with a kind per edge, and a
+// real top-level call from the file itself is a `calls` edge to the same
+// target, so a callee is dropped only when every edge to it is an import.
+// Returns the ids of those import-only callees. npm codegraph has no `edges`,
+// so there nothing is dropped and the import still counts (TECHNICAL.md). Pure.
+function importOnlyIds(defs) {
+  const called = new Map();
+  for (const d of defs) {
+    for (const e of Array.isArray(d?.edges) ? d.edges : []) {
+      if (!called.has(e.target)) called.set(e.target, false);
+      if (e.kind !== 'imports') called.set(e.target, true);
+    }
+  }
+  return new Set([...called].filter(([, isCalled]) => !isCalled).map(([id]) => id));
 }
 
 // The key probeFileEdges counts an answer under at most once: the matched
@@ -1945,6 +1968,6 @@ module.exports = {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, probeFileEdges, architectureTruncationWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, probeFileEdges, importOnlyIds, architectureTruncationWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
 };
