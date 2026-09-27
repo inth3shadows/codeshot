@@ -13,7 +13,7 @@ const {
   emptyGraphWarning, emptyArchitectureWarning,
   matchNotInitialized, argRepoPath, parseCodegraphOutput,
   matchRootSymbols, diffNoChangesWarning, diffNoSymbolsWarning, diffSymbolBudgetWarning, buildDiffDot,
-  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, fileEdgesFromIndexRows, readIndexRows, probeFileEdges, architectureTruncationWarning,
+  diffEmbedRefusal, diffEmptyRootsWarning, diffEmbedRefusalNoSymbols, diffDuplicateNameWarning, pickDefinitionResult, resolveRootResults, probeSymbolCallees, parseForbidRule, forbiddenEdges, forbidViolationReport, violatingDrawnKeys, hiddenViolationNote, fileEdgesFromIndexRows, readIndexRows, probeFileEdges, architectureTruncationWarning,
   diffHandleEmptyRoots, diffTruncationWarning, nodeKey, diffNothingToCheck, diffNothingToCheckNoSymbols,
   isBlankDot, blankEmbedRefusal,
 } = require('../render/callgraph.js');
@@ -595,6 +595,35 @@ test('forbiddenEdges matches a trailing-slash side as a directory and any other 
   assert.deepStrictEqual(forbiddenEdges(edges, []), []);
 });
 
+test('buildArchitectureDot draws only the violating edges red, and nothing changes without violations', () => {
+  const edges = [{ from: 'ui/page.js', to: 'db/query.js', weight: 2 }, { from: 'ui/page.js', to: 'core/api.js', weight: 1 }];
+  const plain = buildArchitectureDot(edges);
+  assert.strictEqual(buildArchitectureDot(edges, { violating: new Set() }), plain, 'no violations must render byte-identically');
+  assert.doesNotMatch(plain, /#dc2626/);
+  const red = buildArchitectureDot(edges, { violating: violatingDrawnKeys([{ from: 'ui/page.js', to: 'db/query.js' }]) });
+  assert.match(red, /"ui\/page\.js" -> "db\/query\.js" \[label="2", color="#dc2626", fontcolor="#dc2626", penwidth=1\.8\];/);
+  assert.match(red, /"ui\/page\.js" -> "core\/api\.js" \[label="1"\];/);
+});
+
+test('violatingDrawnKeys marks the directory edge a violation rolls up into, and drops one that rolls into a single group', () => {
+  const v = [{ from: 'src/ui/page.js', to: 'src/db/query.js' }, { from: 'lib/a.js', to: 'test/b.js' }];
+  assert.deepStrictEqual([...violatingDrawnKeys(v)].map(k => k.split('\0')), [['src/ui/page.js', 'src/db/query.js'], ['lib/a.js', 'test/b.js']]);
+  assert.deepStrictEqual([...violatingDrawnKeys(v, 1)].map(k => k.split('\0')), [['lib/', 'test/']], 'src/ui -> src/db is one group at depth 1');
+  assert.deepStrictEqual([...violatingDrawnKeys(v, 2)].map(k => k.split('\0')), [['src/ui/', 'src/db/'], ['lib/', 'test/']]);
+});
+
+test('hiddenViolationNote counts violating edges --max-render leaves out, and is silent otherwise', () => {
+  const edges = [
+    { from: 'a.js', to: 'b.js', weight: 9 },
+    { from: 'c.js', to: 'd.js', weight: 1 },
+  ];
+  const violating = violatingDrawnKeys([{ from: 'c.js', to: 'd.js' }]);
+  assert.match(hiddenViolationNote(edges, violating, 2), /^codeshot: 1 edge\(s\) that break a --forbid rule fall outside --max-render 2/);
+  assert.strictEqual(hiddenViolationNote(edges, violating, 4), null, 'all four files fit');
+  assert.strictEqual(hiddenViolationNote(edges, violating, undefined), null, 'no cap');
+  assert.strictEqual(hiddenViolationNote(edges, new Set(), 2), null, 'no violations');
+});
+
 test('forbidViolationReport lists each violating edge with its weight and rule, and is silent with none', () => {
   assert.strictEqual(forbidViolationReport([]), null);
   const r = forbidViolationReport([{ rule: 'a/->b/', from: 'a/x.js', to: 'b/y.js', weight: 3 }]);
@@ -634,7 +663,7 @@ test('--architecture --forbid fails the run on a forbidden edge, still writes th
     const broken = spawnSync('node', [cli, '--architecture', '--path', dir, '--out', out, '--format', 'dot', '--forbid', 'ui/->db/'], { encoding: 'utf8', timeout: 180000 });
     assert.strictEqual(broken.status, 1, `expected exit 1, got ${broken.status}: ${broken.stderr}`);
     assert.match(broken.stderr, /ui\/page\.js -> db\/query\.js \(weight 1\) breaks --forbid 'ui\/->db\/'/);
-    assert.match(fs.readFileSync(out, 'utf8'), /"ui\/page\.js" -> "db\/query\.js"/, 'the diagram is still written as evidence');
+    assert.match(fs.readFileSync(out, 'utf8'), /"ui\/page\.js" -> "db\/query\.js"\s*\[[^\]]*color="#dc2626"/, 'the diagram is still written, with the violation drawn red');
 
     // --group-depth 1 draws only ui/ -> db/, with no file names left in the
     // graph; an exact-file rule still fires because rules read per-file edges.
@@ -643,6 +672,7 @@ test('--architecture --forbid fails the run on a forbidden edge, still writes th
 
     const clean = spawnSync('node', [cli, '--architecture', '--path', dir, '--out', out, '--format', 'dot', '--forbid', 'db/->ui/'], { encoding: 'utf8', timeout: 180000 });
     assert.strictEqual(clean.status, 0, `expected exit 0 with no violations: ${clean.stderr}`);
+    assert.doesNotMatch(fs.readFileSync(out, 'utf8'), /#dc2626/, 'nothing is red when no rule is broken');
     assert.doesNotMatch(clean.stderr, /--forbid rule/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
