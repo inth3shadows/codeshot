@@ -128,7 +128,7 @@ jobs:
       # what the current code produces. Structural compare = graphviz-version proof.
       - name: Check committed diagrams are current
         run: |
-          node render/callgraph.js --architecture --path . --format svg \
+          node render/callgraph.js --architecture --path . --limit 100 --format svg \
             --out docs/architecture.svg --embed TECHNICAL.md --check
           node render/callgraph.js buildDot --path . --format svg \
             --out docs/buildDot-callgraph.svg --embed TECHNICAL.md --check

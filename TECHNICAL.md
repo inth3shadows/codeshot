@@ -249,7 +249,8 @@ node render/callgraph.js --architecture --path <repo> --group-depth 1 --format d
 node render/callgraph.js --diff --diff-ref HEAD~1 --path <repo> --out /tmp/diff.svg --format svg  # manual smoke test, diff mode
 
 # Regenerate this doc's two committed diagrams after a code change (CI runs the same two commands with --check appended):
-node render/callgraph.js --architecture --path . --format svg --out docs/architecture.svg --embed TECHNICAL.md
+# --limit 100: test/run.js and render/callgraph.js have ~60 callees each, over the default 50.
+node render/callgraph.js --architecture --path . --limit 100 --format svg --out docs/architecture.svg --embed TECHNICAL.md
 node render/callgraph.js buildDot --path . --format svg --out docs/buildDot-callgraph.svg --embed TECHNICAL.md
 ```
 
