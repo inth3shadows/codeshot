@@ -2065,6 +2065,27 @@ testAsync('probeFileEdges gives each file its own count of an unresolved union a
   assert.deepStrictEqual(r.unresolved, ['run', 'run']);
 });
 
+testAsync('probeFileEdges asks codegraph once per repeated name (and once per name+file for node -f)', async () => {
+  // run twice in c/dual.js and once in d/dual.js: a cross-file duplicate, so each
+  // falls to node -f, which is asked once for c and once for d. Every symbol reads
+  // the one callees answer, so the counting matches an uncached scan.
+  const { run, calls } = fakeRun({ callees: { callees: [alphaFn] }, node: null });
+  const symbols = [
+    { name: 'run', kind: 'method', filePath: 'c/dual.js' },
+    { name: 'run', kind: 'method', filePath: 'c/dual.js' },
+    { name: 'run', kind: 'method', filePath: 'd/dual.js' },
+    { name: 'solo', kind: 'function', filePath: 'e/solo.js' },
+  ];
+  const r = await probeFileEdges(symbols, '/repo', 20, run);
+  assert.deepStrictEqual(calls, ['callees', 'node', 'node', 'callees']);
+  assert.deepStrictEqual(r.edges, [
+    { fromFile: 'c/dual.js', toFile: 'a/alpha.js' },
+    { fromFile: 'd/dual.js', toFile: 'a/alpha.js' },
+    { fromFile: 'e/solo.js', toFile: 'a/alpha.js' },
+  ]);
+  assert.deepStrictEqual(r.unresolved, ['run', 'run']);
+});
+
 testAsync('probeFileEdges skips a symbol codegraph has no answer for', async () => {
   const { run } = fakeRun({ callees: null });
   const r = await probeFileEdges([{ name: 'gone', kind: 'function', filePath: 'x.js' }], '/repo', 20, run);
