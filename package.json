@@ -1,7 +1,7 @@
 {
   "name": "codeshot",
-  "version": "0.2.0",
-  "description": "Render a symbol's CodeGraph call trail as an image — a picture of what calls what",
+  "version": "0.3.0",
+  "description": "Docs-and-CI layer for CodeGraph: committed architecture diagrams that fail CI when they go stale, plus --forbid architecture rules",
   "main": "render/callgraph.js",
   "bin": {
     "codeshot": "./render/callgraph.js"
