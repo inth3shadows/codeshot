@@ -1,0 +1,24 @@
+name: codeshot
+description: Install codeshot (diagrams-as-code and architecture rules for CodeGraph) on PATH
+branding:
+  icon: git-branch
+  color: gray-dark
+runs:
+  using: composite
+  steps:
+    # Builds the action's own checkout (GITHUB_ACTION_PATH), i.e. exactly the
+    # ref this action was pinned to, so the binary always matches the action
+    # version. Works for `uses: ./` too, where there is no ref. go.mod's
+    # toolchain line makes `go` fetch the right toolchain if the runner's is
+    # older. The ref is stamped as the version; without one, --version says
+    # "dev" rather than claim a release.
+    - name: Install codeshot
+      shell: bash
+      env:
+        REF: ${{ github.action_ref }}
+      run: |
+        ldflags="-s -w"
+        if [ -n "$REF" ]; then ldflags="$ldflags -X github.com/inth3shadows/codeshot/internal/codeshot.Version=${REF#v}"; fi
+        mkdir -p "$RUNNER_TEMP/codeshot-bin"
+        (cd "$GITHUB_ACTION_PATH" && CGO_ENABLED=0 go build -trimpath -ldflags "$ldflags" -o "$RUNNER_TEMP/codeshot-bin/codeshot" ./cmd/codeshot)
+        echo "$RUNNER_TEMP/codeshot-bin" >> "$GITHUB_PATH"

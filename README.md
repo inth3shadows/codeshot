@@ -24,9 +24,9 @@ codeshot --architecture --out architecture.svg --embed TECHNICAL.md --format svg
   --check --forbid 'src/ui/->src/db/'
 ```
 
-Always pass `--out` with `--embed`. Without it the `--architecture`/`--diff` image is named after the checkout directory, so a diagram committed from `~/code/myrepo-wt` fails `--check` in a CI checkout named `myrepo`.
+Without `--out`, `--embed` writes the image next to the doc as `codeshot-arch.<fmt>` (`codeshot-arch-d<n>`, `codeshot-diff[-<ref>]`), the same in every clone. A `--path` below the repo root adds that subpath (`codeshot-arch-services_api.<fmt>`), so docs in one directory diagramming different subtrees don't share an image. Before 0.4.0 that name included the checkout directory; see [Upgrading from 0.3](#upgrading-from-03).
 
-For `svg`, `--check` compares graph structure (which nodes, which edges), not bytes, so a laptop and CI with different graphviz versions agree. It never writes, and it refuses to replace a real committed diagram with a blank one. Graphviz is the only thing it is tolerant of: **generate the committed diagram with the same codegraph build and the same Node line as CI.** Different codegraph builds can draw different edges for same-named symbols, and `--architecture` on Node 22.5+ reads codegraph's index directly while Node 18/20 goes through the CLI, which counts import-only references the direct read drops (see [TECHNICAL.md](TECHNICAL.md#known-limitations)).
+For `svg`, `--check` compares graph structure (which nodes, which edges), not bytes, so a laptop and CI with different graphviz versions agree. It never writes, and it refuses to replace a real committed diagram with a blank one. Graphviz is the only thing it is tolerant of: **generate the committed diagram with the same codegraph build as CI.** Different codegraph builds can draw different edges for same-named symbols (see [TECHNICAL.md](TECHNICAL.md#known-limitations)).
 
 Everything comes straight from CodeGraph's index and renders through [graphviz](https://graphviz.org/), so it works for whatever languages CodeGraph indexes. Test callers are drawn dashed so production paths stand out; a module-level reference CodeGraph couldn't resolve to a real call site is drawn dotted-gray instead of looking like a confirmed call.
 
@@ -37,13 +37,13 @@ diagrams:
   runs-on: ubuntu-latest
   steps:
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+    # codegraph is a Node CLI (Node 22; it refuses 25+). codeshot itself is a Go binary.
     - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: "22"
     - run: sudo apt-get update && sudo apt-get install -y graphviz
-    - run: >-
-        npm install -g @colbymchenry/codegraph@1.6.0
-        github:inth3shadows/codeshot#v0.3.0
+    - run: npm install -g @colbymchenry/codegraph@1.6.0
+    - uses: inth3shadows/codeshot@<commit-sha> # v0.4.0; puts `codeshot` on PATH
     - run: codegraph init .
     - run: >-
         codeshot --architecture --out architecture.svg --embed TECHNICAL.md
@@ -58,13 +58,16 @@ Generated diagrams are easy; trusted ones aren't. Tools like madge, pyan and go-
 
 ## Install
 
+Download a binary for your platform from [Releases](https://github.com/inth3shadows/codeshot/releases) (checksums in `checksums.txt`), or build from source with Go 1.26+:
+
 ```bash
-npm install -g github:inth3shadows/codeshot
+go install github.com/inth3shadows/codeshot/cmd/codeshot@latest
 ```
 
+Codeshot is a single static binary; it needs no Node of its own. `codeshot --version` prints the release version for release binaries and `go install ...@vX.Y.Z`, and `dev` for any other build.
+
 **Requirements:**
-- Node.js ≥ 18
-- [`codegraph`](https://github.com/colbymchenry/codegraph) CLI on PATH, **1.5.0 or later**, with the target repo indexed (`codegraph init`). `--architecture` mode needs 1.5.0+ specifically: earlier versions have a call-resolution bug (fixed by codegraph's `LITERAL_RECEIVER_TYPES` fix) that can silently fabricate cross-file edges from unrelated builtin method calls (e.g. `/regex/.test(x)`) whose name happens to collide with a real project symbol. Using a codegraph build with upstream PR #1801 (merged after 1.6.0, not yet in an npm release; the inth3shadows/codegraph fork has it) additionally lets `--diff` attribute same-named symbols to the right file; CI runs that fork.
+- [`codegraph`](https://github.com/colbymchenry/codegraph) CLI on PATH, **1.6.0 or later**, with the target repo indexed (`codegraph init`). `--architecture` reads codegraph's index directly and needs the `qualifiedName` that 1.6.0's `query --json` carries; earlier builds also have a call-resolution bug that fabricates cross-file edges. A codegraph with upstream PR #1801 (merged after 1.6.0, not yet in an npm release; the [inth3shadows/codegraph](https://github.com/inth3shadows/codegraph) fork has it) additionally lets `--diff` attribute same-named symbols to the right file; CI runs that fork.
 - `graphviz` (`dot`) on PATH — `brew install graphviz` / `apt install graphviz`
 
 Codeshot checks for both on startup and tells you exactly what's missing and how to install it.
@@ -86,10 +89,10 @@ structure. Test files render dashed.
 
 This is a real, data-derived graph, not a hand-drawn architecture diagram —
 it won't look like a curated conceptual pipeline diagram, it'll look like
-what the code actually calls into. On Node 22.5+ Codeshot reads codegraph's
-index directly, so the scan takes about a second (48.7s → 1.3s on this repo).
-On Node 18/20 it makes one sequential `codegraph` call per enumerated symbol,
-which is slow on a repo of any real size. Flags specific to this mode:
+what the code actually calls into. Codeshot enumerates symbols with one
+`codegraph query` and reads every callee edge from codegraph's index
+(`.codegraph/codegraph.db`, found at or above `--path`) in one read-only query,
+so the scan takes about a second. Flags specific to this mode:
 - `--max-symbols` — cap how many symbols get probed (default 500). Codeshot
   warns on stderr if this cuts the scan short.
 - `--group-depth <n>` — roll files up into their first `n` directory segments
@@ -118,21 +121,13 @@ which is slow on a repo of any real size. Flags specific to this mode:
   to apply them to.
 
 Of the [shared flags](#flags-shared-by-every-mode), `--max-render` caps the
-distinct files (or groups, with `--group-depth`) drawn, busiest first. `--limit` applies only on Node
-18/20, where it caps the callees fetched per probed symbol (per definition, with
-a codegraph that reports them) and a single stderr warning names any symbols it
-cut, since the diagram can't show edges that were never fetched. On Node 22.5+
-the direct index read is complete, so `--limit` has no effect in this mode,
-unless Codeshot falls back to the CLI probes (see [USAGE.md](USAGE.md#what-to-do-when-something-breaks)).
+distinct files (or groups, with `--group-depth`) drawn, busiest first. The
+index read is complete, so `--limit` has no effect in this mode; passing it prints a warning.
 
 A name that exists in more than one file (two `handle`s, or two `index.js`
-files) has its edges attributed to the right file instead of to the union of
-both. With a CodeGraph that reports callees per definition (upstream #1801, not
-yet in an npm release) this covers everything; on npm CodeGraph it falls back
-to the file-qualified `codegraph node -f`, which can't handle two same-named
-*files*, and Codeshot warns about whatever it couldn't resolve. See [TECHNICAL.md](TECHNICAL.md#known-limitations) for the details,
-including the cases where the file-qualified probe falls back, and why the
-graph can be slow on larger repos.
+files) has its edges attributed to the right file: the index read keys each
+definition by name, file and qualified name, so same-named symbols never share
+an answer. See [TECHNICAL.md](TECHNICAL.md#known-limitations).
 
 ## Diff-scoped diagram
 
@@ -176,7 +171,7 @@ symbol instead of once for the one you named.
 - A changed symbol whose name also exists in another file gets only its own
   file's callers/callees on a codegraph that reports them per definition
   (upstream #1801, unreleased after 1.6.0). Otherwise, including npm
-  1.5.0/1.6.0, it gets the merged result for every same-named
+  1.6.0, it gets the merged result for every same-named
   definition, and codeshot warns rather than silently misattributing edges
   (see TECHNICAL.md).
 
@@ -204,18 +199,28 @@ Two flags apply only to this mode:
 - `--limit` — max callers/callees fetched per symbol (defaults to 50; must be a positive integer); see each mode for what it bounds there. Codeshot warns on stderr when results were cut off, naming the real total when your `codegraph` reports one — see [TECHNICAL.md](TECHNICAL.md#configuration) for what older versions fall back to.
 - `--max-render` — cap how many distinct nodes are drawn in the image, independent of `--limit` (unset by default: no cap). In `--architecture` the nodes are files (or groups, with `--group-depth`), busiest kept first; in `--diff` the changed symbols are always drawn and the cap covers only the callers/callees around them; in single-symbol mode it is one shared budget across callers, callees, and `--depth`'s transitive edges. Useful when a high `--limit` keeps the truncation warning accurate but would otherwise produce an unreadably large image.
 - `--format` — output format, passed straight to `dot -T<fmt>` (defaults to `png`). `svg` is a good alternative for large graphs — it stays crisp at any zoom level and keeps text selectable, unlike a raster PNG. In `svg` (and `svgz`) output, each symbol node also carries the file it lives in as a hover tooltip, so you can tell same-named symbols apart without cluttering the boxes (open the file in a browser to see them; GitHub's SVG sanitizer may strip tooltips when the image is embedded in a README). Any format `dot -T` supports works; an unsupported one fails with `dot`'s own error listing the valid ones.
-- `--embed <file.md>` — instead of just writing an image, insert (or, on re-runs, refresh in place) the diagram inside an existing markdown doc, using idempotent `<!-- codeshot:<id>:start/end -->` markers (the `doctoc`/`terraform-docs` pattern). Without `--out` the image goes next to the doc; in `--architecture` and `--diff` its name includes the checkout directory, so pass `--out` for anything `--check` will verify in CI. Refreshes an existing doc — it won't create one. Works in every mode. See [USAGE.md](USAGE.md#embedding-a-diagram-in-your-docs-and-keeping-it-fresh).
+- `--embed <file.md>` — instead of just writing an image, insert (or, on re-runs, refresh in place) the diagram inside an existing markdown doc, using idempotent `<!-- codeshot:<id>:start/end -->` markers (the `doctoc`/`terraform-docs` pattern). Without `--out` the image goes next to the doc under a fixed name (`codeshot-arch.<fmt>`, `codeshot-diff.<fmt>`, `codeshot-callgraph-<symbol>.<fmt>`), so it is the same in every clone. Refreshes an existing doc — it won't create one. Works in every mode. See [USAGE.md](USAGE.md#embedding-a-diagram-in-your-docs-and-keeping-it-fresh).
 - `--check` — (only with `--embed`) verify the committed diagram and its doc block are current without changing anything: exit `0` if up to date, exit `1` if the code has drifted from the committed image. Built for a CI job / pre-commit hook so a stale diagram fails the build. For `svg` it compares graph structure, so CI needs no pinned `graphviz`; other formats compare bytes and do need the same `graphviz` version that generated the committed image.
 
 ## Design decisions
 
 **Why the CodeGraph CLI, with a direct index read only for `--architecture`?**
-The CLI's `--json` output is a stable, documented contract; the on-disk schema isn't. `--architecture` is the exception: through the CLI it needs one process per symbol (48.7s on this repo), so on Node 22.5+ it reads `.codegraph/codegraph.db` read-only (1.3s) and falls back to the CLI when it can't (a failed query such as a schema change, no index at `--path`, or `CODESHOT_INDEX_READ=cli`). `--diff` and single-symbol mode use the CLI only.
+The CLI's `--json` output is a stable, documented contract; the on-disk schema isn't. `--architecture` is the exception: through the CLI it needs one process per symbol (48.7s on this repo), so it reads `.codegraph/codegraph.db` read-only instead (about a second), and fails with a clear message if the schema has changed. `--diff` and single-symbol mode use the CLI only.
 
-**Why graphviz instead of a JS graph-drawing library?**
-Zero new npm dependencies, and `dot` already produces clean, deterministic layouts — no layout algorithm to hand-tune.
+**Why Go?** One static binary with no runtime to install, a pure-Go SQLite driver (`modernc.org/sqlite`, no cgo) that reads codegraph's index the same way on every platform, and the language of SCIP's reference tooling, which is the next graph source on the roadmap.
+
+**Why graphviz instead of a graph-drawing library?**
+`dot` already produces clean, deterministic layouts — no layout algorithm to hand-tune.
 
 **Standalone tool, not a CodeGraph PR.** CodeGraph's upstream `main` has an interactive viewer (`codegraph ui`, not yet in a release) for exploration; Codeshot stays out of that lane and owns the committed, CI-checked side — embedded diagrams, drift checks, architecture rules. Those are build-pipeline concerns a code index doesn't need to carry, and keeping them separate lets each evolve on its own release cadence.
+
+## Upgrading from 0.3
+
+0.4.0 is a Go rewrite with the same flags and output. Three things changed:
+
+- **Default `--embed` image names** no longer include the checkout directory (#51). If you embedded an `--architecture` or `--diff` diagram without `--out`, rename the committed image (`codeshot-arch-myrepo.svg` → `codeshot-arch.svg`) or rerun `--embed` once and commit the result. Diagrams embedded with an explicit `--out` are unaffected.
+- **codegraph 1.6.0 is the minimum** (was 1.5.0), because `--architecture` now always reads the index directly. `CODESHOT_INDEX_READ` is gone.
+- **Install** is a release binary or `go install`, not npm. In GitHub Actions, replace the npm install of codeshot with `uses: inth3shadows/codeshot@<sha>`.
 
 ## Status
 
