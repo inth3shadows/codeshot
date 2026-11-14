@@ -372,13 +372,21 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 	if !hasOut {
 		var base string
+		// #51: no checkout-directory name in an embedded image's default
+		// name, or a diagram committed from one clone fails --check in
+		// another. F12: a --path below the repo root is named instead, so two
+		// docs in one directory diagramming different subtrees don't collide.
+		sub := ""
+		if embedFile != "" && (arch || diffMode) {
+			if s := EmbedPathSuffix(repoPath); s != "" {
+				sub = "-" + s
+			}
+		}
 		switch {
 		case embedFile != "" && arch:
-			// #51: no checkout-directory name in an embedded image's default
-			// name, or a diagram committed from one clone fails --check in another.
-			base = archMarkerID
+			base = archMarkerID + sub
 		case embedFile != "" && diffMode:
-			base = diffMarkerID
+			base = diffMarkerID + sub
 		case arch:
 			base = archMarkerID + "-" + ArchOutputBaseName(repoPath)
 		case diffMode:

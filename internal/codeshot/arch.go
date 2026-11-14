@@ -3,6 +3,7 @@ package codeshot
 import (
 	"fmt"
 	"io"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -291,6 +292,33 @@ func ArchOutputBaseName(repoPath string) string {
 		return ""
 	}
 	return SanitizeForFilename(filepath.Base(abs))
+}
+
+// EmbedPathSuffix is --path relative to its git repository's root, sanitized
+// for a filename, or "" at the root or outside git. It keeps the default
+// --embed image names of two subdirectory targets apart (F12) while staying
+// the same in every clone (#51), since it never includes the checkout's name.
+func EmbedPathSuffix(repoPath string) string {
+	out, err := exec.Command("git", "-C", repoPath, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return ""
+	}
+	top, err := filepath.EvalSymlinks(filepath.FromSlash(strings.TrimSpace(string(out))))
+	if err != nil {
+		return ""
+	}
+	abs, err := filepath.Abs(repoPath)
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	rel, err := filepath.Rel(top, abs)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return SanitizeForFilename(filepath.ToSlash(rel))
 }
 
 // collectFileEdges reads the callee edges for the enumerated symbols straight

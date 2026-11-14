@@ -2,6 +2,9 @@ package codeshot
 
 import (
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -333,4 +336,31 @@ func TestCollectFileEdgesErrorsWhenNoIndexIsFound(t *testing.T) {
 		t.Fatalf("err = %v, want a FatalError", err)
 	}
 	wantMatch(t, `could not find codegraph's index`, fe.Msg)
+}
+
+// F12: two docs in one directory that embed different --path targets of one
+// repo must not share a default image name, while the repo root keeps the
+// checkout-independent name from #51.
+func TestEmbedPathSuffixNamesASubdirectoryTargetButNotTheRepoRoot(t *testing.T) {
+	root := t.TempDir()
+	if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
+		t.Skipf("git init: %v %s", err, out)
+	}
+	for _, d := range []string{"services/api", "services/web"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := map[string]string{
+		root:                                   "",
+		filepath.Join(root, "services/api"):    "services_api",
+		filepath.Join(root, "services/web"):    "services_web",
+		filepath.Join(root, "services/api/.."): "services",
+		t.TempDir():                            "", // not in a git repo
+	}
+	for path, want := range cases {
+		if got := EmbedPathSuffix(path); got != want {
+			t.Errorf("EmbedPathSuffix(%q) = %q, want %q", path, got, want)
+		}
+	}
 }

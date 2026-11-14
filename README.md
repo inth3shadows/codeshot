@@ -24,7 +24,7 @@ codeshot --architecture --out architecture.svg --embed TECHNICAL.md --format svg
   --check --forbid 'src/ui/->src/db/'
 ```
 
-Without `--out`, `--embed` writes the image next to the doc as `codeshot-arch.<fmt>` (`codeshot-arch-d<n>`, `codeshot-diff[-<ref>]`), the same in every clone. Before 0.4.0 that name included the checkout directory; see [Upgrading from 0.3](#upgrading-from-03).
+Without `--out`, `--embed` writes the image next to the doc as `codeshot-arch.<fmt>` (`codeshot-arch-d<n>`, `codeshot-diff[-<ref>]`), the same in every clone. A `--path` below the repo root adds that subpath (`codeshot-arch-services_api.<fmt>`), so docs in one directory diagramming different subtrees don't share an image. Before 0.4.0 that name included the checkout directory; see [Upgrading from 0.3](#upgrading-from-03).
 
 For `svg`, `--check` compares graph structure (which nodes, which edges), not bytes, so a laptop and CI with different graphviz versions agree. It never writes, and it refuses to replace a real committed diagram with a blank one. Graphviz is the only thing it is tolerant of: **generate the committed diagram with the same codegraph build as CI.** Different codegraph builds can draw different edges for same-named symbols (see [TECHNICAL.md](TECHNICAL.md#known-limitations)).
 

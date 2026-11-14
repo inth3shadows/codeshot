@@ -154,7 +154,7 @@ one doc without clobbering each other. `--group-depth` gets its own key too
 per-module architecture picture in the same doc and `--check` both. `--embed` **refreshes an existing doc —
 it won't create one**, and a stray/half-present marker pair is an error rather
 than a silent mangle. Without `--out` the image goes next to the doc under a
-fixed name (`codeshot-arch.svg`, `codeshot-arch-d1.svg`, `codeshot-diff.svg`),
+fixed name (`codeshot-arch.svg`, `codeshot-arch-d1.svg`, `codeshot-diff.svg`; a `--path` below the repo root adds its subpath, e.g. `codeshot-arch-services_api.svg`),
 the same in every clone, so `--check` agrees between your checkout and CI's.
 
 **Stop it going stale — `--check`.** A committed diagram silently rots the
