@@ -50,11 +50,59 @@ func FindIndex(repoPath string) (string, error) {
 	}
 }
 
+// indexURI is the read-only SQLite URI for dbPath. The path always starts with
+// "/" so a Windows drive (C:/...) stays in the path instead of being read as a
+// URI authority. busy_timeout waits out a codegraph write instead of failing.
+// immutable=1 skips SQLite's locking and -shm file entirely; it is only safe
+// when nothing is waiting in the WAL (see ReadIndexRows).
+func indexURI(dbPath string, immutable bool) string {
+	p := filepath.ToSlash(dbPath)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	q := "mode=ro&_pragma=busy_timeout(5000)"
+	if immutable {
+		q += "&immutable=1"
+	}
+	return (&url.URL{Scheme: "file", Path: p, RawQuery: q}).String()
+}
+
+// IsSchemaError reports an index whose tables or columns aren't the ones
+// codeshot reads, i.e. a codegraph build with a different schema.
+func IsSchemaError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no such table") || strings.Contains(msg, "no such column")
+}
+
+// walIsEmpty reports that dbPath's write-ahead log holds nothing, so the main
+// file alone is the whole index.
+func walIsEmpty(dbPath string) bool {
+	fi, err := os.Stat(dbPath + "-wal")
+	return os.IsNotExist(err) || (err == nil && fi.Size() == 0)
+}
+
 // ReadIndexRows reads every callee-kind edge from a codegraph.db, read-only,
-// in one query.
+// in one query. codegraph keeps its index in WAL mode, and a read-only open
+// still needs to create the -shm file beside it, which fails in a directory
+// codeshot can't write (a read-only mount, a restored CI cache). When the WAL
+// is empty the read is retried as immutable, which needs no -shm and is exact;
+// with pending WAL content it is not retried, since immutable would silently
+// miss those edges.
 func ReadIndexRows(dbPath string) ([]IndexRow, error) {
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(dbPath), RawQuery: "mode=ro"}
-	db, err := sql.Open("sqlite", u.String())
+	rows, err := readIndexRows(indexURI(dbPath, false))
+	if err != nil && !IsSchemaError(err) && walIsEmpty(dbPath) {
+		if retry, rerr := readIndexRows(indexURI(dbPath, true)); rerr == nil {
+			return retry, nil
+		}
+	}
+	return rows, err
+}
+
+func readIndexRows(uri string) ([]IndexRow, error) {
+	db, err := sql.Open("sqlite", uri)
 	if err != nil {
 		return nil, err
 	}

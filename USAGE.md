@@ -70,7 +70,7 @@ files late in path order go unprobed and can therefore appear to call nothing
 when they really do. Raise `--max-symbols` before trusting a sparse-looking
 corner of a big repo's diagram. `--max-render`
 carries over from symbol mode (see above), capping files or groups drawn.
-`--limit` has no effect here: the index read is complete.
+`--limit` has no effect here (the index read is complete); passing it prints a warning.
 `--depth`/`--max-depth-nodes` don't apply here and are rejected unless left
 at their defaults.
 

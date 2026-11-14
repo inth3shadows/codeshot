@@ -307,8 +307,11 @@ func collectFileEdges(symbols []Node, repoPath string) ([]SymbolEdge, error) {
 		return nil, &codegraph.FatalError{Msg: fmt.Sprintf("codeshot: --architecture could not find codegraph's index (%v) — run 'codegraph init %s' first.", err, repoPath)}
 	}
 	rows, err := codegraph.ReadIndexRows(db)
+	if codegraph.IsSchemaError(err) {
+		return nil, &codegraph.FatalError{Msg: fmt.Sprintf("codeshot: --architecture could not read codegraph's index at '%s' (%v) — this codegraph build's index schema isn't one codeshot knows; please report it with your 'codegraph --version'.", db, err)}
+	}
 	if err != nil {
-		return nil, &codegraph.FatalError{Msg: fmt.Sprintf("codeshot: --architecture could not read codegraph's index at '%s' (%v) — the schema may have changed in this codegraph build.", db, err)}
+		return nil, &codegraph.FatalError{Msg: fmt.Sprintf("codeshot: --architecture could not read codegraph's index at '%s' (%v). If codegraph is still writing it, rerun once that finishes; if its directory is read-only, run 'codegraph sync' somewhere it can write first.", db, err)}
 	}
 	return FileEdgesFromIndexRows(symbols, rows), nil
 }

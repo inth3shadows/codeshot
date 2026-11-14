@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +17,19 @@ import (
 )
 
 // Version is set at release time with -ldflags "-X ...codeshot.Version=x.y.z".
-var Version = "0.4.0-dev"
+var Version = ""
+
+// versionString is the stamped Version, else the module version `go install
+// ...@vX.Y.Z` records, else "dev": an unstamped build never claims a release.
+func versionString() string {
+	if Version != "" {
+		return Version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return strings.TrimPrefix(bi.Main.Version, "v")
+	}
+	return "dev"
+}
 
 const (
 	defaultLimit      = 50
@@ -25,7 +38,7 @@ const (
 )
 
 const usage = `Usage: codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]
-   or: codeshot --architecture [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--format <fmt>] [--embed <file.md> [--check]]
+   or: codeshot --architecture [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--format <fmt>] [--embed <file.md> [--check]]
    or: codeshot --diff [--diff-ref <range>] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]`
 
 type optSpec struct {
@@ -212,7 +225,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		return 0, usageExit("codeshot: " + err.Error())
 	}
 	if p.bools["version"] {
-		fmt.Fprintf(stdout, "codeshot %s\n", Version)
+		fmt.Fprintf(stdout, "codeshot %s\n", versionString())
 		return 0, nil
 	}
 
@@ -263,6 +276,11 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	limit, err := positiveInt("limit", get("limit", strconv.Itoa(defaultLimit)))
 	if err != nil {
 		return 0, err
+	}
+	if _, given := p.str["limit"]; given && arch {
+		// A warning, not a refusal like --depth: v0.3.0 configs pass --limit
+		// here, and they still get the same diagram.
+		warn(stderr, "codeshot: --limit has no effect with --architecture (every callee is read from codegraph's index); ignoring it.")
 	}
 	maxRender := Unlimited
 	if v, ok := p.str["max-render"]; ok {

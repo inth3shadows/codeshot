@@ -546,3 +546,34 @@ func TestCLIOnAnUnindexedRepoPrintsACleanNoIndexMessageNotARawCodegraphError(t *
 	wantMatch(t, `codegraph init`, stderr)
 	wantNoMatch(t, `did not return JSON|Command failed`, stderr) // the clean message, not the raw error
 }
+
+// F3: a binary built without -ldflags (go install, the GitHub Action) must not
+// report a made-up release; it falls back to the module version or "dev".
+func TestVersionStringPrefersTheStampedVersionAndNeverInventsOne(t *testing.T) {
+	saved := Version
+	t.Cleanup(func() { Version = saved })
+	Version = "1.2.3"
+	if got := versionString(); got != "1.2.3" {
+		t.Errorf("stamped: versionString() = %q; want 1.2.3", got)
+	}
+	Version = ""
+	if got := versionString(); got == "" || strings.Contains(got, "0.4.0") {
+		t.Errorf("unstamped: versionString() = %q; want the module version or dev", got)
+	}
+	Version = "9.9.9"
+	if code, stdout, _ := runCLI("--version"); code != 0 || stdout != "codeshot 9.9.9\n" {
+		t.Errorf("--version = %d %q; want codeshot 9.9.9", code, stdout)
+	}
+}
+
+// F4: --limit does nothing in --architecture (the index read is complete), so
+// passing it says so instead of reading as applied. A warning, not a refusal:
+// v0.3.0 configs pass --limit there, and they still produce the same diagram.
+func TestCLIArchitectureWarnsThatLimitHasNoEffect(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.md")
+	_, _, stderr := runCLI("--architecture", "--limit", "100", "--embed", missing)
+	wantMatch(t, `--limit has no effect with --architecture`, stderr)
+	_, _, stderr = runCLI("--architecture", "--embed", missing)
+	wantNoMatch(t, `--limit has no effect`, stderr)
+	wantNoMatch(t, `--architecture \[[^\n]*--limit`, usage)
+}

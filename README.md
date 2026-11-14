@@ -64,7 +64,7 @@ Download a binary for your platform from [Releases](https://github.com/inth3shad
 go install github.com/inth3shadows/codeshot/cmd/codeshot@latest
 ```
 
-Codeshot is a single static binary; it needs no Node of its own.
+Codeshot is a single static binary; it needs no Node of its own. `codeshot --version` prints the release version for release binaries and `go install ...@vX.Y.Z`, and `dev` for any other build.
 
 **Requirements:**
 - [`codegraph`](https://github.com/colbymchenry/codegraph) CLI on PATH, **1.6.0 or later**, with the target repo indexed (`codegraph init`). `--architecture` reads codegraph's index directly and needs the `qualifiedName` that 1.6.0's `query --json` carries; earlier builds also have a call-resolution bug that fabricates cross-file edges. A codegraph with upstream PR #1801 (merged after 1.6.0, not yet in an npm release; the [inth3shadows/codegraph](https://github.com/inth3shadows/codegraph) fork has it) additionally lets `--diff` attribute same-named symbols to the right file; CI runs that fork.
@@ -122,7 +122,7 @@ so the scan takes about a second. Flags specific to this mode:
 
 Of the [shared flags](#flags-shared-by-every-mode), `--max-render` caps the
 distinct files (or groups, with `--group-depth`) drawn, busiest first. The
-index read is complete, so `--limit` has no effect in this mode.
+index read is complete, so `--limit` has no effect in this mode; passing it prints a warning.
 
 A name that exists in more than one file (two `handle`s, or two `index.js`
 files) has its edges attributed to the right file: the index read keys each

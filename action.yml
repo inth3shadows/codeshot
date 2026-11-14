@@ -6,13 +6,19 @@ branding:
 runs:
   using: composite
   steps:
-    # Builds the exact ref this action was pinned to (`uses: inth3shadows/codeshot@<sha>`),
-    # so the binary always matches the action version. go.mod's toolchain line
-    # makes `go` fetch the right toolchain if the runner's is older.
+    # Builds the action's own checkout (GITHUB_ACTION_PATH), i.e. exactly the
+    # ref this action was pinned to, so the binary always matches the action
+    # version. Works for `uses: ./` too, where there is no ref. go.mod's
+    # toolchain line makes `go` fetch the right toolchain if the runner's is
+    # older. The ref is stamped as the version; without one, --version says
+    # "dev" rather than claim a release.
     - name: Install codeshot
       shell: bash
       env:
         REF: ${{ github.action_ref }}
       run: |
-        GOBIN="$RUNNER_TEMP/codeshot-bin" go install "github.com/inth3shadows/codeshot/cmd/codeshot@${REF}"
+        ldflags="-s -w"
+        if [ -n "$REF" ]; then ldflags="$ldflags -X github.com/inth3shadows/codeshot/internal/codeshot.Version=${REF#v}"; fi
+        mkdir -p "$RUNNER_TEMP/codeshot-bin"
+        (cd "$GITHUB_ACTION_PATH" && CGO_ENABLED=0 go build -trimpath -ldflags "$ldflags" -o "$RUNNER_TEMP/codeshot-bin/codeshot" ./cmd/codeshot)
         echo "$RUNNER_TEMP/codeshot-bin" >> "$GITHUB_PATH"
