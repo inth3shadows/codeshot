@@ -6,9 +6,8 @@ on:
   pull_request:
     branches: [master]
   # Weekly canary: the npm-codegraph job below runs unpinned `@latest`, so a new
-  # codegraph release that changes output codeshot parses, or ships the
-  # per-definition JSON (upstream #1801) the diagrams job needs the fork for,
-  # surfaces here instead of in a user's bug report.
+  # codegraph release that changes output codeshot parses (or its index schema,
+  # which --architecture reads directly) surfaces here, not in a bug report.
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
@@ -18,46 +17,47 @@ permissions:
 
 jobs:
   test:
-    name: Test (Node ${{ matrix.node-version }})
+    name: Test, vet, lint
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # Floor (engines >=18) through current LTS.
-        node-version: ["18", "20", "22"]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          node-version: ${{ matrix.node-version }}
-      # `dot` is a hard runtime dependency (codeshot renders through graphviz); the
-      # DOT-validity test shells out to it and fails-hard if absent. The end-to-end
-      # `codegraph` tests instead SELF-SKIP when codegraph/its index aren't present —
-      # CI has neither — so no codegraph install is needed here.
-      - name: Install graphviz (codeshot renders via `dot`)
+          go-version-file: go.mod
+      # `dot` is a hard runtime dependency; the DOT-validity tests shell out to
+      # it. Tests needing codegraph or an index self-skip here (CI has neither).
+      - name: Install graphviz
         run: sudo apt-get update && sudo apt-get install -y graphviz
-      - run: npm test
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test ./...
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
 
-  # The test job above has no codegraph, so every end-to-end test self-skips.
-  # This runs the full suite against the npm releases users actually install:
-  # the supported floor and the latest pinned release (pinned per repo
-  # convention; the weekly schedule swaps in unpinned `@latest`). It does NOT
-  # run the diagram --check: the committed diagrams are rendered with the
-  # inth3shadows fork (see the diagrams job), which npm codegraph legitimately
-  # renders differently.
+  # The suite again, against the npm codegraph releases users install, with
+  # this repo indexed so the end-to-end tests run. 1.6.0 is the floor: earlier
+  # builds' `query --json` carries no qualifiedName, which --architecture's
+  # direct index read needs. The weekly schedule swaps in unpinned `@latest`.
+  # It does NOT run the diagram --check: committed diagrams are rendered with
+  # the inth3shadows fork (see the diagrams job).
   test-npm-codegraph:
     name: Tests (npm codegraph ${{ matrix.codegraph }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        codegraph: ${{ github.event_name == 'schedule' && fromJSON('["latest"]') || fromJSON('["1.5.0", "1.6.0"]') }}
+        codegraph: ${{ github.event_name == 'schedule' && fromJSON('["latest"]') || fromJSON('["1.6.0"]') }}
     steps:
-      # Full history: the --diff self-test diffs against the parent of the last
-      # commit that touched render/callgraph.js, which a depth-1 clone lacks.
+      # Full history: the --diff end-to-end test diffs real commits.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # codegraph is a Node CLI and refuses Node 25+.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
@@ -67,41 +67,35 @@ jobs:
         run: |
           npm install -g "@colbymchenry/codegraph@${{ matrix.codegraph }}"
           codegraph --version
-      # The self-tests read this repo's own index; without it they self-skip.
       - name: Build the codegraph index
         run: codegraph init .
-      - run: npm test
+      - run: go test ./...
 
   diagrams:
     name: Diagrams are current (codeshot --check)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      # Node 22 to match the pinned Node the local codegraph fork wrapper runs.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 
-      # codeshot renders through graphviz. --check compares diagram STRUCTURE
-      # (node/edge set) for svg, not rendered bytes, so the CI graphviz version
-      # need not match the one that generated the committed image.
+      # --check compares diagram STRUCTURE (node/edge set) for svg, not bytes,
+      # so the CI graphviz version need not match the one that drew the image.
       - name: Install graphviz
         run: sudo apt-get update && sudo apt-get install -y graphviz
 
-      # The index codeshot reads: the inth3shadows/codegraph fork, built from source
-      # at tag v1.6.0-em.8, pinned by commit SHA (tags are mutable). It is public
-      # npm 1.6.0 plus upstream fixes merged but not yet released, notably #1801
-      # (callers/callees --json grouped per definition), which --diff's
-      # pickDefinitionResult needs; public 1.6.0 lacks it, so CI on npm would only
-      # ever test the fallback. Same build as the local `codegraph`, so committed
-      # diagrams regenerate identically. The 1.5.0 fallback path is unit-tested only.
-      # (1.5.0 remains the supported floor: 1.4.1 fabricates cross-file edges via a
-      # call-resolution bug fixed by codegraph's LITERAL_RECEIVER_TYPES change.)
-      # Cloned into $RUNNER_TEMP, not the workspace: `codegraph init .` below would
-      # otherwise index the fork's own source into this repo's diagrams.
-      # WASM-only: CODEGRAPH_KERNEL=0, as the local wrapper does. The fork's native
-      # kernel still carries a fabricated-edge bug its TS extractor fix doesn't
-      # cover, so it must not be picked up here either.
+      # The index codeshot reads: the inth3shadows/codegraph fork at tag
+      # v1.6.0-em.8, pinned by commit SHA (tags are mutable): npm 1.6.0 plus
+      # upstream fixes merged but not yet released, notably #1801 (callers/
+      # callees --json grouped per definition), which --diff's per-file
+      # attribution needs. Committed diagrams must be regenerated with this same
+      # build. Cloned into $RUNNER_TEMP so `codegraph init .` doesn't index it.
+      # WASM-only (CODEGRAPH_KERNEL=0): the fork's native kernel still carries a
+      # fabricated-edge bug.
       - name: Build codegraph fork (v1.6.0-em.8)
         env:
           FORK_SHA: ceefd258adcaf6cbdb743bf4574d3cf501dd58d5
@@ -116,19 +110,19 @@ jobs:
           chmod +x "$RUNNER_TEMP/bin/codegraph"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
-      # `init` builds the initial index in a fresh checkout (`index` rebuilds an
-      # existing one and errors if the repo was never initialized — which a CI
-      # checkout, with no committed .codegraph, never was).
       - name: Build the codegraph index
         run: |
           codegraph init .
           codegraph status .   # visibility: a partial index prints an unresolved-refs warning
 
+      - name: Build codeshot
+        run: go build -o "$RUNNER_TEMP/bin/codeshot" ./cmd/codeshot
+
       # Blocking gate: fail the PR if either committed diagram no longer matches
-      # what the current code produces. Structural compare = graphviz-version proof.
+      # what the current code produces.
       - name: Check committed diagrams are current
         run: |
-          node render/callgraph.js --architecture --path . --limit 100 --format svg \
+          codeshot --architecture --path . --max-symbols 5000 --format svg \
             --out docs/architecture.svg --embed TECHNICAL.md --check
-          node render/callgraph.js buildDot --path . --format svg \
-            --out docs/buildDot-callgraph.svg --embed TECHNICAL.md --check
+          codeshot BuildDot --path . --format svg \
+            --out docs/BuildDot-callgraph.svg --embed TECHNICAL.md --check

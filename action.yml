@@ -1,0 +1,18 @@
+name: codeshot
+description: Install codeshot (diagrams-as-code and architecture rules for CodeGraph) on PATH
+branding:
+  icon: git-branch
+  color: gray-dark
+runs:
+  using: composite
+  steps:
+    # Builds the exact ref this action was pinned to (`uses: inth3shadows/codeshot@<sha>`),
+    # so the binary always matches the action version. go.mod's toolchain line
+    # makes `go` fetch the right toolchain if the runner's is older.
+    - name: Install codeshot
+      shell: bash
+      env:
+        REF: ${{ github.action_ref }}
+      run: |
+        GOBIN="$RUNNER_TEMP/codeshot-bin" go install "github.com/inth3shadows/codeshot/cmd/codeshot@${REF}"
+        echo "$RUNNER_TEMP/codeshot-bin" >> "$GITHUB_PATH"

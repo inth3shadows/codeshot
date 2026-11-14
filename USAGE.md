@@ -62,19 +62,15 @@ one's — that difference is the repo's intra-module traffic, not a dropped edge
 Files at the repo root have no directory to roll into, so they stay as
 themselves.
 
-On Node 22.5 or newer this takes about a second: Codeshot reads codegraph's
-index file directly. On Node 18/20 it can genuinely take a few minutes on a
-mid-size-or-larger repo (one `codegraph` call per symbol, run sequentially),
-so upgrading Node is the real fix there — `--max-symbols <n>`
-(default 500) trades completeness for speed if you want a faster, partial
-scan; Codeshot tells you on stderr if it stopped early. Note what "partial"
+This takes about a second: Codeshot reads codegraph's index file directly.
+`--max-symbols <n>` (default 500) caps how many enumerated symbols are
+counted; Codeshot tells you on stderr if it stopped early. Note what "partial"
 means: symbols are probed in path order, so the cut is a prefix, not a sample —
 files late in path order go unprobed and can therefore appear to call nothing
 when they really do. Raise `--max-symbols` before trusting a sparse-looking
 corner of a big repo's diagram. `--max-render`
 carries over from symbol mode (see above), capping files or groups drawn.
-`--limit` caps callees per symbol only on the CLI probes (Node 18/20, or a
-fallback); on Node 22.5+ the direct index read is complete and ignores it.
+`--limit` has no effect here: the index read is complete.
 `--depth`/`--max-depth-nodes` don't apply here and are rejected unless left
 at their defaults.
 
@@ -157,10 +153,9 @@ one doc without clobbering each other. `--group-depth` gets its own key too
 (`<!-- codeshot:arch-d1:start -->`), so you can commit both the per-file and the
 per-module architecture picture in the same doc and `--check` both. `--embed` **refreshes an existing doc —
 it won't create one**, and a stray/half-present marker pair is an error rather
-than a silent mangle. Always pass `--out`: without it the image goes next to
-the doc as `codeshot-arch-<dir>.svg`, named after the checkout directory, so a
-diagram committed from one clone fails `--check` in a checkout with a
-different directory name (CI's, for one).
+than a silent mangle. Without `--out` the image goes next to the doc under a
+fixed name (`codeshot-arch.svg`, `codeshot-arch-d1.svg`, `codeshot-diff.svg`),
+the same in every clone, so `--check` agrees between your checkout and CI's.
 
 **Stop it going stale — `--check`.** A committed diagram silently rots the
 moment the code changes. Add `--check` to *verify* the committed image and the
@@ -193,7 +188,8 @@ fall back to a raw byte-compare, which does require CI to use the same
 - **"codeshot: --architecture found no cross-file call edges — the diagram is blank"** — codegraph reported no resolved calls *between files* in this repo, so there's nothing for the file-level graph to draw. Expected for a small or single-file repo; otherwise the index is likely missing or stale — run `codegraph init <path>`, then `codegraph status` to confirm it built. A blank image is still written so the `--out` path exists — except under `--embed`, where Codeshot refuses (exit 1) rather than replace a real committed diagram with a blank one, and under `--embed --check`, which fails without comparing so it doesn't send you to rerun the `--embed` that would be refused.
 - **"codeshot: codegraph's index has N unresolved reference(s) from an interrupted run"** — A previous CodeGraph indexing run was cut short, so callers/callees can come back incomplete and the diagram may be silently partial. Run the `codegraph sync <path>` the message gives you (or `codegraph index` for a full rebuild), then check `codegraph status` shows 0 before trusting the diagram. Codeshot still draws the image; the warning is there so you don't trust it blindly.
 - **"codeshot: symbol '...' not found in codegraph's index"** — Double-check the exact spelling/casing of the symbol name, and confirm `--path` points at the repo that actually contains it.
-- **"codeshot: N name(s) defined in more than one file ... got no per-file answer from codegraph"** — `--architecture` only. Colliding names are normally attributed to the right file (per-definition results, else a file-qualified `codegraph node -f`); these are the ones where both failed, so their edges are the union of every same-named definition and some may land on the wrong file. On npm CodeGraph (through 1.6.0) that always includes two files sharing a basename (two `index.js`), and any colliding symbol with more than 12 callees (where `node -f` truncates). Use a CodeGraph with upstream #1801, rename one of the files, or treat those edges as unverified.
+- **"codeshot: --architecture reads codegraph's index directly and needs codegraph 1.6.0 or later"** — Your codegraph's `query --json` carries no `qualifiedName`, which Codeshot needs to match enumerated symbols to the index. Upgrade codegraph to 1.6.0+.
+- **"codeshot: --architecture could not find codegraph's index" / "could not read codegraph's index"** — There is no `.codegraph/codegraph.db` at or above `--path` (run `codegraph init`), or the index's schema isn't one Codeshot knows (a new codegraph build changed it): file an issue with your `codegraph --version`.
 - **The diagram is real but looks sparse — CodeGraph's index has known gaps.** Tested against several real codebases: same-named methods on unrelated classes are sometimes merged or one silently dropped, aliased imports (`import x as y`) can return zero callers for a genuinely well-used function, and dependency-injection patterns (e.g. FastAPI's `Depends()`) often don't resolve to real caller functions at all. Codeshot only draws what CodeGraph reports — if a diagram looks thinner than you expect for a symbol you know is heavily used, that's more likely a CodeGraph indexing gap than a Codeshot bug. A `dotted gray "file"` edge (see above) is one visible symptom of this; a *missing* edge is the invisible version and harder to catch — spot-check against the real source if it matters.
 - **`--out diagram.svg` produced a PNG (or vice versa)** — Codeshot only ever writes what `--format` says; it never infers format from `--out`'s extension. If you see this, you forgot `--format svg` (or whichever format matches the extension you wanted) — Codeshot now warns about this mismatch on stderr before it happens, so check for that warning first.
 - **The image looks unreadable / too cluttered** — This usually means the symbol has a very large number of callers or callees. Rerun with `--max-render <n>` (e.g. `--max-render 30`) to cap how many are drawn — Codeshot will still tell you on stderr how many were left out. If the nodes themselves are legible but hard to read at the zoom level a PNG forces on you, try `--format svg` instead — it stays crisp at any zoom, so it's worth trying before reaching for `--max-render` if you still want to see everything.
@@ -201,7 +197,7 @@ fall back to a raw byte-compare, which does require CI to use the same
 - **"codeshot: showing N callers/callees — ... may have cut off more"** — Same situation, but your CodeGraph version doesn't report a total, so Codeshot is guessing from the count landing exactly on `--limit`. Rerun with a higher `--limit` if you need the full picture; if the count doesn't grow, nothing was actually cut (see `TECHNICAL.md` for why this older signal can be a false alarm).
 - **"codeshot: --depth traversal stopped early (safety cap of 200 discovered nodes)"** — The symbol is heavily connected enough that `--depth` hit its node-discovery cap before finishing; the graph you got is real but incomplete beyond that point. Try a smaller `--depth` (2 instead of 3), a lower `--limit`, a more specific, less-central symbol, or raise the cap itself with `codeshot <Symbol> --depth 3 --max-depth-nodes 500` (default is 200).
 - **`--depth` runs slowly** — Each additional hop makes one sequential `codegraph` call per newly discovered node (CodeGraph itself has no multi-hop traversal for `callers`/`callees`, so Codeshot does this client-side), so a well-connected symbol at `--depth 2` or higher can take noticeably longer than the default `--depth 1`. This is expected, not a bug.
-- **`--architecture` is taking a long time** — Check `node --version`: on 22.5+ Codeshot reads codegraph's index directly and the scan takes about a second. If you're on 22.5+ and it's still slow, the index isn't at `<--path>/.codegraph/codegraph.db` (point `--path` at the project root) or `CODESHOT_INDEX_READ=cli` is set. On Node 18/20 it's expected on anything past a small repo: it's one sequential `codegraph` call per enumerated symbol, and there's no way to parallelize it (concurrent `codegraph` calls against one index race and fail). Rerun with a smaller `--max-symbols` (e.g. `--max-symbols 100`) for a faster, partial scan — Codeshot warns on stderr when the scan is cut short by the cap so you know the result is incomplete.
+- **`--architecture` is taking a long time** — The edge read itself takes about a second, so the time is almost always codegraph's own `query` enumerating a very large index. Rerun with a smaller `--max-symbols` (e.g. `--max-symbols 100`) for a faster, partial scan — Codeshot warns on stderr when the cap cuts the scan short.
 - **`--architecture`'s diagram is a hairball / unreadable** — Reach for `--group-depth 1` first: it draws one box per top-level directory instead of one per file, so no *module-to-module* call is thrown away, the picture just zooms out (see "Generating a whole-repo architecture diagram" above). If it's still dense at group level, `--max-render <n>` (e.g. `--max-render 20`) then keeps only the busiest N nodes by total call-edge weight and drops the rest. Some remaining nodes can end up with no surviving edges if all their edges pointed at a dropped one — that's expected, not a bug, at aggressive `--max-render` values.
 - **"codeshot: --diff found no changed files"** — `--diff` with no ref compares your working tree to `HEAD`, and there's nothing changed. Pass `--diff-ref <range>` (e.g. `origin/main...HEAD`) to diagram a branch or PR instead. With `--embed`, Codeshot refuses rather than replace a real committed diagram with a blank one; with `--embed --check`, it reports there's nothing to check and exits 0.
 - **"codeshot: --diff found N changed file(s) but no matching symbols"** — The changed files don't define symbols CodeGraph knows about: they may be docs/config, in a language CodeGraph doesn't index, or the index is stale (`codegraph sync <path>`). Same `--embed`/`--check` handling as above.
