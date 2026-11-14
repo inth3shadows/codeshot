@@ -1,0 +1,14 @@
+version: "2"
+linters:
+  settings:
+    errcheck:
+      # Writes to stdout/stderr: nothing useful to do if the terminal is gone.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    staticcheck:
+      # golangci-lint's defaults, plus -ST1005: codeshot's error strings are
+      # user-facing sentences ("Command failed: ...", "--embed: markers ... retry.")
+      # kept identical to v0.3.0's output.
+      checks: ["all", "-ST1000", "-ST1003", "-ST1005", "-ST1016", "-ST1020", "-ST1021", "-ST1022"]
