@@ -5,6 +5,7 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -193,7 +194,16 @@ func SortSymbolsForEnumeration(symbols []Node) []Node {
 		if out[a].FilePath != out[b].FilePath {
 			return out[a].FilePath < out[b].FilePath
 		}
-		return out[a].Name < out[b].Name
+		if out[a].Name != out[b].Name {
+			return out[a].Name < out[b].Name
+		}
+		// Same file and name (methods on two types): the qualified name
+		// decides, so the order never comes from the source's own listing.
+		qa, qb := out[a].QualifiedName, out[b].QualifiedName
+		if (qa == nil) != (qb == nil) {
+			return qa == nil
+		}
+		return qa != nil && *qa < *qb
 	})
 	return out
 }
@@ -202,8 +212,18 @@ func SortSymbolsForEnumeration(symbols []Node) []Node {
 // from index rows. A definition is every node sharing name, file and qualified
 // name (codegraph's overload grouping); its callees are the distinct targets,
 // minus file-kind targets and targets reached only by `imports`. Each
-// definition counts once, in enumeration order.
+// definition counts once, in enumeration order, and its targets are taken by
+// target file, then target id. Row order is never used: the index read
+// returns rows in SQLite's plan order and a snapshot in its file's order, so
+// depending on it would draw one graph in two statement orders.
 func FileEdgesFromIndexRows(symbols []Node, rows []codegraph.IndexRow) []SymbolEdge {
+	rows = slices.Clone(rows)
+	sort.SliceStable(rows, func(a, b int) bool {
+		if rows[a].TargetFile != rows[b].TargetFile {
+			return rows[a].TargetFile < rows[b].TargetFile
+		}
+		return rows[a].Target < rows[b].Target
+	})
 	defKey := func(name, file, qn string) string { return name + "\x00" + file + "\x00" + qn }
 	symKey := func(s Node) string {
 		qn := ""
@@ -350,9 +370,35 @@ type ArchParams struct {
 	Forbid                            []ForbidRule
 }
 
+// ArchSource is where --architecture's graph comes from: every symbol in
+// enumeration order (SortSymbolsForEnumeration), and the cross-file callee
+// edges of a chosen subset of them. Everything after these two calls is the
+// same for every source.
+type ArchSource interface {
+	Symbols() ([]Node, error)
+	FileEdges(symbols []Node) ([]SymbolEdge, error)
+	// EmptyGraphWarning explains a blank diagram in this source's terms.
+	EmptyGraphWarning() string
+}
+
+// CodegraphSource reads a codegraph index: symbols through the CLI, edges
+// straight from .codegraph/codegraph.db.
+type CodegraphSource struct {
+	CG       *codegraph.Client
+	RepoPath string
+}
+
+func (s CodegraphSource) Symbols() ([]Node, error) { return enumerateAllSymbols(s.CG, s.RepoPath) }
+
+func (s CodegraphSource) FileEdges(symbols []Node) ([]SymbolEdge, error) {
+	return collectFileEdges(symbols, s.RepoPath)
+}
+
+func (s CodegraphSource) EmptyGraphWarning() string { return EmptyArchitectureWarning }
+
 // RunArchitectureMode builds the file-level graph and checks --forbid rules.
-func RunArchitectureMode(cg *codegraph.Client, repoPath string, p ArchParams, stderr io.Writer) (string, []Violation, error) {
-	all, err := enumerateAllSymbols(cg, repoPath)
+func RunArchitectureMode(src ArchSource, p ArchParams, stderr io.Writer) (string, []Violation, error) {
+	all, err := src.Symbols()
 	if err != nil {
 		return "", nil, err
 	}
@@ -361,7 +407,7 @@ func RunArchitectureMode(cg *codegraph.Client, repoPath string, p ArchParams, st
 		symbols = symbols[:p.MaxSymbols]
 		warn(stderr, SymbolBudgetWarning(p.MaxSymbols))
 	}
-	symbolEdges, err := collectFileEdges(symbols, repoPath)
+	symbolEdges, err := src.FileEdges(symbols)
 	if err != nil {
 		return "", nil, err
 	}
@@ -384,7 +430,7 @@ func RunArchitectureMode(cg *codegraph.Client, repoPath string, p ArchParams, st
 	collapse := GroupCollapseWarning(len(rawFileEdges), len(fileEdges), p.GroupDepth, groupCount)
 	warn(stderr, collapse)
 	if collapse == "" && len(fileEdges) == 0 {
-		warn(stderr, EmptyArchitectureWarning)
+		warn(stderr, src.EmptyGraphWarning())
 	}
 
 	files := map[string]bool{}
