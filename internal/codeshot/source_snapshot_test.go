@@ -234,7 +234,7 @@ func TestCLISnapshotWarningsNameTheSnapshotNotCodegraph(t *testing.T) {
 	wantNoMatch(t, `codegraph`, stderr)
 	wantMatch(t, `--limit has no effect with --architecture \(every edge is read from the snapshot\)`, stderr)
 	wantMatch(t, `edge kinds --architecture doesn't draw: overrides \(1\), uses \(2\)`, stderr)
-	wantMatch(t, `the diagram is blank\. The cgr snapshot has no calls, imports, instantiates, navigates or references edges between files`, stderr)
+	wantMatch(t, `the diagram is blank\. The cgr snapshot has no calls, instantiates, navigates or references edges between files \(an imports edge counts only alongside one of those\)`, stderr)
 }
 
 // F3: a snapshot diagram gets its own --embed marker and image name, so it can
@@ -260,5 +260,69 @@ func TestCLISnapshotEmbedGetsItsOwnMarkerAndImageName(t *testing.T) {
 		}
 		md, _ := os.ReadFile(doc)
 		wantMatch(t, `<!-- codeshot:`+c.marker+`:start -->`, string(md))
+	}
+}
+
+// F10: same file and name is not a tie; the qualified name decides, so two
+// sources listing the same nodes in different orders enumerate them alike.
+func TestSortSymbolsBreaksSameFileSameNameTiesByQualifiedName(t *testing.T) {
+	q := func(s string) *string { return &s }
+	a := Node{Name: "String", FilePath: "a.go", QualifiedName: q("T2.String")}
+	b := Node{Name: "String", FilePath: "a.go", QualifiedName: q("T1.String")}
+	c := Node{Name: "String", FilePath: "a.go"} // no qualified name sorts first
+	for _, in := range [][]Node{{a, b, c}, {c, b, a}, {b, c, a}} {
+		got := SortSymbolsForEnumeration(in)
+		if got[0].QualifiedName != nil || *got[1].QualifiedName != "T1.String" || *got[2].QualifiedName != "T2.String" {
+			t.Errorf("order from %v: %v", in, got)
+		}
+	}
+}
+
+// F12: the tool name becomes a filename and a markdown link target, so only
+// filename-and-link-safe characters survive, and the length is capped.
+func TestSnapshotMarkerSuffixIsSafeForFilenamesAndLinks(t *testing.T) {
+	for name, want := range map[string]string{
+		"codegraph":              "snapshot-codegraph",
+		"code-graph-rag":         "snapshot-code-graph-rag",
+		"":                       "snapshot",
+		"my tool":                "snapshot-my-tool",
+		"a]b(c)\nd":              "snapshot-a-b-c-d",
+		"../x":                   "snapshot-..-x",
+		"  ":                     "snapshot",
+		strings.Repeat("a", 300): "snapshot-" + strings.Repeat("a", 40),
+	} {
+		got := SnapshotMarkerSuffix(&snapshot.Snapshot{Subject: snapshot.Subject{Name: name}})
+		if got != want {
+			t.Errorf("SnapshotMarkerSuffix(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// F13: the warning must not claim imports are drawn on their own.
+func TestSnapshotEmptyWarningSaysImportsCountOnlyAlongsideAnotherKind(t *testing.T) {
+	w := SnapshotSource{Snap: &snapshot.Snapshot{Subject: snapshot.Subject{Name: "t"}}}.EmptyGraphWarning()
+	wantMatch(t, `no calls, instantiates, navigates or references edges between files \(an imports edge counts only alongside one of those\)`, w)
+}
+
+// F14: --path means nothing to a snapshot, so it doesn't name the image.
+func TestCLISnapshotImageNameIgnoresPath(t *testing.T) {
+	requireBins(t, "dot", "git")
+	root := t.TempDir()
+	if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
+		t.Skipf("git init: %v %s", err, out)
+	}
+	sub := filepath.Join(root, "services", "api")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	doc := filepath.Join(root, "doc.md")
+	if err := os.WriteFile(doc, []byte("# Doc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := runCLI("--architecture", "--source", "snapshot:"+writeSnapshotFile(t, cliSnapshot), "--path", sub, "--format", "svg", "--embed", doc); code != 0 {
+		t.Fatalf("exit %d; stderr: %s", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(root, "codeshot-arch-snapshot-t.svg")); err != nil {
+		t.Errorf("want codeshot-arch-snapshot-t.svg next to the doc: %v", err)
 	}
 }

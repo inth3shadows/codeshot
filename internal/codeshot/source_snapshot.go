@@ -2,6 +2,7 @@ package codeshot
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -59,8 +60,8 @@ func (s SnapshotSource) FileEdges(symbols []Node) ([]SymbolEdge, error) {
 }
 
 func (s SnapshotSource) EmptyGraphWarning() string {
-	return fmt.Sprintf("codeshot: --architecture found no cross-file call edges — the diagram is blank. The %s snapshot has no %s edges between files; check the tool that exported it.",
-		s.Snap.Subject.Name, drawnKindsList())
+	return fmt.Sprintf("codeshot: --architecture found no cross-file call edges — the diagram is blank. %s has no %s edges between files (an imports edge counts only alongside one of those); check the tool that exported it.",
+		upperFirst(snapshotPhrase(s.Snap)), drawnKindsList(" or "))
 }
 
 // structuralKinds are edge kinds graph-assay's adapters export that are not a
@@ -68,10 +69,20 @@ func (s SnapshotSource) EmptyGraphWarning() string {
 // warning. codegraph's own --architecture leaves them out too.
 var structuralKinds = []string{"contains", "extends", "implements", "decorates"}
 
-func drawnKindsList() string {
-	kinds := slices.Sorted(slices.Values(codegraph.CalleeEdgeKinds))
-	return strings.Join(kinds[:len(kinds)-1], ", ") + " or " + kinds[len(kinds)-1]
+// drawnKindsList names the kinds that draw an edge on their own: every callee
+// kind but imports, which FileEdgesFromIndexRows counts only when the same
+// target is also reached by another kind (codegraph's own rule).
+func drawnKindsList(last string) string {
+	var kinds []string
+	for _, k := range slices.Sorted(slices.Values(codegraph.CalleeEdgeKinds)) {
+		if k != "imports" {
+			kinds = append(kinds, k)
+		}
+	}
+	return strings.Join(kinds[:len(kinds)-1], ", ") + last + kinds[len(kinds)-1]
 }
+
+func upperFirst(s string) string { return strings.ToUpper(s[:1]) + s[1:] }
 
 // UndrawnEdgeKindsWarning names the snapshot's edge kinds that --architecture
 // neither draws nor knows to be structural, with counts. Another tool's kind
@@ -96,15 +107,38 @@ func UndrawnEdgeKindsWarning(snap *snapshot.Snapshot) string {
 	for i, k := range kinds {
 		parts[i] = fmt.Sprintf("%s (%d)", k, counts[k])
 	}
-	return fmt.Sprintf("codeshot: the %s snapshot has edge kinds --architecture doesn't draw: %s. It draws %s edges, so dependencies carried only by these kinds are missing from the diagram and from --forbid.",
-		snap.Subject.Name, strings.Join(parts, ", "), strings.ReplaceAll(drawnKindsList(), " or ", " and "))
+	return fmt.Sprintf("codeshot: %s has edge kinds --architecture doesn't draw: %s. It draws %s edges (imports only alongside one of those), so dependencies carried only by these kinds are missing from the diagram and from --forbid.",
+		snapshotPhrase(snap), strings.Join(parts, ", "), drawnKindsList(" and "))
+}
+
+var unsafeToolNameRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+const maxToolNameLen = 40
+
+// toolLabel is the snapshot's subject.name cut down to characters safe in a
+// filename, a marker id and a markdown link or alt text: anything else
+// becomes "-", and it is capped at 40 characters. It may be "".
+func toolLabel(snap *snapshot.Snapshot) string {
+	l := strings.Trim(unsafeToolNameRe.ReplaceAllString(snap.Subject.Name, "-"), "-")
+	if len(l) > maxToolNameLen {
+		l = strings.TrimRight(l[:maxToolNameLen], "-")
+	}
+	return l
+}
+
+// snapshotPhrase is "the <tool> snapshot", or "the snapshot" without a name.
+func snapshotPhrase(snap *snapshot.Snapshot) string {
+	if l := toolLabel(snap); l != "" {
+		return "the " + l + " snapshot"
+	}
+	return "the snapshot"
 }
 
 // SnapshotMarkerSuffix is "snapshot-<tool>", the part a snapshot adds to the
 // --embed marker id and default image name.
 func SnapshotMarkerSuffix(snap *snapshot.Snapshot) string {
-	if snap.Subject.Name == "" {
-		return "snapshot"
+	if l := toolLabel(snap); l != "" {
+		return "snapshot-" + l
 	}
-	return "snapshot-" + SanitizeForFilename(snap.Subject.Name)
+	return "snapshot"
 }

@@ -123,8 +123,10 @@ so the scan takes about a second. Flags specific to this mode:
   codegraph doesn't need to be installed. A snapshot exported from a codegraph
   index draws the same diagram, byte for byte, as reading that index. With
   `--embed`, a snapshot diagram gets its own marker and image name
-  (`codeshot-arch-snapshot-<tool>.<fmt>`), so it can sit beside the codegraph
-  one in the same doc. Edge kinds codeshot doesn't draw (another tool's
+  (`codeshot-arch-snapshot-<tool>.<fmt>`, where `<tool>` is the snapshot's
+  `subject.name` cut to letters, digits, `.`, `_` and `-`, at most 40), so it
+  can sit beside the codegraph one in the same doc. `--path` plays no part in
+  that name. Edge kinds codeshot doesn't draw (another tool's
   `overrides`, say) are named on stderr rather than dropped silently. The
   default is `--source codegraph`; symbol and `--diff` modes reject `--source`.
 - `--depth` and `--max-depth-nodes` have no effect here and are rejected if set
@@ -224,6 +226,10 @@ The CLI's `--json` output is a stable, documented contract; the on-disk schema i
 `dot` already produces clean, deterministic layouts — no layout algorithm to hand-tune.
 
 **Standalone tool, not a CodeGraph PR.** CodeGraph's upstream `main` has an interactive viewer (`codegraph ui`, not yet in a release) for exploration; Codeshot stays out of that lane and owns the committed, CI-checked side — embedded diagrams, drift checks, architecture rules. Those are build-pipeline concerns a code index doesn't need to carry, and keeping them separate lets each evolve on its own release cadence.
+
+## Upgrading from 0.4
+
+- **`--architecture` draws edges in a fixed order.** Each symbol's edges are now ordered by target file (and symbols with the same file and name by qualified name), so the codegraph index and a snapshot of it draw the same bytes. The graph is unchanged, but the order of statements in the DOT can change once. Committed SVG diagrams still pass `--embed --check`, which compares structure. A committed PNG or DOT diagram can fail `--check` once with no code change: rerun the same `--embed` command and commit the result. With `--max-render`, a file tied with another for the last slot can swap in, which changes the picture once.
 
 ## Upgrading from 0.3
 

@@ -194,7 +194,16 @@ func SortSymbolsForEnumeration(symbols []Node) []Node {
 		if out[a].FilePath != out[b].FilePath {
 			return out[a].FilePath < out[b].FilePath
 		}
-		return out[a].Name < out[b].Name
+		if out[a].Name != out[b].Name {
+			return out[a].Name < out[b].Name
+		}
+		// Same file and name (methods on two types): the qualified name
+		// decides, so the order never comes from the source's own listing.
+		qa, qb := out[a].QualifiedName, out[b].QualifiedName
+		if (qa == nil) != (qb == nil) {
+			return qa == nil
+		}
+		return qa != nil && *qa < *qb
 	})
 	return out
 }
