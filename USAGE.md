@@ -106,9 +106,15 @@ codeshot --architecture --source snapshot:snap.json --out arch.svg --format svg
 ```
 
 Every other `--architecture` flag (`--forbid`, `--group-depth`, `--embed
---check`, ...) works the same. Codeshot rejects a snapshot whose `schema` isn't
-`graph-assay/snapshot@1`, or whose edges point at nodes it doesn't have. Symbol
-and `--diff` modes don't take `--source` yet.
+--check`, ...) works the same. With `--embed`, the diagram gets its own marker
+and image name, `codeshot-arch-snapshot-<tool>.svg` (the tool is the
+snapshot's `subject.name`), so you can embed several tools' diagrams in one
+doc and compare them. Codeshot rejects a whole snapshot whose `schema` isn't
+`graph-assay/snapshot@1`, that lacks a required field (or has it `null`), or
+whose edges point at nodes it doesn't have. If the snapshot has edge kinds
+codeshot doesn't draw, stderr names them and their counts: those dependencies
+are missing from the diagram and from `--forbid`. Symbol and `--diff` modes
+don't take `--source` yet.
 
 ## Diagramming just what a diff touched
 

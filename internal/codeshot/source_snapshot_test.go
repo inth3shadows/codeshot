@@ -6,9 +6,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/inth3shadows/codeshot/internal/codegraph"
 	"github.com/inth3shadows/codeshot/internal/snapshot"
 )
 
@@ -96,8 +98,9 @@ func TestSnapshotSourceDrawsTheSameEdgesAsReadingTheIndexItCameFrom(t *testing.T
 	if !reflect.DeepEqual(fromIndex, fromSnap) {
 		t.Errorf("index read %v, snapshot %v", fromIndex, fromSnap)
 	}
-	// Symbols are walked by file, then name: A, Run, then b.go's B.
-	want := []SymbolEdge{{"a.go", "b.go"}, {"a.go", "a.go"}, {"a.go", "c.go"}, {"a.go", "b.go"}, {"b.go", "a.go"}}
+	// Symbols are walked by file, then name (A, Run, then b.go's B); each
+	// one's targets by target file.
+	want := []SymbolEdge{{"a.go", "a.go"}, {"a.go", "b.go"}, {"a.go", "b.go"}, {"a.go", "c.go"}, {"b.go", "a.go"}}
 	if !reflect.DeepEqual(fromSnap, want) {
 		t.Errorf("snapshot edges %v, want %v", fromSnap, want)
 	}
@@ -171,4 +174,91 @@ func TestCLISourceIsValidatedBeforeAnyWork(t *testing.T) {
 	wantRejected(t, `could not read snapshot '.*': schema is "graph-assay/snapshot@2"`, "--architecture", "--source",
 		"snapshot:"+writeSnapshotFile(t, strings.Replace(cliSnapshot, "@1", "@2", 1)))
 	wantRejected(t, `could not read snapshot 'missing\.json'`, "--architecture", "--source", "snapshot:missing.json")
+}
+
+// F1: the codegraph index read returns rows in SQLite's plan order and a
+// snapshot in its file order. The edges must not depend on either, or the
+// two sources draw the same graph in different statement orders.
+func TestFileEdgesDoNotDependOnRowOrder(t *testing.T) {
+	q := func(s string) *string { return &s }
+	symbols := []Node{{Name: "A", FilePath: "a.go", QualifiedName: q("A")}, {Name: "B", FilePath: "b.go", QualifiedName: q("B")}}
+	rows := []codegraph.IndexRow{
+		{Name: "A", FilePath: "a.go", QualifiedName: "A", Target: "z", EdgeKind: "calls", TargetKind: "function", TargetFile: "z.go"},
+		{Name: "A", FilePath: "a.go", QualifiedName: "A", Target: "c", EdgeKind: "calls", TargetKind: "function", TargetFile: "c.go"},
+		{Name: "A", FilePath: "a.go", QualifiedName: "A", Target: "m", EdgeKind: "references", TargetKind: "function", TargetFile: "m.go"},
+		{Name: "B", FilePath: "b.go", QualifiedName: "B", Target: "c", EdgeKind: "calls", TargetKind: "function", TargetFile: "c.go"},
+	}
+	reversed := slices.Clone(rows)
+	slices.Reverse(reversed)
+	got, back := FileEdgesFromIndexRows(symbols, rows), FileEdgesFromIndexRows(symbols, reversed)
+	if !reflect.DeepEqual(got, back) {
+		t.Errorf("row order changed the edges: %v vs %v", got, back)
+	}
+	want := []SymbolEdge{{"a.go", "c.go"}, {"a.go", "m.go"}, {"a.go", "z.go"}, {"b.go", "c.go"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("edges %v, want %v (each symbol's targets by file)", got, want)
+	}
+}
+
+// F5: --source is --architecture-only, whatever its value.
+func TestCLISourceCodegraphIsRejectedOutsideArchitecture(t *testing.T) {
+	wantRejected(t, `--source works with --architecture only so far`, "Foo", "--source", "codegraph")
+	wantRejected(t, `--source works with --architecture only so far`, "--diff", "--source", "codegraph")
+}
+
+// F7: cheap flag checks run before the snapshot is read, so a typo is
+// reported as itself, not as a snapshot error.
+func TestCLIFlagTyposAreReportedBeforeTheSnapshotIsRead(t *testing.T) {
+	wantRejected(t, `--forbid expects FROM->TO`, "--architecture", "--source", "snapshot:missing.json", "--forbid", "bad")
+	wantRejected(t, `--embed target 'missing\.md' does not exist`, "--architecture", "--source", "snapshot:missing.json", "--embed", "missing.md")
+}
+
+const sparseSnapshot = `{"schema":"graph-assay/snapshot@1","subject":{"name":"cgr"},
+ "capabilities":{"siteLines":false,"siteColumns":false,"unresolved":false,"provenance":false},
+ "files":[],"unresolved":[],
+ "nodes":[{"id":"f","kind":"file","name":"a.go","qname":"a.go","file":"a.go","start":1,"end":9},
+          {"id":"1","kind":"function","name":"A","file":"a.go","start":1,"end":2},
+          {"id":"2","kind":"function","name":"B","file":"b.go","start":1,"end":2}],
+ "edges":[{"kind":"contains","src":"f","dst":"1"},{"kind":"uses","src":"1","dst":"2"},
+          {"kind":"overrides","src":"1","dst":"2"},{"kind":"uses","src":"2","dst":"1"}]}`
+
+// F4 + F6: a snapshot whose only cross-file edges are kinds codeshot doesn't
+// draw says so, and no warning sends the user to codegraph.
+func TestCLISnapshotWarningsNameTheSnapshotNotCodegraph(t *testing.T) {
+	requireBins(t, "dot")
+	out := filepath.Join(t.TempDir(), "arch.dot")
+	code, _, stderr := runCLI("--architecture", "--source", "snapshot:"+writeSnapshotFile(t, sparseSnapshot), "--format", "dot", "--out", out, "--limit", "5")
+	if code != 0 {
+		t.Fatalf("exit %d; stderr: %s", code, stderr)
+	}
+	wantNoMatch(t, `codegraph`, stderr)
+	wantMatch(t, `--limit has no effect with --architecture \(every edge is read from the snapshot\)`, stderr)
+	wantMatch(t, `edge kinds --architecture doesn't draw: overrides \(1\), uses \(2\)`, stderr)
+	wantMatch(t, `the diagram is blank\. The cgr snapshot has no calls, imports, instantiates, navigates or references edges between files`, stderr)
+}
+
+// F3: a snapshot diagram gets its own --embed marker and image name, so it can
+// sit in one doc beside the codegraph diagram without overwriting it.
+func TestCLISnapshotEmbedGetsItsOwnMarkerAndImageName(t *testing.T) {
+	requireBins(t, "dot")
+	dir := t.TempDir()
+	doc := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(doc, []byte("# Doc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	snap := writeSnapshotFile(t, cliSnapshot)
+	for _, c := range []struct {
+		extra  []string
+		marker string
+	}{{nil, "arch-snapshot-t"}, {[]string{"--group-depth", "1"}, "arch-d1-snapshot-t"}} {
+		args := append([]string{"--architecture", "--source", "snapshot:" + snap, "--path", dir, "--format", "svg", "--embed", doc}, c.extra...)
+		if code, _, stderr := runCLI(args...); code != 0 {
+			t.Fatalf("%v: exit %d; stderr: %s", c.extra, code, stderr)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "codeshot-"+c.marker+".svg")); err != nil {
+			t.Errorf("%v: image: %v", c.extra, err)
+		}
+		md, _ := os.ReadFile(doc)
+		wantMatch(t, `<!-- codeshot:`+c.marker+`:start -->`, string(md))
+	}
 }

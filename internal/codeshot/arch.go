@@ -5,6 +5,7 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -202,8 +203,18 @@ func SortSymbolsForEnumeration(symbols []Node) []Node {
 // from index rows. A definition is every node sharing name, file and qualified
 // name (codegraph's overload grouping); its callees are the distinct targets,
 // minus file-kind targets and targets reached only by `imports`. Each
-// definition counts once, in enumeration order.
+// definition counts once, in enumeration order, and its targets are taken by
+// target file, then target id. Row order is never used: the index read
+// returns rows in SQLite's plan order and a snapshot in its file's order, so
+// depending on it would draw one graph in two statement orders.
 func FileEdgesFromIndexRows(symbols []Node, rows []codegraph.IndexRow) []SymbolEdge {
+	rows = slices.Clone(rows)
+	sort.SliceStable(rows, func(a, b int) bool {
+		if rows[a].TargetFile != rows[b].TargetFile {
+			return rows[a].TargetFile < rows[b].TargetFile
+		}
+		return rows[a].Target < rows[b].Target
+	})
 	defKey := func(name, file, qn string) string { return name + "\x00" + file + "\x00" + qn }
 	symKey := func(s Node) string {
 		qn := ""
@@ -357,6 +368,8 @@ type ArchParams struct {
 type ArchSource interface {
 	Symbols() ([]Node, error)
 	FileEdges(symbols []Node) ([]SymbolEdge, error)
+	// EmptyGraphWarning explains a blank diagram in this source's terms.
+	EmptyGraphWarning() string
 }
 
 // CodegraphSource reads a codegraph index: symbols through the CLI, edges
@@ -371,6 +384,8 @@ func (s CodegraphSource) Symbols() ([]Node, error) { return enumerateAllSymbols(
 func (s CodegraphSource) FileEdges(symbols []Node) ([]SymbolEdge, error) {
 	return collectFileEdges(symbols, s.RepoPath)
 }
+
+func (s CodegraphSource) EmptyGraphWarning() string { return EmptyArchitectureWarning }
 
 // RunArchitectureMode builds the file-level graph and checks --forbid rules.
 func RunArchitectureMode(src ArchSource, p ArchParams, stderr io.Writer) (string, []Violation, error) {
@@ -406,7 +421,7 @@ func RunArchitectureMode(src ArchSource, p ArchParams, stderr io.Writer) (string
 	collapse := GroupCollapseWarning(len(rawFileEdges), len(fileEdges), p.GroupDepth, groupCount)
 	warn(stderr, collapse)
 	if collapse == "" && len(fileEdges) == 0 {
-		warn(stderr, EmptyArchitectureWarning)
+		warn(stderr, src.EmptyGraphWarning())
 	}
 
 	files := map[string]bool{}

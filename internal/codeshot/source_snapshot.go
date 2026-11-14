@@ -1,7 +1,10 @@
 package codeshot
 
 import (
+	"fmt"
 	"slices"
+	"sort"
+	"strings"
 
 	"github.com/inth3shadows/codeshot/internal/codegraph"
 	"github.com/inth3shadows/codeshot/internal/snapshot"
@@ -53,4 +56,55 @@ func (s SnapshotSource) FileEdges(symbols []Node) ([]SymbolEdge, error) {
 		})
 	}
 	return FileEdgesFromIndexRows(symbols, rows), nil
+}
+
+func (s SnapshotSource) EmptyGraphWarning() string {
+	return fmt.Sprintf("codeshot: --architecture found no cross-file call edges — the diagram is blank. The %s snapshot has no %s edges between files; check the tool that exported it.",
+		s.Snap.Subject.Name, drawnKindsList())
+}
+
+// structuralKinds are edge kinds graph-assay's adapters export that are not a
+// file depending on another, so leaving them out of the diagram needs no
+// warning. codegraph's own --architecture leaves them out too.
+var structuralKinds = []string{"contains", "extends", "implements", "decorates"}
+
+func drawnKindsList() string {
+	kinds := slices.Sorted(slices.Values(codegraph.CalleeEdgeKinds))
+	return strings.Join(kinds[:len(kinds)-1], ", ") + " or " + kinds[len(kinds)-1]
+}
+
+// UndrawnEdgeKindsWarning names the snapshot's edge kinds that --architecture
+// neither draws nor knows to be structural, with counts. Another tool's kind
+// (code-graph-rag's "overrides", or any kind it passes through) would
+// otherwise drop out of the diagram, and out of --forbid, silently.
+func UndrawnEdgeKindsWarning(snap *snapshot.Snapshot) string {
+	counts := map[string]int{}
+	for _, e := range snap.Edges {
+		if !slices.Contains(codegraph.CalleeEdgeKinds, e.Kind) && !slices.Contains(structuralKinds, e.Kind) {
+			counts[e.Kind]++
+		}
+	}
+	if len(counts) == 0 {
+		return ""
+	}
+	kinds := make([]string, 0, len(counts))
+	for k := range counts {
+		kinds = append(kinds, k)
+	}
+	sort.Strings(kinds)
+	parts := make([]string, len(kinds))
+	for i, k := range kinds {
+		parts[i] = fmt.Sprintf("%s (%d)", k, counts[k])
+	}
+	return fmt.Sprintf("codeshot: the %s snapshot has edge kinds --architecture doesn't draw: %s. It draws %s edges, so dependencies carried only by these kinds are missing from the diagram and from --forbid.",
+		snap.Subject.Name, strings.Join(parts, ", "), strings.ReplaceAll(drawnKindsList(), " or ", " and "))
+}
+
+// SnapshotMarkerSuffix is "snapshot-<tool>", the part a snapshot adds to the
+// --embed marker id and default image name.
+func SnapshotMarkerSuffix(snap *snapshot.Snapshot) string {
+	if snap.Subject.Name == "" {
+		return "snapshot"
+	}
+	return "snapshot-" + SanitizeForFilename(snap.Subject.Name)
 }

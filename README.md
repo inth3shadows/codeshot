@@ -121,8 +121,12 @@ so the scan takes about a second. Flags specific to this mode:
   (`graph-assay/snapshot@1` JSON) instead of the codegraph index under `--path`.
   Any tool graph-assay has an adapter for can feed the diagram this way, and
   codegraph doesn't need to be installed. A snapshot exported from a codegraph
-  index draws the same diagram, byte for byte, as reading that index. The
-  default is `--source codegraph`. Symbol and `--diff` modes still read codegraph.
+  index draws the same diagram, byte for byte, as reading that index. With
+  `--embed`, a snapshot diagram gets its own marker and image name
+  (`codeshot-arch-snapshot-<tool>.<fmt>`), so it can sit beside the codegraph
+  one in the same doc. Edge kinds codeshot doesn't draw (another tool's
+  `overrides`, say) are named on stderr rather than dropped silently. The
+  default is `--source codegraph`; symbol and `--diff` modes reject `--source`.
 - `--depth` and `--max-depth-nodes` have no effect here and are rejected if set
   to anything but their defaults — there's no multi-hop file-traversal concept
   to apply them to.
