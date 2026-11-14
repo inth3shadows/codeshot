@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/inth3shadows/codeshot/internal/codegraph"
+	"github.com/inth3shadows/codeshot/internal/snapshot"
 )
 
 // Version is set at release time with -ldflags "-X ...codeshot.Version=x.y.z".
@@ -38,7 +39,7 @@ const (
 )
 
 const usage = `Usage: codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]
-   or: codeshot --architecture [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--format <fmt>] [--embed <file.md> [--check]]
+   or: codeshot --architecture [--source codegraph|snapshot:<file>] [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--format <fmt>] [--embed <file.md> [--check]]
    or: codeshot --diff [--diff-ref <range>] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]`
 
 type optSpec struct {
@@ -49,7 +50,7 @@ var options = map[string]optSpec{
 	"version": {boolean: true}, "path": {}, "out": {}, "limit": {}, "max-render": {},
 	"format": {}, "depth": {}, "max-depth-nodes": {}, "architecture": {boolean: true},
 	"max-symbols": {}, "group-depth": {}, "diff": {boolean: true}, "diff-ref": {},
-	"embed": {}, "check": {boolean: true}, "forbid": {multiple: true},
+	"embed": {}, "check": {boolean: true}, "forbid": {multiple: true}, "source": {},
 }
 
 // parsed holds flag values; a string flag absent from str was not given.
@@ -263,6 +264,22 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	if repoPath == "" {
 		return 0, &Exit{Code: 1, Stderr: "codeshot: --path must not be empty"}
 	}
+	// --source picks where --architecture's graph comes from. Default: the
+	// codegraph index under --path. snapshot:<file> reads a graph-assay
+	// snapshot v1, so any tool graph-assay has an adapter for can feed it.
+	var snap *snapshot.Snapshot
+	if v, ok := p.str["source"]; ok && v != "codegraph" {
+		file, isSnap := strings.CutPrefix(v, "snapshot:")
+		if !isSnap || file == "" {
+			return 0, usageExit(fmt.Sprintf("codeshot: --source must be 'codegraph' or 'snapshot:<file>', got '%s'", v))
+		}
+		if !arch {
+			return 0, &Exit{Code: 1, Stderr: "codeshot: --source snapshot:<file> works with --architecture only so far; symbol and --diff modes read codegraph."}
+		}
+		if snap, err = snapshot.Read(file); err != nil {
+			return 0, &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: could not read snapshot '%s': %v", file, err)}
+		}
+	}
 	outFile, hasOut := p.str["out"]
 	if hasOut && outFile == "" {
 		return 0, &Exit{Code: 1, Stderr: "codeshot: --out must not be empty"}
@@ -405,8 +422,10 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		warn(stderr, FormatMismatchWarning(outFile, format))
 	}
 
-	if err := requireOnPath("codegraph", "Install: https://github.com/colbymchenry/codegraph"); err != nil {
-		return 0, err
+	if snap == nil {
+		if err := requireOnPath("codegraph", "Install: https://github.com/colbymchenry/codegraph"); err != nil {
+			return 0, err
+		}
 	}
 	if err := requireOnPath("dot", "Install graphviz (e.g. `brew install graphviz` or `apt install graphviz`)."); err != nil {
 		return 0, err
@@ -417,7 +436,9 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 	}
 	cg := codegraph.NewClient()
-	warn(stderr, IndexHealthWarning(cg, repoPath))
+	if snap == nil {
+		warn(stderr, IndexHealthWarning(cg, repoPath))
+	}
 	tooltips := strings.EqualFold(format, "svg") || strings.EqualFold(format, "svgz")
 	out := OutputParams{Format: format, OutFile: outFile, EmbedFile: embedFile, Check: check}
 
@@ -434,7 +455,11 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		return 0, FinishOutput(dot, out, stdout, stderr)
 	case arch:
-		dot, violations, err := RunArchitectureMode(cg, repoPath, ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules}, stderr)
+		var src ArchSource = CodegraphSource{CG: cg, RepoPath: repoPath}
+		if snap != nil {
+			src = SnapshotSource{Snap: snap}
+		}
+		dot, violations, err := RunArchitectureMode(src, ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules}, stderr)
 		if err != nil {
 			return 0, err
 		}

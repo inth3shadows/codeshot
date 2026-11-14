@@ -116,6 +116,13 @@ so the scan takes about a second. Flags specific to this mode:
   evidence. Rules
   are checked on the per-file edges, before `--group-depth` and `--max-render`,
   so neither can hide a violation.
+- `--source snapshot:<file>` — draw from a
+  [graph-assay](https://github.com/inth3shadows/graph-assay) snapshot
+  (`graph-assay/snapshot@1` JSON) instead of the codegraph index under `--path`.
+  Any tool graph-assay has an adapter for can feed the diagram this way, and
+  codegraph doesn't need to be installed. A snapshot exported from a codegraph
+  index draws the same diagram, byte for byte, as reading that index. The
+  default is `--source codegraph`. Symbol and `--diff` modes still read codegraph.
 - `--depth` and `--max-depth-nodes` have no effect here and are rejected if set
   to anything but their defaults — there's no multi-hop file-traversal concept
   to apply them to.

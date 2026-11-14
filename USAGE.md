@@ -93,6 +93,23 @@ checked on every per-file edge, even ones `--group-depth` merges or
 `--max-render` leaves out of the picture. They can only see calls the scan
 found, so raise `--limit`/`--max-symbols` if Codeshot warns the scan was cut.
 
+### Drawing from another tool's graph
+
+`--source snapshot:<file>` draws the architecture from a graph-assay snapshot
+(`graph-assay/snapshot@1`) instead of codegraph's index, so you can compare
+what different code-graph tools see, or diagram a repo without codegraph
+installed:
+
+```bash
+graph-assay snapshot . snap.json          # or any tool's snapshot v1 export
+codeshot --architecture --source snapshot:snap.json --out arch.svg --format svg
+```
+
+Every other `--architecture` flag (`--forbid`, `--group-depth`, `--embed
+--check`, ...) works the same. Codeshot rejects a snapshot whose `schema` isn't
+`graph-assay/snapshot@1`, or whose edges point at nodes it doesn't have. Symbol
+and `--diff` modes don't take `--source` yet.
+
 ## Diagramming just what a diff touched
 
 A third question, narrower than either of the above: "what does *this

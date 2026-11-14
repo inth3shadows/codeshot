@@ -350,9 +350,31 @@ type ArchParams struct {
 	Forbid                            []ForbidRule
 }
 
+// ArchSource is where --architecture's graph comes from: every symbol in
+// enumeration order (SortSymbolsForEnumeration), and the cross-file callee
+// edges of a chosen subset of them. Everything after these two calls is the
+// same for every source.
+type ArchSource interface {
+	Symbols() ([]Node, error)
+	FileEdges(symbols []Node) ([]SymbolEdge, error)
+}
+
+// CodegraphSource reads a codegraph index: symbols through the CLI, edges
+// straight from .codegraph/codegraph.db.
+type CodegraphSource struct {
+	CG       *codegraph.Client
+	RepoPath string
+}
+
+func (s CodegraphSource) Symbols() ([]Node, error) { return enumerateAllSymbols(s.CG, s.RepoPath) }
+
+func (s CodegraphSource) FileEdges(symbols []Node) ([]SymbolEdge, error) {
+	return collectFileEdges(symbols, s.RepoPath)
+}
+
 // RunArchitectureMode builds the file-level graph and checks --forbid rules.
-func RunArchitectureMode(cg *codegraph.Client, repoPath string, p ArchParams, stderr io.Writer) (string, []Violation, error) {
-	all, err := enumerateAllSymbols(cg, repoPath)
+func RunArchitectureMode(src ArchSource, p ArchParams, stderr io.Writer) (string, []Violation, error) {
+	all, err := src.Symbols()
 	if err != nil {
 		return "", nil, err
 	}
@@ -361,7 +383,7 @@ func RunArchitectureMode(cg *codegraph.Client, repoPath string, p ArchParams, st
 		symbols = symbols[:p.MaxSymbols]
 		warn(stderr, SymbolBudgetWarning(p.MaxSymbols))
 	}
-	symbolEdges, err := collectFileEdges(symbols, repoPath)
+	symbolEdges, err := src.FileEdges(symbols)
 	if err != nil {
 		return "", nil, err
 	}
