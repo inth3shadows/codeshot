@@ -113,8 +113,21 @@ doc and compare them. Codeshot rejects a whole snapshot whose `schema` isn't
 `graph-assay/snapshot@1`, that lacks a required field (or has it `null`), or
 whose edges point at nodes it doesn't have. If the snapshot has edge kinds
 codeshot doesn't draw, stderr names them and their counts: those dependencies
-are missing from the diagram and from `--forbid`. Symbol and `--diff` modes
-don't take `--source` yet.
+are missing from the diagram and from `--forbid`.
+
+A snapshot also feeds symbol mode and `--diff`:
+
+```bash
+codeshot RunSymbolMode --source snapshot:snap.json --depth 2 --out sym.svg --format svg
+codeshot --diff --source snapshot:snap.json --out diff.svg --format svg
+```
+
+A symbol is matched by its exact name, or a qualified one such as
+`Client.Edges` or `pkg::run`; a partial or misspelled name is reported as not
+found, never guessed. A name defined in several files gets each file's own
+callers and callees. `--diff` still asks git under `--path` which files
+changed, so the snapshot's paths must be relative to that repository's root.
+With `--embed`, the marker and image name end in `-snapshot-<tool>`.
 
 `--source scip[:<file>]` draws it from a [SCIP](https://github.com/scip-code/scip)
 index instead, `index.scip` under `--path` unless you name the file:

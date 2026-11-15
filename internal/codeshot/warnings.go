@@ -32,21 +32,29 @@ func ReadTruncation(truncated *bool, total *float64, results []Node, limit int) 
 
 // TruncationWarning reports a --limit cut for symbol mode.
 func TruncationWarning(kind string, results []Node, limit int, t Truncation) string {
+	return truncationWarning(CodegraphWording, kind, results, limit, t)
+}
+
+func truncationWarning(w Wording, kind string, results []Node, limit int, t Truncation) string {
 	if !t.Truncated {
 		return ""
 	}
 	shown := len(results)
 	if t.Total >= 0 {
-		return fmt.Sprintf("codeshot: showing %d of %d %s — codegraph's --limit (%d) cut off %d; rerun with --limit %d to see the rest.", shown, t.Total, kind, limit, t.Total-shown, t.Total)
+		return fmt.Sprintf("codeshot: showing %d of %d %s — %s (%d) cut off %d; rerun with --limit %d to see the rest.", shown, t.Total, kind, w.Limit, limit, t.Total-shown, t.Total)
 	}
-	return fmt.Sprintf("codeshot: showing %d %s — codegraph's --limit (%d) may have cut off more; rerun with --limit <n> to see additional %s.", shown, kind, limit, kind)
+	return fmt.Sprintf("codeshot: showing %d %s — %s (%d) may have cut off more; rerun with --limit <n> to see additional %s.", shown, kind, w.Limit, limit, kind)
 }
 
 func EmptyGraphWarning(symbol string, nCallers, nCallees int) string {
+	return emptyGraphWarning(CodegraphWording, symbol, nCallers, nCallees)
+}
+
+func emptyGraphWarning(w Wording, symbol string, nCallers, nCallees int) string {
 	if nCallers > 0 || nCallees > 0 {
 		return ""
 	}
-	return fmt.Sprintf("codeshot: '%s' has no callers or callees in codegraph's index — the diagram is just the symbol itself. It may be unused (dead code) or an entry point, or codegraph's index may be incomplete for its file.", symbol)
+	return fmt.Sprintf("codeshot: '%s' has no callers or callees in %s — the diagram is just the symbol itself. It may be unused (dead code) or an entry point, or %s may be incomplete for its file.", symbol, w.Graph, w.Graph)
 }
 
 func RenderTruncationNote(kind string, distinct, maxRender int) string {
@@ -162,15 +170,27 @@ func DiffNothingToCheck(diffRef, embedFile string) string {
 }
 
 func DiffEmbedRefusalNoSymbols(repoPath string, changed int, embedFile string) string {
-	return fmt.Sprintf("codeshot: --diff found %d changed file(s) but no matching symbols in codegraph's index — refusing to overwrite the existing diagram embedded in '%s' with a blank one. They may not define top-level symbols, may be in a language codegraph doesn't index, or the index may be stale (run 'codegraph sync %s'); drop --embed to render a (blank) image on its own instead.", changed, embedFile, repoPath)
+	return diffEmbedRefusalNoSymbols(CodegraphWording, repoPath, changed, embedFile)
+}
+
+func diffEmbedRefusalNoSymbols(w Wording, repoPath string, changed int, embedFile string) string {
+	return fmt.Sprintf("codeshot: --diff found %d changed file(s) but no matching symbols in %s — refusing to overwrite the existing diagram embedded in '%s' with a blank one. They may not define top-level symbols, may be in a language %s doesn't index, or %s (%s); drop --embed to render a (blank) image on its own instead.", changed, w.Graph, embedFile, w.Tool, w.StaleIs, w.Refresh(repoPath))
 }
 
 func DiffNothingToCheckNoSymbols(repoPath string, changed int, embedFile string) string {
-	return fmt.Sprintf("codeshot: --diff found %d changed file(s) but no matching symbols in codegraph's index — nothing to diagram, so nothing to check. The diagram embedded in '%s' reflects a different invocation and is left untouched. (They may not define top-level symbols, may be in a language codegraph doesn't index, or the index may be stale — run 'codegraph sync %s' to confirm.)", changed, embedFile, repoPath)
+	return diffNothingToCheckNoSymbols(CodegraphWording, repoPath, changed, embedFile)
+}
+
+func diffNothingToCheckNoSymbols(w Wording, repoPath string, changed int, embedFile string) string {
+	return fmt.Sprintf("codeshot: --diff found %d changed file(s) but no matching symbols in %s — nothing to diagram, so nothing to check. The diagram embedded in '%s' reflects a different invocation and is left untouched. (They may not define top-level symbols, may be in a language %s doesn't index, or %s — %s to confirm.)", changed, w.Graph, embedFile, w.Tool, w.StaleIs, w.Refresh(repoPath))
 }
 
 func DiffNoSymbolsWarning(repoPath string, changed int) string {
-	return fmt.Sprintf("codeshot: --diff found %d changed file(s) but no matching symbols in codegraph's index — they may not define top-level symbols, may be in a language codegraph doesn't index, or the index may be stale (run 'codegraph sync %s').", changed, repoPath)
+	return diffNoSymbolsWarning(CodegraphWording, repoPath, changed)
+}
+
+func diffNoSymbolsWarning(w Wording, repoPath string, changed int) string {
+	return fmt.Sprintf("codeshot: --diff found %d changed file(s) but no matching symbols in %s — they may not define top-level symbols, may be in a language %s doesn't index, or %s (%s).", changed, w.Graph, w.Tool, w.StaleIs, w.Refresh(repoPath))
 }
 
 func uniq(names []string) []string {
@@ -208,10 +228,14 @@ func DiffTruncationWarning(truncated []string, limit int) string {
 }
 
 func DiffEmptyRootsWarning(empty, total int) string {
+	return diffEmptyRootsWarning(CodegraphWording, empty, total)
+}
+
+func diffEmptyRootsWarning(w Wording, empty, total int) string {
 	if empty == 0 {
 		return ""
 	}
-	return fmt.Sprintf("codeshot: %d of %d changed symbol(s) have no callers or callees in codegraph's index — drawn as lone boxes. They may be unused (dead code) or entry points, or codegraph's index may be incomplete for their file.", empty, total)
+	return fmt.Sprintf("codeshot: %d of %d changed symbol(s) have no callers or callees in %s — drawn as lone boxes. They may be unused (dead code) or entry points, or %s may be incomplete for their file.", empty, total, w.Graph, w.Graph)
 }
 
 func DiffSymbolBudgetWarning(matched, budget int) string {

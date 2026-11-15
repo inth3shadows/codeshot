@@ -128,7 +128,9 @@ so the scan takes about a second. Flags specific to this mode:
   can sit beside the codegraph one in the same doc. `--path` plays no part in
   that name. Edge kinds codeshot doesn't draw (another tool's
   `overrides`, say) are named on stderr rather than dropped silently. The
-  default is `--source codegraph`; symbol and `--diff` modes reject `--source`.
+  default is `--source codegraph`. A snapshot also feeds symbol mode and
+  `--diff` (exact or qualified names, never a guess); `--source scip` is
+  `--architecture`-only so far.
 - `--source scip[:<file>]` — draw from a [SCIP](https://github.com/scip-code/scip)
   index (`<--path>/index.scip` by default), as written by scip-go,
   scip-typescript, scip-python and other compiler-backed indexers. A file
