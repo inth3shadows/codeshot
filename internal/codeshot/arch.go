@@ -381,6 +381,10 @@ type ArchSource interface {
 	EmptyGraphWarning() string
 }
 
+// budgetWarner is a source whose --max-symbols unit isn't the symbol; it
+// words the cut warning in its own unit.
+type budgetWarner interface{ BudgetWarning(budget int) string }
+
 // CodegraphSource reads a codegraph index: symbols through the CLI, edges
 // straight from .codegraph/codegraph.db.
 type CodegraphSource struct {
@@ -405,7 +409,11 @@ func RunArchitectureMode(src ArchSource, p ArchParams, stderr io.Writer) (string
 	symbols := all
 	if len(symbols) > p.MaxSymbols {
 		symbols = symbols[:p.MaxSymbols]
-		warn(stderr, SymbolBudgetWarning(p.MaxSymbols))
+		msg := SymbolBudgetWarning(p.MaxSymbols)
+		if bw, ok := src.(budgetWarner); ok {
+			msg = bw.BudgetWarning(p.MaxSymbols)
+		}
+		warn(stderr, msg)
 	}
 	symbolEdges, err := src.FileEdges(symbols)
 	if err != nil {

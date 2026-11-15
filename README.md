@@ -129,6 +129,15 @@ so the scan takes about a second. Flags specific to this mode:
   that name. Edge kinds codeshot doesn't draw (another tool's
   `overrides`, say) are named on stderr rather than dropped silently. The
   default is `--source codegraph`; symbol and `--diff` modes reject `--source`.
+- `--source scip[:<file>]` — draw from a [SCIP](https://github.com/scip-code/scip)
+  index (`<--path>/index.scip` by default), as written by scip-go,
+  scip-typescript, scip-python and other compiler-backed indexers. A file
+  depends on another when it refers to a symbol defined there; a reference to
+  a package alone (a Go import) draws nothing. Edges are file to file (SCIP
+  indexers such as scip-go record no enclosing function), so `--max-symbols`
+  counts files, and codegraph isn't needed. The `--embed` marker and image
+  name get `-scip-<indexer>` (`codeshot-arch-scip-go.svg`), plus the `--path`
+  subdirectory when bare `--source scip` reads the index from there.
 - `--depth` and `--max-depth-nodes` have no effect here and are rejected if set
   to anything but their defaults — there's no multi-hop file-traversal concept
   to apply them to.

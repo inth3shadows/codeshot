@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/inth3shadows/codeshot/internal/codegraph"
+	"github.com/inth3shadows/codeshot/internal/scipindex"
 	"github.com/inth3shadows/codeshot/internal/snapshot"
 )
 
@@ -39,7 +40,7 @@ const (
 )
 
 const usage = `Usage: codeshot <symbol> [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]
-   or: codeshot --architecture [--source codegraph|snapshot:<file>] [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--format <fmt>] [--embed <file.md> [--check]]
+   or: codeshot --architecture [--source codegraph|snapshot:<file>|scip[:<file>]] [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--format <fmt>] [--embed <file.md> [--check]]
    or: codeshot --diff [--diff-ref <range>] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]`
 
 type optSpec struct {
@@ -267,15 +268,20 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	// --source picks where --architecture's graph comes from. Default: the
 	// codegraph index under --path. snapshot:<file> reads a graph-assay
 	// snapshot v1, so any tool graph-assay has an adapter for can feed it.
+	// scip[:<file>] reads a SCIP index, <--path>/index.scip by default.
 	// The file itself is read only after every cheap flag check (F7).
-	snapFile := ""
+	snapFile, scipFile, scipUnderPath := "", "", false
 	if v, ok := p.str["source"]; ok {
-		if v != "codegraph" {
-			file, isSnap := strings.CutPrefix(v, "snapshot:")
-			if !isSnap || file == "" {
-				return 0, usageExit(fmt.Sprintf("codeshot: --source must be 'codegraph' or 'snapshot:<file>', got '%s'", v))
-			}
-			snapFile = file
+		switch {
+		case v == "codegraph":
+		case v == "scip":
+			scipFile, scipUnderPath = filepath.Join(repoPath, "index.scip"), true
+		case strings.HasPrefix(v, "scip:") && v != "scip:":
+			scipFile = strings.TrimPrefix(v, "scip:")
+		case strings.HasPrefix(v, "snapshot:") && v != "snapshot:":
+			snapFile = strings.TrimPrefix(v, "snapshot:")
+		default:
+			return 0, usageExit(fmt.Sprintf("codeshot: --source must be 'codegraph', 'snapshot:<file>' or 'scip[:<file>]', got '%s'", v))
 		}
 		if !arch {
 			return 0, &Exit{Code: 1, Stderr: "codeshot: --source works with --architecture only so far; symbol and --diff modes read codegraph."}
@@ -299,8 +305,11 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		// A warning, not a refusal like --depth: v0.3.0 configs pass --limit
 		// here, and they still get the same diagram.
 		from := "every callee is read from codegraph's index"
-		if snapFile != "" {
+		switch {
+		case snapFile != "":
 			from = "every edge is read from the snapshot"
+		case scipFile != "":
+			from = "every edge is read from the SCIP index"
 		}
 		warn(stderr, fmt.Sprintf("codeshot: --limit has no effect with --architecture (%s); ignoring it.", from))
 	}
@@ -395,6 +404,14 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		warn(stderr, UndrawnEdgeKindsWarning(snap))
 	}
+	var scipIdx *scipindex.Index
+	if scipFile != "" {
+		if scipIdx, err = scipindex.Read(scipFile); err != nil {
+			return 0, &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: could not read SCIP index '%s': %v", scipFile, err)}
+		}
+	}
+	// external: the graph comes from a file, not a codegraph index.
+	external := snap != nil || scipIdx != nil
 	archMarkerID := "arch"
 	if groupDepth != 0 {
 		archMarkerID = fmt.Sprintf("arch-d%d", groupDepth)
@@ -405,6 +422,9 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		// overwriting the other.
 		archMarkerID += "-" + SnapshotMarkerSuffix(snap)
 	}
+	if scipIdx != nil {
+		archMarkerID += "-" + scipLabel(scipIdx)
+	}
 	if !hasOut {
 		var base string
 		// #51: no checkout-directory name in an embedded image's default
@@ -412,8 +432,10 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		// another. F12: a --path below the repo root is named instead, so two
 		// docs in one directory diagramming different subtrees don't collide.
 		sub := ""
-		// A snapshot's graph doesn't come from --path, so --path doesn't name it.
-		if embedFile != "" && (arch || diffMode) && snap == nil {
+		// A snapshot's or a named SCIP index's graph doesn't come from
+		// --path, so --path doesn't name it. Bare `--source scip` reads
+		// <--path>/index.scip, so it does (F2).
+		if embedFile != "" && (arch || diffMode) && (!external || scipUnderPath) {
 			if s := EmbedPathSuffix(repoPath); s != "" {
 				sub = "-" + s
 			}
@@ -441,7 +463,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		warn(stderr, FormatMismatchWarning(outFile, format))
 	}
 
-	if snap == nil {
+	if !external {
 		if err := requireOnPath("codegraph", "Install: https://github.com/colbymchenry/codegraph"); err != nil {
 			return 0, err
 		}
@@ -455,7 +477,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 	}
 	cg := codegraph.NewClient()
-	if snap == nil {
+	if !external {
 		warn(stderr, IndexHealthWarning(cg, repoPath))
 	}
 	tooltips := strings.EqualFold(format, "svg") || strings.EqualFold(format, "svgz")
@@ -475,8 +497,11 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		return 0, FinishOutput(dot, out, stdout, stderr)
 	case arch:
 		var src ArchSource = CodegraphSource{CG: cg, RepoPath: repoPath}
-		if snap != nil {
+		switch {
+		case snap != nil:
 			src = SnapshotSource{Snap: snap}
+		case scipIdx != nil:
+			src = ScipSource{Index: scipIdx}
 		}
 		dot, violations, err := RunArchitectureMode(src, ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules}, stderr)
 		if err != nil {
@@ -489,6 +514,9 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		if snap != nil {
 			notes = append(notes, "from "+snapshotPhrase(snap))
+		}
+		if scipIdx != nil {
+			notes = append(notes, "from "+scipPhrase(scipIdx))
 		}
 		out.Alt = "Architecture — generated by codeshot"
 		if len(notes) > 0 {
