@@ -17,7 +17,7 @@ func writeScipFile(t *testing.T, dir, name, tool string) string {
 	t.Helper()
 	helper := "scip-go gomod m v1 `m/lib`/Helper()."
 	o := func(sym string, roles scip.SymbolRole) *scip.Occurrence {
-		return &scip.Occurrence{Range: []int32{0, 0, 1}, Symbol: sym, SymbolRoles: int32(roles)}
+		return &scip.Occurrence{Symbol: sym, SymbolRoles: int32(roles)}
 	}
 	b, err := proto.Marshal(&scip.Index{
 		Metadata: &scip.Metadata{ToolInfo: &scip.ToolInfo{Name: tool}},

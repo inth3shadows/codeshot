@@ -19,7 +19,7 @@ const (
 )
 
 func occ(sym string, roles scip.SymbolRole) *scip.Occurrence {
-	return &scip.Occurrence{Range: []int32{0, 0, 1}, Symbol: sym, SymbolRoles: int32(roles)}
+	return &scip.Occurrence{Symbol: sym, SymbolRoles: int32(roles)}
 }
 
 func encode(t *testing.T, x *scip.Index) []byte {
