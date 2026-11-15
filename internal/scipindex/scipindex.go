@@ -6,8 +6,10 @@ package scipindex
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -23,12 +25,14 @@ type Index struct {
 }
 
 // Doc is one indexed source file. Path is relative to the project root.
+// Defs and Refs are sorted by symbol, so nothing depends on the order the
+// indexer wrote occurrences in.
 type Doc struct {
 	Path string
 	Defs []Def
 	// Refs are the distinct global symbols the file refers to other than
-	// at a definition or an import, in first-occurrence order. They may
-	// include the file's own definitions; FileEdges skips those.
+	// at a definition or an import. They may include the file's own
+	// definitions; FileEdges skips those.
 	Refs []string
 }
 
@@ -54,9 +58,10 @@ func Read(file string) (*Index, error) {
 }
 
 // Parse decodes a SCIP index and keeps the definitions and references of
-// every document inside the project root. It rejects an index with no
-// documents, and an empty, unclean or duplicate document path, since those
-// name diagram nodes.
+// every document inside the project root, sorted by path. Documents that
+// share a path are one file split across messages, and are merged. It
+// rejects an index with no documents, and an empty, unclean or "." path
+// inside the root, since those name diagram nodes.
 func Parse(data []byte) (*Index, error) {
 	var raw scip.Index
 	if err := proto.Unmarshal(data, &raw); err != nil {
@@ -65,23 +70,33 @@ func Parse(data []byte) (*Index, error) {
 	if len(raw.GetDocuments()) == 0 {
 		return nil, fmt.Errorf("it has no documents")
 	}
-	out := &Index{Tool: raw.GetMetadata().GetToolInfo().GetName()}
-	seenPath := map[string]bool{}
+	byPath := map[string]*scip.Document{}
 	for i, d := range raw.GetDocuments() {
 		p := d.GetRelativePath()
-		if p == "" || path.Clean(p) != p {
+		if p == "" {
 			return nil, fmt.Errorf("documents[%d]: relative_path %q is not a clean path", i, p)
 		}
-		if path.IsAbs(p) || p == ".." || strings.HasPrefix(p, "../") {
+		if c := path.Clean(p); path.IsAbs(c) || c == ".." || strings.HasPrefix(c, "../") {
 			// Not a project file: scip-go indexes cgo output in the Go
 			// build cache as "../../.cache/go-build/...".
 			continue
 		}
-		if seenPath[p] {
-			return nil, fmt.Errorf("documents[%d]: duplicate relative_path %q", i, p)
+		if path.Clean(p) != p {
+			return nil, fmt.Errorf("documents[%d]: relative_path %q is not a clean path", i, p)
 		}
-		seenPath[p] = true
-		out.Docs = append(out.Docs, readDoc(p, d))
+		if p == "." {
+			return nil, fmt.Errorf("documents[%d]: relative_path %q is not a file path", i, p)
+		}
+		if m := byPath[p]; m != nil {
+			m.Occurrences = append(m.Occurrences, d.GetOccurrences()...)
+			m.Symbols = append(m.Symbols, d.GetSymbols()...)
+			continue
+		}
+		byPath[p] = &scip.Document{Occurrences: d.GetOccurrences(), Symbols: d.GetSymbols()}
+	}
+	out := &Index{Tool: raw.GetMetadata().GetToolInfo().GetName()}
+	for _, p := range slices.Sorted(maps.Keys(byPath)) {
+		out.Docs = append(out.Docs, readDoc(p, byPath[p]))
 	}
 	return out, nil
 }
@@ -118,6 +133,8 @@ func readDoc(p string, d *scip.Document) Doc {
 		referenced[sym] = true
 		doc.Refs = append(doc.Refs, sym)
 	}
+	sort.Slice(doc.Defs, func(a, b int) bool { return doc.Defs[a].Symbol < doc.Defs[b].Symbol })
+	sort.Strings(doc.Refs)
 	return doc
 }
 
@@ -146,7 +163,7 @@ func isNamespace(sym string) bool {
 // nil), an edge to every other document defining a symbol it refers to.
 // References to packages/namespaces are left out: codegraph draws an import
 // only alongside a call, and a SCIP package reference is that import.
-// Edges come in document order, then reference order, then target path.
+// Edges are sorted by source path, target path, then symbol.
 func (x *Index) FileEdges(from map[string]bool) []FileEdge {
 	definedIn := map[string][]string{}
 	for _, d := range x.Docs {
@@ -183,5 +200,14 @@ func (x *Index) FileEdges(from map[string]bool) []FileEdge {
 			}
 		}
 	}
+	sort.Slice(out, func(a, b int) bool {
+		if out[a].From != out[b].From {
+			return out[a].From < out[b].From
+		}
+		if out[a].To != out[b].To {
+			return out[a].To < out[b].To
+		}
+		return out[a].Symbol < out[b].Symbol
+	})
 	return out
 }

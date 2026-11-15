@@ -14,19 +14,15 @@ import (
 // function making it: edges are file to file, one per referenced symbol.
 type ScipSource struct{ Index *scipindex.Index }
 
-// Symbols lists every definition plus one file node per document, the way
-// codegraph's enumeration includes its file nodes, so a file that defines
-// nothing (a script of top-level calls) still counts toward --max-symbols
-// and still draws its edges.
+// Symbols is one file node per document. The edges are per file, so the
+// file is the unit --max-symbols counts: a budget spent on struct fields and
+// package clauses that never draw an edge (F12) would cut real files, and a
+// file that defines nothing (a script of top-level calls) still draws.
 func (s ScipSource) Symbols() ([]Node, error) {
 	var out []Node
 	for _, d := range s.Index.Docs {
 		fileID := "\x00file:" + d.Path
 		out = append(out, Node{Name: path.Base(d.Path), Kind: "file", FilePath: d.Path, QualifiedName: &fileID})
-		for _, def := range d.Defs {
-			sym := def.Symbol
-			out = append(out, Node{Name: def.Name, Kind: def.Kind, FilePath: d.Path, QualifiedName: &sym})
-		}
 	}
 	return SortSymbolsForEnumeration(out), nil
 }

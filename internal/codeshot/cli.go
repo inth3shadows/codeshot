@@ -270,12 +270,12 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	// snapshot v1, so any tool graph-assay has an adapter for can feed it.
 	// scip[:<file>] reads a SCIP index, <--path>/index.scip by default.
 	// The file itself is read only after every cheap flag check (F7).
-	snapFile, scipFile := "", ""
+	snapFile, scipFile, scipUnderPath := "", "", false
 	if v, ok := p.str["source"]; ok {
 		switch {
 		case v == "codegraph":
 		case v == "scip":
-			scipFile = filepath.Join(repoPath, "index.scip")
+			scipFile, scipUnderPath = filepath.Join(repoPath, "index.scip"), true
 		case strings.HasPrefix(v, "scip:") && v != "scip:":
 			scipFile = strings.TrimPrefix(v, "scip:")
 		case strings.HasPrefix(v, "snapshot:") && v != "snapshot:":
@@ -432,9 +432,10 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		// another. F12: a --path below the repo root is named instead, so two
 		// docs in one directory diagramming different subtrees don't collide.
 		sub := ""
-		// A snapshot's or SCIP index's graph doesn't come from --path, so
-		// --path doesn't name it.
-		if embedFile != "" && (arch || diffMode) && !external {
+		// A snapshot's or a named SCIP index's graph doesn't come from
+		// --path, so --path doesn't name it. Bare `--source scip` reads
+		// <--path>/index.scip, so it does (F2).
+		if embedFile != "" && (arch || diffMode) && (!external || scipUnderPath) {
 			if s := EmbedPathSuffix(repoPath); s != "" {
 				sub = "-" + s
 			}

@@ -115,7 +115,7 @@ func TestScipSourceCountsFileNodesAndCutsByFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(syms) != 3 || syms[0].FilePath != "a/main.go" || syms[0].Kind != "file" {
+	if len(syms) != 2 || syms[0].FilePath != "a/main.go" || syms[0].Kind != "file" {
 		t.Fatalf("symbols %+v", syms)
 	}
 	all, _ := src.FileEdges(syms)
@@ -130,4 +130,50 @@ func TestScipSourceCountsFileNodesAndCutsByFile(t *testing.T) {
 func TestScipEmptyWarningNamesTheIndexer(t *testing.T) {
 	got := ScipSource{Index: &scipindex.Index{Tool: "scip-python"}}.EmptyGraphWarning()
 	wantMatch(t, `the diagram is blank\. The scip-python index has no references`, got)
+}
+
+// F2: bare `--source scip` reads <--path>/index.scip, so --path does name
+// the graph and keeps two subtrees' images apart; `scip:<file>` doesn't.
+func TestCLIScipImageNameFollowsPathOnlyForTheDefaultIndex(t *testing.T) {
+	requireBins(t, "dot", "git")
+	root := t.TempDir()
+	if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
+		t.Skipf("git init: %v %s", err, out)
+	}
+	sub := filepath.Join(root, "services", "api")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	idx := writeScipFile(t, sub, "index.scip", "scip-go")
+	doc := filepath.Join(root, "doc.md")
+	if err := os.WriteFile(doc, []byte("# Doc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ source, image string }{
+		{"scip", "codeshot-arch-scip-go-services_api.svg"},
+		{"scip:" + idx, "codeshot-arch-scip-go.svg"},
+	} {
+		if code, _, stderr := runCLI("--architecture", "--source", c.source, "--path", sub, "--format", "svg", "--embed", doc); code != 0 {
+			t.Fatalf("%s: exit %d; stderr: %s", c.source, code, stderr)
+		}
+		if _, err := os.Stat(filepath.Join(root, c.image)); err != nil {
+			t.Errorf("%s: want %s next to the doc: %v", c.source, c.image, err)
+		}
+	}
+}
+
+// F12: a SCIP source's edges are per file, so --max-symbols counts files:
+// fields, namespaces and other definitions don't use up the budget.
+func TestScipSymbolsAreOneNodePerFile(t *testing.T) {
+	x := &scipindex.Index{Docs: []scipindex.Doc{
+		{Path: "a.go", Defs: []scipindex.Def{{Symbol: "s A#", Name: "A"}, {Symbol: "s A#f.", Name: "f", Kind: "field"}}},
+		{Path: "b.go", Defs: []scipindex.Def{{Symbol: "s `m`/", Name: "m", Kind: "namespace"}}},
+	}}
+	syms, err := ScipSource{Index: x}.Symbols()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(syms) != 2 || syms[0].FilePath != "a.go" || syms[1].FilePath != "b.go" || syms[0].Kind != "file" {
+		t.Errorf("symbols %+v, want one file node per document", syms)
+	}
 }
