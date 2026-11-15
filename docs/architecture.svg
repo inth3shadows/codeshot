@@ -724,14 +724,14 @@
 <title>internal/codeshot/source_scip_test.go&#45;&gt;internal/codeshot/arch.go</title>
 <path fill="none" stroke="#94a3b8" d="M500.7,-1582.46C731.36,-1537.63 1300.5,-1427 1300.5,-1427 1300.5,-1427 1526.55,-1329 1526.55,-1329 1526.55,-1329 1637.72,-1053.76 1672.3,-968.12"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="1674.17,-969.11 1674.47,-962.76 1670.27,-967.54 1674.17,-969.11"/>
-<text xml:space="preserve" text-anchor="middle" x="1078.95" y="-1474.96" font-family="Times,serif" font-size="14.00">1</text>
+<text xml:space="preserve" text-anchor="middle" x="1078.95" y="-1474.96" font-family="Times,serif" font-size="14.00">2</text>
 </g>
 <!-- internal/codeshot/source_scip_test.go&#45;&gt;internal/codeshot/source_scip.go -->
 <g id="edge66" class="edge">
 <title>internal/codeshot/source_scip_test.go&#45;&gt;internal/codeshot/source_scip.go</title>
 <path fill="none" stroke="#94a3b8" d="M523.07,-1589.66C555.45,-1586.54 581.85,-1584 581.85,-1584 581.85,-1584 822.15,-1560 822.15,-1560 822.15,-1560 1300.5,-1464 1300.5,-1464 1300.5,-1464 1526.55,-1383 1526.55,-1383 1526.55,-1383 1553.55,-1299 1553.55,-1299 1553.55,-1299 1598.55,-1239 1598.55,-1239 1598.55,-1239 1804.35,-1125 1804.35,-1125 1804.35,-1125 1831.35,-1044 1831.35,-1044 1831.35,-1044 1895.6,-948.79 1926.79,-902.58"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="1928.5,-903.8 1930.11,-897.65 1925.01,-901.45 1928.5,-903.8"/>
-<text xml:space="preserve" text-anchor="middle" x="1207.73" y="-1505.09" font-family="Times,serif" font-size="14.00">5</text>
+<text xml:space="preserve" text-anchor="middle" x="1207.73" y="-1505.09" font-family="Times,serif" font-size="14.00">6</text>
 </g>
 <!-- internal/codeshot/source_scip_test.go&#45;&gt;internal/codeshot/warnings.go -->
 <g id="edge67" class="edge">
@@ -745,14 +745,14 @@
 <title>internal/codeshot/source_scip_test.go&#45;&gt;internal/codeshot/helpers_test.go</title>
 <path fill="none" stroke="#94a3b8" d="M412.93,-1582.54C449.88,-1492.86 608.85,-1107 608.85,-1107 608.85,-1107 668.02,-1020.76 697.8,-977.35"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="699.45,-978.65 701.11,-972.52 695.98,-976.28 699.45,-978.65"/>
-<text xml:space="preserve" text-anchor="middle" x="572.85" y="-1217.65" font-family="Times,serif" font-size="14.00">8</text>
+<text xml:space="preserve" text-anchor="middle" x="572.85" y="-1217.65" font-family="Times,serif" font-size="14.00">10</text>
 </g>
 <!-- internal/codeshot/source_scip_test.go&#45;&gt;internal/scipindex/scipindex.go -->
 <g id="edge68" class="edge">
 <title>internal/codeshot/source_scip_test.go&#45;&gt;internal/scipindex/scipindex.go</title>
 <path fill="none" stroke="#94a3b8" d="M502.64,-1619.5C522.18,-1623.21 536.85,-1626 536.85,-1626 536.85,-1626 563.85,-1651 563.85,-1651 563.85,-1651 608.85,-1677 608.85,-1677 608.85,-1677 1327.5,-1887 1327.5,-1887 1327.5,-1887 1363.5,-1891 1363.5,-1891 1363.5,-1891 1526.55,-1891 1526.55,-1891 1526.55,-1891 1571.55,-1885 1571.55,-1885 1571.55,-1885 1804.35,-1832 1804.35,-1832 1804.35,-1832 2102.4,-1688 2102.4,-1688 2102.4,-1688 2171.2,-1641.51 2214.03,-1612.57"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="2215.1,-1614.38 2218.89,-1609.28 2212.75,-1610.9 2215.1,-1614.38"/>
-<text xml:space="preserve" text-anchor="middle" x="1332" y="-1891.94" font-family="Times,serif" font-size="14.00">3</text>
+<text xml:space="preserve" text-anchor="middle" x="1332" y="-1891.94" font-family="Times,serif" font-size="14.00">4</text>
 </g>
 <!-- internal/codeshot/source_snapshot_test.go -->
 <g id="node26" class="node">
@@ -854,7 +854,7 @@
 <title>internal/scipindex/scipindex_test.go&#45;&gt;internal/scipindex/scipindex.go</title>
 <path fill="none" stroke="#94a3b8" d="M2057.85,-1590C2085.25,-1590 2114.48,-1590 2141.56,-1590"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="2141.26,-1592.1 2147.26,-1590 2141.26,-1587.9 2141.26,-1592.1"/>
-<text xml:space="preserve" text-anchor="middle" x="2093.4" y="-1593.95" font-family="Times,serif" font-size="14.00">7</text>
+<text xml:space="preserve" text-anchor="middle" x="2093.4" y="-1593.95" font-family="Times,serif" font-size="14.00">10</text>
 </g>
 <!-- internal/snapshot/snapshot_test.go -->
 <g id="node29" class="node">
