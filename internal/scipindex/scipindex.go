@@ -25,22 +25,16 @@ type Index struct {
 }
 
 // Doc is one indexed source file. Path is relative to the project root.
-// Defs and Refs are sorted by symbol, so nothing depends on the order the
-// indexer wrote occurrences in.
+// Defs and Refs are sorted, so nothing depends on the order the indexer
+// wrote occurrences in.
 type Doc struct {
 	Path string
-	Defs []Def
+	// Defs are the global symbols the file defines.
+	Defs []string
 	// Refs are the distinct global symbols the file refers to other than
 	// at a definition or an import. They may include the file's own
 	// definitions; FileEdges skips those.
 	Refs []string
-}
-
-// Def is a symbol a document defines.
-type Def struct {
-	Symbol string
-	Name   string
-	Kind   string
 }
 
 // FileEdge is one file depending on another through Symbol.
@@ -89,10 +83,9 @@ func Parse(data []byte) (*Index, error) {
 		}
 		if m := byPath[p]; m != nil {
 			m.Occurrences = append(m.Occurrences, d.GetOccurrences()...)
-			m.Symbols = append(m.Symbols, d.GetSymbols()...)
 			continue
 		}
-		byPath[p] = &scip.Document{Occurrences: d.GetOccurrences(), Symbols: d.GetSymbols()}
+		byPath[p] = &scip.Document{Occurrences: d.GetOccurrences()}
 	}
 	out := &Index{Tool: raw.GetMetadata().GetToolInfo().GetName()}
 	for _, p := range slices.Sorted(maps.Keys(byPath)) {
@@ -102,12 +95,6 @@ func Parse(data []byte) (*Index, error) {
 }
 
 func readDoc(p string, d *scip.Document) Doc {
-	kinds := map[string]string{}
-	for _, si := range d.GetSymbols() {
-		if k := si.GetKind(); k != scip.SymbolInformation_UnspecifiedKind {
-			kinds[si.GetSymbol()] = strings.ToLower(k.String())
-		}
-	}
 	doc := Doc{Path: p}
 	defined, referenced := map[string]bool{}, map[string]bool{}
 	for _, o := range d.GetOccurrences() {
@@ -119,11 +106,7 @@ func readDoc(p string, d *scip.Document) Doc {
 		if roles&int32(scip.SymbolRole_Definition) != 0 {
 			if !defined[sym] {
 				defined[sym] = true
-				name, kind := describe(sym)
-				if k, ok := kinds[sym]; ok {
-					kind = k
-				}
-				doc.Defs = append(doc.Defs, Def{Symbol: sym, Name: name, Kind: kind})
+				doc.Defs = append(doc.Defs, sym)
 			}
 			continue
 		}
@@ -133,20 +116,9 @@ func readDoc(p string, d *scip.Document) Doc {
 		referenced[sym] = true
 		doc.Refs = append(doc.Refs, sym)
 	}
-	sort.Slice(doc.Defs, func(a, b int) bool { return doc.Defs[a].Symbol < doc.Defs[b].Symbol })
+	sort.Strings(doc.Defs)
 	sort.Strings(doc.Refs)
 	return doc
-}
-
-// describe is a symbol's display name (its last descriptor's name) and a
-// kind from that descriptor's suffix. An unparsable symbol keeps its text.
-func describe(sym string) (name, kind string) {
-	s, err := scip.ParseSymbol(sym)
-	if err != nil || len(s.GetDescriptors()) == 0 {
-		return sym, "symbol"
-	}
-	last := s.GetDescriptors()[len(s.GetDescriptors())-1]
-	return last.GetName(), strings.ToLower(last.GetSuffix().String())
 }
 
 // isNamespace reports whether sym names a package or namespace. A reference
@@ -167,8 +139,8 @@ func isNamespace(sym string) bool {
 func (x *Index) FileEdges(from map[string]bool) []FileEdge {
 	definedIn := map[string][]string{}
 	for _, d := range x.Docs {
-		for _, def := range d.Defs {
-			definedIn[def.Symbol] = append(definedIn[def.Symbol], d.Path)
+		for _, sym := range d.Defs {
+			definedIn[sym] = append(definedIn[sym], d.Path)
 		}
 	}
 	for _, files := range definedIn {

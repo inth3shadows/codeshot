@@ -40,6 +40,11 @@ func (s ScipSource) FileEdges(symbols []Node) ([]SymbolEdge, error) {
 	return out, nil
 }
 
+// BudgetWarning words the --max-symbols cut in files, the unit Symbols lists.
+func (s ScipSource) BudgetWarning(budget int) string {
+	return fmt.Sprintf("codeshot: --architecture stopped after %d file(s) (--max-symbols counts files with a SCIP source) — the graph is incomplete; rerun with a larger --max-symbols to cover the rest of the repo. The cut is a path-sorted prefix, not a sample: files later in path order are left out, so their outgoing edges are missing.", budget)
+}
+
 func (s ScipSource) EmptyGraphWarning() string {
 	return fmt.Sprintf("codeshot: --architecture found no cross-file edges — the diagram is blank. %s has no references from one project file to a symbol another defines (package references alone don't count); check that the indexer ran over the whole project.",
 		upperFirst(scipPhrase(s.Index)))

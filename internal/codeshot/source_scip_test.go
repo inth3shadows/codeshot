@@ -108,7 +108,7 @@ func TestScipLabelNamesTheIndexerOnce(t *testing.T) {
 func TestScipSourceCountsFileNodesAndCutsByFile(t *testing.T) {
 	x := &scipindex.Index{Docs: []scipindex.Doc{
 		{Path: "a/main.go", Refs: []string{"s f."}},
-		{Path: "b/lib.go", Defs: []scipindex.Def{{Symbol: "s f.", Name: "f", Kind: "method"}}},
+		{Path: "b/lib.go", Defs: []string{"s f."}},
 	}}
 	src := ScipSource{Index: x}
 	syms, err := src.Symbols()
@@ -166,8 +166,8 @@ func TestCLIScipImageNameFollowsPathOnlyForTheDefaultIndex(t *testing.T) {
 // fields, namespaces and other definitions don't use up the budget.
 func TestScipSymbolsAreOneNodePerFile(t *testing.T) {
 	x := &scipindex.Index{Docs: []scipindex.Doc{
-		{Path: "a.go", Defs: []scipindex.Def{{Symbol: "s A#", Name: "A"}, {Symbol: "s A#f.", Name: "f", Kind: "field"}}},
-		{Path: "b.go", Defs: []scipindex.Def{{Symbol: "s `m`/", Name: "m", Kind: "namespace"}}},
+		{Path: "a.go", Defs: []string{"s A#", "s A#f."}},
+		{Path: "b.go", Defs: []string{"s `m`/"}},
 	}}
 	syms, err := ScipSource{Index: x}.Symbols()
 	if err != nil {
@@ -176,4 +176,17 @@ func TestScipSymbolsAreOneNodePerFile(t *testing.T) {
 	if len(syms) != 2 || syms[0].FilePath != "a.go" || syms[1].FilePath != "b.go" || syms[0].Kind != "file" {
 		t.Errorf("symbols %+v, want one file node per document", syms)
 	}
+}
+
+// R3: a SCIP source's --max-symbols counts files, so its cut warning says so.
+func TestCLIScipBudgetWarningCountsFiles(t *testing.T) {
+	requireBins(t, "dot")
+	idx := writeScipFile(t, t.TempDir(), "x.scip", "scip-go")
+	out := filepath.Join(t.TempDir(), "arch.dot")
+	code, _, stderr := runCLI("--architecture", "--source", "scip:"+idx, "--max-symbols", "1", "--format", "dot", "--out", out)
+	if code != 0 {
+		t.Fatalf("exit %d; stderr: %s", code, stderr)
+	}
+	wantMatch(t, `stopped after 1 file\(s\) \(--max-symbols counts files with a SCIP source\)`, stderr)
+	wantNoMatch(t, `symbols \(--max-symbols\)`, stderr)
 }

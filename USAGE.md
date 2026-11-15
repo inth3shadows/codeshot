@@ -130,8 +130,10 @@ nothing. Documents outside the project root (scip-go's cgo output in the Go
 build cache) are left out. Edges are per file, so `--max-symbols` counts
 files. With `--embed`, the marker and image name end in `-scip-<indexer>`,
 e.g. `codeshot-arch-scip-go.svg`; bare `--source scip` also adds `--path`'s
-subdirectory to the image name, so two subtrees embedded in one doc don't
-share an image.
+subdirectory to the image name, as the codegraph source does, so two docs in
+one directory diagramming different subtrees don't share an image. (Two
+subtrees embedded in the same doc share one marker block, as they do with
+codegraph.)
 
 ## Diagramming just what a diff touched
 

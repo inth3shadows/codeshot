@@ -53,7 +53,7 @@ func fixture() *scip.Index {
 				occ(pkgB, scip.SymbolRole_Definition),
 				occ(funcB, scip.SymbolRole_Definition),
 				occ(typeB, scip.SymbolRole_Definition),
-			}, Symbols: []*scip.SymbolInformation{{Symbol: typeB, Kind: scip.SymbolInformation_Struct}}},
+			}},
 			{RelativePath: "c/c.go", Occurrences: []*scip.Occurrence{occ(pkgB, 0)}},
 			{RelativePath: "../../.cache/go-build/x-d", Occurrences: []*scip.Occurrence{occ(funcB, 0)}},
 		},
@@ -80,7 +80,7 @@ func TestParseKeepsDefsAndDistinctNonImportRefs(t *testing.T) {
 		t.Errorf("a refs %v, want %v (no import, local or repeat)", a.Refs, want)
 	}
 	b := x.Docs[1]
-	want := []Def{{pkgB, "example.com/m/b", "namespace"}, {typeB, "Config", "struct"}, {funcB, "Helper", "method"}}
+	want := []string{pkgB, typeB, funcB}
 	if !reflect.DeepEqual(b.Defs, want) {
 		t.Errorf("b defs %+v, want %+v", b.Defs, want)
 	}
@@ -102,9 +102,9 @@ func TestFileEdgesFollowReferencesToOtherProjectFiles(t *testing.T) {
 
 func TestFileEdgesGoToEveryFileDefiningTheSymbol(t *testing.T) {
 	x := &Index{Docs: []Doc{
-		{Path: "z.ts", Defs: []Def{{Symbol: "s f.", Name: "f"}}},
+		{Path: "z.ts", Defs: []string{"s f."}},
 		{Path: "m.ts", Refs: []string{"s f."}},
-		{Path: "y.ts", Defs: []Def{{Symbol: "s f.", Name: "f"}}},
+		{Path: "y.ts", Defs: []string{"s f."}},
 	}}
 	want := []FileEdge{{"m.ts", "y.ts", "s f."}, {"m.ts", "z.ts", "s f."}}
 	if got := x.FileEdges(nil); !reflect.DeepEqual(got, want) {
