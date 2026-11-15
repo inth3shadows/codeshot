@@ -167,8 +167,7 @@ func TestCLIArchitectureFromASnapshotNeedsNoCodegraph(t *testing.T) {
 }
 
 func TestCLISourceIsValidatedBeforeAnyWork(t *testing.T) {
-	wantRejected(t, `--source must be 'codegraph' or 'snapshot:<file>', got 'scip'`, "--architecture", "--source", "scip")
-	wantRejected(t, `--source must be 'codegraph' or 'snapshot:<file>', got 'snapshot:'`, "--architecture", "--source", "snapshot:")
+	wantRejected(t, `--source must be 'codegraph', 'snapshot:<file>' or 'scip\[:<file>\]', got 'snapshot:'`, "--architecture", "--source", "snapshot:")
 	wantRejected(t, `works with --architecture only so far`, "Foo", "--source", "snapshot:x.json")
 	wantRejected(t, `works with --architecture only so far`, "--diff", "--source", "snapshot:x.json")
 	wantRejected(t, `could not read snapshot '.*': schema is "graph-assay/snapshot@2"`, "--architecture", "--source",

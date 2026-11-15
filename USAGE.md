@@ -116,6 +116,20 @@ codeshot doesn't draw, stderr names them and their counts: those dependencies
 are missing from the diagram and from `--forbid`. Symbol and `--diff` modes
 don't take `--source` yet.
 
+`--source scip[:<file>]` draws it from a [SCIP](https://github.com/scip-code/scip)
+index instead, `index.scip` under `--path` unless you name the file:
+
+```bash
+scip-go                                   # writes ./index.scip
+codeshot --architecture --source scip --out arch.svg --format svg
+```
+
+A file depends on another when it refers to a symbol defined there (a call, a
+type, a constant); a reference to a package alone, such as a Go import, draws
+nothing. Documents outside the project root (scip-go's cgo output in the Go
+build cache) are left out. With `--embed`, the marker and image name end in
+`-scip-<indexer>`, e.g. `codeshot-arch-scip-go.svg`.
+
 ## Diagramming just what a diff touched
 
 A third question, narrower than either of the above: "what does *this
