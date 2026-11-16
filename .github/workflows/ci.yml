@@ -92,16 +92,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y graphviz
 
       # The index codeshot reads: the inth3shadows/codegraph fork at tag
-      # v1.6.0-em.8, pinned by commit SHA (tags are mutable): npm 1.6.0 plus
-      # upstream fixes merged but not yet released, notably #1801 (callers/
-      # callees --json grouped per definition), which --diff's per-file
-      # attribution needs. Committed diagrams must be regenerated with this same
-      # build. Cloned into $RUNNER_TEMP so `codegraph init .` doesn't index it.
-      # WASM-only (CODEGRAPH_KERNEL=0): the fork's native kernel still carries a
-      # fabricated-edge bug.
-      - name: Build codegraph fork (v1.6.0-em.8)
+      # v1.6.2-em.44, pinned by its commit SHA (tags are mutable): upstream
+      # 1.6.2 plus the fork's narrow patches. Committed diagrams must be
+      # regenerated with this same build (see TECHNICAL.md, CI). Cloned into
+      # $RUNNER_TEMP so `codegraph init .` doesn't index it. WASM-only
+      # (CODEGRAPH_KERNEL=0), as the committed diagrams were drawn: the
+      # fork's native kernel has produced fabricated edges and is not re-checked.
+      - name: Build codegraph fork (v1.6.2-em.44)
         env:
-          FORK_SHA: ceefd258adcaf6cbdb743bf4574d3cf501dd58d5
+          FORK_SHA: d9d138de72c3875e5e9fe785dd6add86b68e1896
         run: |
           FORK="$RUNNER_TEMP/codegraph-fork"
           git init -q "$FORK"
