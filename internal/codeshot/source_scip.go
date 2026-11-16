@@ -9,9 +9,9 @@ import (
 )
 
 // ScipSource feeds --architecture from a SCIP index. A file depends on
-// another when it refers to a symbol defined there. SCIP indexers such as
-// scip-go write no enclosing ranges, so a reference can't be pinned to the
-// function making it: edges are file to file, one per referenced symbol.
+// another when it refers to a symbol defined there: edges are file to file,
+// one per referenced symbol. (Symbol mode and --diff pin a reference to the
+// definition around it instead: NewScipCalls.)
 type ScipSource struct{ Index *scipindex.Index }
 
 // Symbols is one file node per document. The edges are per file, so the

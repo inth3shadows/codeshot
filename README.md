@@ -129,17 +129,19 @@ so the scan takes about a second. Flags specific to this mode:
   that name. Edge kinds codeshot doesn't draw (another tool's
   `overrides`, say) are named on stderr rather than dropped silently. The
   default is `--source codegraph`. A snapshot also feeds symbol mode and
-  `--diff` (exact or qualified names, never a guess); `--source scip` is
-  `--architecture`-only so far.
+  `--diff` (exact or qualified names, never a guess), and so does a SCIP index.
 - `--source scip[:<file>]` — draw from a [SCIP](https://github.com/scip-code/scip)
   index (`<--path>/index.scip` by default), as written by scip-go,
   scip-typescript, scip-python and other compiler-backed indexers. A file
   depends on another when it refers to a symbol defined there; a reference to
-  a package alone (a Go import) draws nothing. Edges are file to file (SCIP
-  indexers such as scip-go record no enclosing function), so `--max-symbols`
-  counts files, and codegraph isn't needed. The `--embed` marker and image
-  name get `-scip-<indexer>` (`codeshot-arch-scip-go.svg`), plus the `--path`
-  subdirectory when bare `--source scip` reads the index from there.
+  a package alone (a Go import) draws nothing. `--architecture` edges are file
+  to file, so `--max-symbols` counts files, and codegraph isn't needed. In
+  symbol mode and `--diff`, a reference is drawn from the innermost function,
+  method or type around it (the indexer's enclosing range), else from its
+  file; SCIP doesn't tell a call from a type use, so both are edges. The
+  `--embed` marker and image name get `-scip-<indexer>`
+  (`codeshot-arch-scip-go.svg`), plus the `--path` subdirectory when bare
+  `--source scip` reads the index from there.
 - `--depth` and `--max-depth-nodes` have no effect here and are rejected if set
   to anything but their defaults — there's no multi-hop file-traversal concept
   to apply them to.

@@ -16,16 +16,35 @@ import (
 // with each group's callers or callees over the callee edge kinds, sorted
 // and capped at --limit, and the same for the union of the groups.
 type SnapshotCalls struct {
-	snap   *snapshot.Snapshot
-	byName map[string][]snapshot.Node
-	byID   map[string]snapshot.Node
-	in     map[string][]snapshot.Edge // by dst, callee kinds only, in file order
-	out    map[string][]snapshot.Edge // by src
+	snap *snapshot.Snapshot
+	// phrase names the graph in errors ("the t snapshot", "the scip-go
+	// index"); wording words the warnings.
+	phrase  string
+	wording Wording
+	byName  map[string][]snapshot.Node
+	byID    map[string]snapshot.Node
+	in      map[string][]snapshot.Edge // by dst, callee kinds only, in file order
+	out     map[string][]snapshot.Edge // by src
 }
 
 // NewSnapshotCalls indexes snap for lookups.
 func NewSnapshotCalls(snap *snapshot.Snapshot) *SnapshotCalls {
-	s := &SnapshotCalls{snap: snap, byName: map[string][]snapshot.Node{}, byID: map[string]snapshot.Node{},
+	tool := toolLabel(snap)
+	if tool == "" {
+		tool = "the snapshot's tool"
+	}
+	return indexCalls(snap, snapshotPhrase(snap), Wording{
+		Graph:   snapshotPhrase(snap),
+		Tool:    tool,
+		Limit:   "--limit",
+		StaleIs: "the snapshot may be stale",
+		Refresh: func(string) string { return "export a new snapshot from the current code" },
+	})
+}
+
+// indexCalls indexes snap for lookups, naming the graph with phrase and w.
+func indexCalls(snap *snapshot.Snapshot, phrase string, w Wording) *SnapshotCalls {
+	s := &SnapshotCalls{snap: snap, phrase: phrase, wording: w, byName: map[string][]snapshot.Node{}, byID: map[string]snapshot.Node{},
 		in: map[string][]snapshot.Edge{}, out: map[string][]snapshot.Edge{}}
 	for _, n := range snap.Nodes {
 		s.byID[n.ID] = n
@@ -77,7 +96,7 @@ func (s *SnapshotCalls) lookup(query string) []snapshot.Node {
 // (`T.Run`, not every Run).
 func (s *SnapshotCalls) Resolve(query string) (string, error) {
 	if len(s.lookup(query)) == 0 {
-		return "", &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: symbol '%s' not found in %s — check the spelling/casing. With a snapshot, codeshot matches an exact name, or a qualified one such as Type.method; it never guesses.", query, snapshotPhrase(s.snap))}
+		return "", &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: symbol '%s' not found in %s — check the spelling/casing. codeshot matches an exact name, or a qualified one such as Type.method; it never guesses.", query, s.phrase)}
 	}
 	return query, nil
 }
@@ -110,7 +129,7 @@ func (s *SnapshotCalls) Edges(direction, name string, limit int, fatal bool) (*c
 		if !fatal {
 			return nil, nil
 		}
-		return nil, &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: symbol '%s' not found in %s.", name, snapshotPhrase(s.snap))}
+		return nil, &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: symbol '%s' not found in %s.", name, s.phrase)}
 	}
 	type group struct {
 		file  string
@@ -195,16 +214,4 @@ func (s *SnapshotCalls) Symbols() ([]Node, error) {
 	return SortSymbolsForEnumeration(out), nil
 }
 
-func (s *SnapshotCalls) Wording() Wording {
-	tool := toolLabel(s.snap)
-	if tool == "" {
-		tool = "the snapshot's tool"
-	}
-	return Wording{
-		Graph:   snapshotPhrase(s.snap),
-		Tool:    tool,
-		Limit:   "--limit",
-		StaleIs: "the snapshot may be stale",
-		Refresh: func(string) string { return "export a new snapshot from the current code" },
-	}
-}
+func (s *SnapshotCalls) Wording() Wording { return s.wording }

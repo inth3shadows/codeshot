@@ -22,6 +22,8 @@ import (
 type Index struct {
 	Tool string
 	Docs []Doc
+	// raw is each merged document, by path, for Calls.
+	raw map[string]*scip.Document
 }
 
 // Doc is one indexed source file. Path is relative to the project root.
@@ -83,11 +85,12 @@ func Parse(data []byte) (*Index, error) {
 		}
 		if m := byPath[p]; m != nil {
 			m.Occurrences = append(m.Occurrences, d.GetOccurrences()...)
+			m.Symbols = append(m.Symbols, d.GetSymbols()...)
 			continue
 		}
-		byPath[p] = &scip.Document{Occurrences: d.GetOccurrences()}
+		byPath[p] = &scip.Document{RelativePath: p, Language: d.GetLanguage(), Occurrences: d.GetOccurrences(), Symbols: d.GetSymbols()}
 	}
-	out := &Index{Tool: raw.GetMetadata().GetToolInfo().GetName()}
+	out := &Index{Tool: raw.GetMetadata().GetToolInfo().GetName(), raw: byPath}
 	for _, p := range slices.Sorted(maps.Keys(byPath)) {
 		out.Docs = append(out.Docs, readDoc(p, byPath[p]))
 	}

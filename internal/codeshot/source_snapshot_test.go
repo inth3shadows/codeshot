@@ -200,11 +200,6 @@ func TestFileEdgesDoNotDependOnRowOrder(t *testing.T) {
 }
 
 // P2c-1: codegraph and snapshots feed every mode; SCIP only --architecture.
-func TestCLIScipSourceIsRejectedOutsideArchitecture(t *testing.T) {
-	wantRejected(t, `--source scip works with --architecture only so far`, "Foo", "--source", "scip")
-	wantRejected(t, `--source scip works with --architecture only so far`, "--diff", "--source", "scip:x.scip")
-}
-
 // F7: cheap flag checks run before the snapshot is read, so a typo is
 // reported as itself, not as a snapshot error.
 func TestCLIFlagTyposAreReportedBeforeTheSnapshotIsRead(t *testing.T) {

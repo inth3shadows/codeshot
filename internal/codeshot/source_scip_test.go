@@ -62,7 +62,8 @@ func TestCLIArchitectureFromAScipIndexNeedsNoCodegraph(t *testing.T) {
 func TestCLIScipSourceIsValidated(t *testing.T) {
 	wantRejected(t, `--source must be 'codegraph', 'snapshot:<file>' or 'scip\[:<file>\]', got 'scip:'`, "--architecture", "--source", "scip:")
 	wantRejected(t, `--source must be .*, got 'lsif'`, "--architecture", "--source", "lsif")
-	wantRejected(t, `works with --architecture only so far`, "--diff", "--source", "scip")
+	wantRejected(t, `could not read SCIP index '.*index\.scip'`, "--diff", "--source", "scip", "--path", t.TempDir())
+	wantRejected(t, `could not read SCIP index 'none\.scip'`, "Foo", "--source", "scip:none.scip")
 	wantRejected(t, `could not read SCIP index '.*index\.scip'`, "--architecture", "--source", "scip", "--path", t.TempDir())
 	bad := filepath.Join(t.TempDir(), "bad.scip")
 	if err := os.WriteFile(bad, []byte{0xff, 0xff}, 0o644); err != nil {
