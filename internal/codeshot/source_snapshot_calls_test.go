@@ -15,7 +15,7 @@ import (
 
 // Callers and callees follow the callee kinds, deduped by node and sorted,
 // without the symbol itself; contains edges and self-calls are out.
-func TestSnapshotCallsFollowCalleeKindsInEdgeOrder(t *testing.T) {
+func TestSnapshotCallsFollowCalleeKindsSorted(t *testing.T) {
 	snap := testSnapshot(t)
 	snap.Edges = append(snap.Edges, snapshot.Edge{Src: "B", Dst: "B", Kind: "calls"})
 	s := NewSnapshotCalls(snap)
@@ -285,10 +285,11 @@ func TestCLISymbolModeNamesUnfollowedEdgeKinds(t *testing.T) {
 func TestSymbolModeNamesSkippedDepthHops(t *testing.T) {
 	snap := testSnapshot(t)
 	snap.Nodes = append(snap.Nodes, snapshot.Node{ID: "anon", Kind: "function", File: "z.go"})
-	snap.Edges = append(snap.Edges, snapshot.Edge{Src: "anon", Dst: "B", Kind: "calls"})
+	// Both a caller and a callee of B, so both walks miss it: one symbol.
+	snap.Edges = append(snap.Edges, snapshot.Edge{Src: "anon", Dst: "B", Kind: "calls"}, snapshot.Edge{Src: "B", Dst: "anon", Kind: "calls"})
 	var buf strings.Builder
 	if _, _, err := RunSymbolMode(NewSnapshotCalls(snap), "B", SymbolParams{Limit: 50, MaxRender: Unlimited, Depth: 2, MaxDepthNodes: 200}, &buf); err != nil {
 		t.Fatal(err)
 	}
-	wantMatch(t, `--depth got no answer from the snapshot for 1 symbol\(s\) \('\(unnamed\)'\) — the graph past them is missing`, buf.String())
+	wantMatch(t, `--depth got no answer from the snapshot for 1 symbol\(s\) \(an unnamed function in z.go\) — the graph past them is missing`, buf.String())
 }

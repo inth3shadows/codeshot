@@ -7,10 +7,11 @@ import (
 )
 
 // collectTransitive walks hops 2..maxDepth in one direction, sharing the
-// discovered set (and its node budget) across both directions. One node's
-// exec failure or miss is skipped and counted in *skipped; a fatal codegraph
-// answer still ends the run.
-func collectTransitive(src CallSource, direction string, limit, maxDepth int, seeds []Node, discovered map[string]bool, budget int, skipped *[]string) ([]Edge, bool, error) {
+// discovered set (and its node budget) across both directions. A node whose
+// lookup fails without a fatal error (a snapshot miss, a codegraph exec
+// failure) is skipped and added to *skipped; a fatal error ends the run, and
+// for codegraph that includes a hop it reports as not found (#55).
+func collectTransitive(src CallSource, direction string, limit, maxDepth int, seeds []Node, discovered map[string]bool, budget int, skipped *[]Node) ([]Edge, bool, error) {
 	var edges []Edge
 	frontier := seeds
 	truncated := len(discovered) >= budget
@@ -22,7 +23,7 @@ func collectTransitive(src CallSource, direction string, limit, maxDepth int, se
 				if codegraph.IsFatal(err) {
 					return nil, false, err
 				}
-				*skipped = append(*skipped, node.Name)
+				*skipped = append(*skipped, node)
 				continue
 			}
 			for _, x := range DedupeNodes(SortSymbolsForEnumeration(r.List(direction))) {
@@ -84,7 +85,7 @@ func RunSymbolMode(src CallSource, symbol string, p SymbolParams, stderr io.Writ
 		for _, n := range DedupeNodes(append(append([]Node{}, callers...), callees...)) {
 			discovered[NodeKey(n)] = true
 		}
-		var skipped []string
+		var skipped []Node
 		ce, ct, err := collectTransitive(src, "callers", p.Limit, p.Depth, DedupeNodes(callers), discovered, p.MaxDepthNodes, &skipped)
 		if err != nil {
 			return "", "", err

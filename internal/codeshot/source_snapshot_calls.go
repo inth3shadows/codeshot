@@ -13,8 +13,8 @@ import (
 // SnapshotCalls answers symbol mode and --diff from a graph-assay snapshot,
 // the way the codegraph CLI answers `callers`/`callees --json` from its
 // index: every definition a name has, grouped per (file, qualified name),
-// with each group's callers or callees over the callee edge kinds, in the
-// snapshot's edge order, and a union of the groups capped at --limit.
+// with each group's callers or callees over the callee edge kinds, sorted
+// and capped at --limit, and the same for the union of the groups.
 type SnapshotCalls struct {
 	snap   *snapshot.Snapshot
 	byName map[string][]snapshot.Node

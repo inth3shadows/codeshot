@@ -72,10 +72,14 @@ var structuralKinds = []string{"contains", "extends", "implements", "decorates"}
 // drawnKindsList names the kinds that draw an edge on their own: every callee
 // kind but imports, which FileEdgesFromIndexRows counts only when the same
 // target is also reached by another kind (codegraph's own rule).
-func drawnKindsList(last string) string {
+func drawnKindsList(last string) string { return calleeKindsList(last, false) }
+
+// calleeKindsList is the sorted callee kinds as prose, "a, b<last>c", with
+// or without imports.
+func calleeKindsList(last string, imports bool) string {
 	var kinds []string
 	for _, k := range slices.Sorted(slices.Values(codegraph.CalleeEdgeKinds)) {
-		if k != "imports" {
+		if imports || k != "imports" {
 			kinds = append(kinds, k)
 		}
 	}
@@ -126,9 +130,8 @@ func UnfollowedEdgeKindsWarning(snap *snapshot.Snapshot) string {
 	if kinds == "" {
 		return ""
 	}
-	followed := slices.Sorted(slices.Values(codegraph.CalleeEdgeKinds))
-	return fmt.Sprintf("codeshot: %s has edge kinds codeshot doesn't follow: %s. Callers and callees come from %s and %s edges, so any reached only through these kinds are missing.",
-		snapshotPhrase(snap), kinds, strings.Join(followed[:len(followed)-1], ", "), followed[len(followed)-1])
+	return fmt.Sprintf("codeshot: %s has edge kinds codeshot doesn't follow: %s. Callers and callees come from %s edges, so any reached only through these kinds are missing.",
+		snapshotPhrase(snap), kinds, calleeKindsList(" and ", true))
 }
 
 var unsafeToolNameRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)

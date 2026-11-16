@@ -261,16 +261,19 @@ func BlankEmbedRefusal(dot, embedFile string, check bool) string {
 // depthSkipWarning names the --depth hops that got no answer: a symbol
 // whose own callers/callees lookup failed or found nothing, so the graph
 // past it is missing rather than empty.
-func depthSkipWarning(w Wording, skipped []string) string {
+// A node seeded in both directions is counted once.
+func depthSkipWarning(w Wording, nodes []Node) string {
+	skipped := DedupeNodes(nodes)
 	if len(skipped) == 0 {
 		return ""
 	}
 	shown := make([]string, 0, 5)
 	for _, n := range skipped[:min(5, len(skipped))] {
-		if n == "" {
-			n = "(unnamed)"
+		label := "'" + n.Name + "'"
+		if n.Name == "" {
+			label = "an unnamed " + n.Kind + " in " + n.FilePath
 		}
-		shown = append(shown, "'"+n+"'")
+		shown = append(shown, label)
 	}
 	more := ""
 	if len(skipped) > len(shown) {
