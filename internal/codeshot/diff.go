@@ -119,14 +119,16 @@ func ResolveRootResults(callers, callees *codegraph.Response, filePath string) (
 }
 
 // gitDiffFiles lists changed files: against HEAD by default (staged and
-// unstaged), or a ref/range. --end-of-options keeps a ref starting with '-'
-// from parsing as a flag; -z keeps non-ASCII names unquoted.
+// unstaged), or a ref/range. --relative names them from repoPath, as an
+// index built there does, and leaves out files outside it, so a --path
+// below the repo root still matches. --end-of-options keeps a ref starting
+// with '-' from parsing as a flag; -z keeps non-ASCII names unquoted.
 func gitDiffFiles(repoPath, ref string) ([]string, error) {
 	target := ref
 	if target == "" {
 		target = "HEAD"
 	}
-	args := []string{"diff", "--name-only", "-z", "--end-of-options", target}
+	args := []string{"diff", "--name-only", "--relative", "-z", "--end-of-options", target}
 	cmd := exec.Command("git", args...)
 	cmd.Dir = repoPath
 	var out, errb bytes.Buffer

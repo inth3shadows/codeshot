@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path"
 	"strconv"
+	"strings"
+	"unicode"
 
 	"github.com/inth3shadows/codeshot/internal/scipindex"
 	"github.com/inth3shadows/codeshot/internal/snapshot"
@@ -39,24 +41,33 @@ func NewScipCalls(x *scipindex.Index) (*SnapshotCalls, string) {
 			snap.Edges = append(snap.Edges, snapshot.Edge{Kind: "references", Src: src, Dst: dst})
 		}
 	}
-	tool := scipLabel(x)
-	if tool == "scip" {
-		tool = "the SCIP indexer"
-	}
-	calls := indexCalls(snap, scipPhrase(x), Wording{
+	calls := indexCalls(snap, Wording{
 		Graph:   scipPhrase(x),
-		Tool:    tool,
+		Tool:    scipTool(x),
 		Limit:   "--limit",
 		StaleIs: "the index may be stale",
-		Refresh: func(string) string { return "rerun " + tool + " on the current code" },
+		Refresh: func(string) string { return "rerun " + scipTool(x) + " on the current code" },
 	})
 	return calls, scipRangeWarning(x, g)
 }
 
-// scipRangeWarning names the definitions the indexer gave no enclosing
-// range: references inside them can't be pinned to them, so they are drawn
-// from their file (old-style JS `obj.m = function () {}` under
-// scip-typescript, for example).
+// scipTool names the indexer in advice as its metadata does ("scip-go",
+// "rust-analyzer"), not as the file-safe scipLabel, which may add a
+// "scip-" no binary has; "the SCIP indexer" when the name is missing or
+// carries control characters.
+func scipTool(x *scipindex.Index) string {
+	t := strings.TrimSpace(x.Tool)
+	if t == "" || strings.ContainsFunc(t, unicode.IsControl) {
+		return "the SCIP indexer"
+	}
+	return t
+}
+
+// scipRangeWarning counts the functions, methods and types the indexer gave
+// no enclosing range: references inside them can't be pinned to them, so
+// they are drawn from their file. (Old-style JS `obj.m = function () {}`
+// isn't counted: scip-typescript gives it neither a range nor a function
+// kind, so it is no definition at all.)
 func scipRangeWarning(x *scipindex.Index, g *scipindex.CallGraph) string {
 	if g.Unranged == 0 {
 		return ""

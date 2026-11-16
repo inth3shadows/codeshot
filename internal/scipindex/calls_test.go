@@ -121,15 +121,7 @@ func TestCallsDrawsFunctionsMethodsTypesAndTopLevelValues(t *testing.T) {
 // file; imports, locals, packages, fields, self-references and repeats
 // draw nothing.
 func TestCallsAttributeEachReferenceToTheInnermostDefinition(t *testing.T) {
-	g := readCalls(t)
-	var got []string
-	for _, r := range g.Refs {
-		from := r.Path
-		if r.Caller >= 0 {
-			from = g.Defs[r.Caller].QName
-		}
-		got = append(got, from+" -> "+r.Callee[len(goPkg):])
-	}
+	got := refStrings(readCalls(t), goPkg)
 	want := []string{
 		"p/a.go -> Run().",
 		"Run -> Helper().",
@@ -140,5 +132,93 @@ func TestCallsAttributeEachReferenceToTheInnermostDefinition(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("refs:\n%v\nwant:\n%v", got, want)
+	}
+}
+
+// atc is an occurrence at 1-based line and 0-based column, with an
+// enclosing range from there to (endLine, endCol) when endLine > 0.
+func atc(sym string, roles scip.SymbolRole, line, col, endLine, endCol int) *scip.Occurrence {
+	o := &scip.Occurrence{Symbol: sym, SymbolRoles: int32(roles)}
+	o.SetSourceRange(scip.NewRangeUnchecked([]int32{int32(line - 1), int32(col), int32(col + 1)}))
+	if endLine > 0 {
+		o.SetEnclosingSourceRange(scip.NewRangeUnchecked([]int32{int32(line - 1), int32(col), int32(endLine - 1), int32(endCol)}))
+	}
+	return o
+}
+
+func refStrings(g *CallGraph, prefix string) []string {
+	var got []string
+	for _, r := range g.Refs {
+		from := r.Path
+		if r.Caller >= 0 {
+			from = g.Defs[r.Caller].QName
+		}
+		got = append(got, from+" -> "+r.Callee[len(prefix):])
+	}
+	return got
+}
+
+// F1/F2 (PR #68 review), in y.ts:
+//
+//	1 const a = () => h(); const b = () => a();
+//	2 function f() {
+//	3   g()
+//	4 }; h()
+//	5 function o(x: string)
+//	6 function o(x: number)
+//	7 function o(x) {
+//	8   g()
+//	9 }
+//	10 function k() { o(1) }
+//
+// Two definitions on one line are told apart by column, code after a
+// closing brace is the file's, and o's three definitions are one Def.
+func TestCallsTellApartDefinitionsByColumnAndMergeRepeatedDefinitions(t *testing.T) {
+	const ts = "scip-typescript npm m 1.0.0 src/`y.ts`/"
+	fn := func(name string) *scip.SymbolInformation {
+		return &scip.SymbolInformation{Symbol: ts + name + "().", Kind: scip.SymbolInformation_Function}
+	}
+	a, b, f, g, h, o, k := ts+"a.", ts+"b.", ts+"f().", ts+"g().", ts+"h().", ts+"o().", ts+"k()."
+	x, err := Parse(encode(t, &scip.Index{
+		Metadata: &scip.Metadata{ToolInfo: &scip.ToolInfo{Name: "scip-typescript"}},
+		Documents: []*scip.Document{{RelativePath: "src/y.ts", Language: "TypeScript",
+			Symbols: []*scip.SymbolInformation{
+				{Symbol: a, Kind: scip.SymbolInformation_Constant}, {Symbol: b, Kind: scip.SymbolInformation_Constant},
+				fn("f"), fn("g"), fn("h"), fn("o"), fn("k"),
+			},
+			Occurrences: []*scip.Occurrence{
+				atc(a, scip.SymbolRole_Definition, 1, 6, 1, 19),
+				atc(h, 0, 1, 16, 0, 0),
+				atc(b, scip.SymbolRole_Definition, 1, 27, 1, 41),
+				atc(a, 0, 1, 37, 0, 0),
+				atc(f, scip.SymbolRole_Definition, 2, 9, 4, 1),
+				atc(g, 0, 3, 2, 0, 0),
+				atc(h, 0, 4, 3, 0, 0),
+				atc(o, scip.SymbolRole_Definition, 5, 9, 5, 21),
+				atc(o, scip.SymbolRole_Definition, 6, 9, 6, 21),
+				atc(o, scip.SymbolRole_Definition, 7, 9, 9, 1),
+				atc(g, 0, 8, 2, 0, 0),
+				atc(k, scip.SymbolRole_Definition, 10, 9, 10, 22),
+				atc(o, 0, 10, 15, 0, 0),
+				atc(g, scip.SymbolRole_Definition, 11, 9, 11, 20),
+				atc(h, scip.SymbolRole_Definition, 12, 9, 12, 20),
+			}}},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cg := x.Calls()
+	want := []string{"src/y.ts -> h().", "a -> h().", "b -> a.", "f -> g().", "o -> g().", "k -> o()."}
+	if got := refStrings(cg, ts); !reflect.DeepEqual(got, want) {
+		t.Errorf("refs:\n%v\nwant:\n%v", got, want)
+	}
+	var defs []string
+	for _, d := range cg.Defs {
+		if d.Name == "o" {
+			defs = append(defs, fmt.Sprintf("%d-%d", d.Line, d.End))
+		}
+	}
+	if want := []string{"5-9"}; !reflect.DeepEqual(defs, want) {
+		t.Errorf("o's defs %v, want %v (one Def for its three definitions)", defs, want)
 	}
 }

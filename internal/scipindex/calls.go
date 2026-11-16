@@ -49,21 +49,38 @@ type CallGraph struct {
 	Unranged int
 }
 
+// pos is a 0-based (line, character) position in a document.
+type pos struct{ line, char int32 }
+
+func (a pos) before(b pos) bool {
+	return a.line < b.line || a.line == b.line && a.char < b.char
+}
+
 // Calls derives symbol mode's graph. A reference's caller is the innermost
-// definition whose enclosing range holds its line, starting at the
-// definition's own name line (the range may begin at a doc comment or a
-// decorator, which run in the scope around it), else the file. References
-// to locals, packages and namespaces, imports, and symbols the project
-// doesn't define are left out, as is a definition's reference to itself.
-// Each (caller, callee) pair appears once, sorted.
+// definition whose enclosing range holds its position, starting no earlier
+// than the definition's own name line (the range may begin at a doc comment
+// or a decorator, which run in the scope around it), else the file.
+// Positions are compared by line and character, so two definitions on one
+// line, or code after a closing brace, are told apart. References to
+// locals, packages and namespaces, imports, and symbols the project doesn't
+// define are left out, as is a definition's reference to itself. A symbol
+// defined more than once in a file (TypeScript overloads, or scip-python
+// giving nested functions one symbol) is one Def there, and each of its
+// ranges draws from it. Each (caller, callee) pair appears once, sorted.
 func (x *Index) Calls() *CallGraph {
 	g := &CallGraph{}
 	if x.raw == nil {
 		return g
 	}
 	defined := map[string]bool{}
-	type container struct{ def, s, e int }
+	type container struct {
+		def  int
+		s, e pos
+	}
 	inFile := map[string][]container{}
+	type key struct{ sym, path string }
+	defAt := map[key]int{}
+	var unranged []bool // per Def: contains, but none of its definitions is ranged
 	for _, p := range slices.Sorted(maps.Keys(x.raw)) {
 		d := x.raw[p]
 		kinds := map[string]scip.SymbolInformation_Kind{}
@@ -85,34 +102,51 @@ func (x *Index) Calls() *CallGraph {
 			if !ok {
 				continue
 			}
-			def.Path, def.Line, def.End = p, int(r.Start.Line)+1, int(r.Start.Line)+1
-			switch {
-			case contains && ranged:
-				def.Container = true
-				def.End = max(def.End, int(er.End.Line)+1)
-			case contains:
-				g.Unranged++
+			line := int(r.Start.Line) + 1
+			i, seenDef := defAt[key{sym, p}]
+			if !seenDef {
+				def.Path, def.Line, def.End = p, line, line
+				i = len(g.Defs)
+				defAt[key{sym, p}] = i
+				defined[sym] = true
+				g.Defs = append(g.Defs, def)
+				unranged = append(unranged, contains)
 			}
-			defined[sym] = true
-			g.Defs = append(g.Defs, def)
-			if def.Container {
-				inFile[p] = append(inFile[p], container{len(g.Defs) - 1, def.Line, def.End})
+			d := &g.Defs[i]
+			d.Line = min(d.Line, line)
+			if !contains || !ranged {
+				d.End = max(d.End, line)
+				continue
 			}
+			d.Container, unranged[i] = true, false
+			d.End = max(d.End, int(er.End.Line)+1)
+			s := pos{er.Start.Line, er.Start.Character}
+			if name := (pos{r.Start.Line, r.Start.Character}); name.before(s) {
+				s = name
+			}
+			if s.line < r.Start.Line {
+				s = pos{r.Start.Line, 0}
+			}
+			inFile[p] = append(inFile[p], container{i, s, pos{er.End.Line, er.End.Character}})
 		}
 	}
-	callerAt := func(p string, line int) int {
+	for _, u := range unranged {
+		if u {
+			g.Unranged++
+		}
+	}
+	// callerAt picks, among the ranges holding at, the one starting last
+	// (and of two starting together the one ending first): with nested
+	// ranges that is the innermost.
+	callerAt := func(p string, at pos) int {
 		best := -1
+		var bs, be pos
 		for _, c := range inFile[p] {
-			if line < c.s || line > c.e {
+			if at.before(c.s) || !at.before(c.e) {
 				continue
 			}
-			if best < 0 {
-				best = c.def
-				continue
-			}
-			b := g.Defs[best]
-			if span, bspan := c.e-c.s, b.End-b.Line; span < bspan || (span == bspan && c.s > b.Line) {
-				best = c.def
+			if best < 0 || bs.before(c.s) || bs == c.s && c.e.before(be) {
+				best, bs, be = c.def, c.s, c.e
 			}
 		}
 		return best
@@ -129,7 +163,7 @@ func (x *Index) Calls() *CallGraph {
 			if !ok {
 				continue
 			}
-			ref := Ref{Caller: callerAt(p, int(r.Start.Line)+1), Path: p, Callee: sym}
+			ref := Ref{Caller: callerAt(p, pos{r.Start.Line, r.Start.Character}), Path: p, Callee: sym}
 			if ref.Caller >= 0 && g.Defs[ref.Caller].Symbol == sym || seen[ref] {
 				continue
 			}

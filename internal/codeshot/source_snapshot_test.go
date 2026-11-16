@@ -199,7 +199,6 @@ func TestFileEdgesDoNotDependOnRowOrder(t *testing.T) {
 	}
 }
 
-// P2c-1: codegraph and snapshots feed every mode; SCIP only --architecture.
 // F7: cheap flag checks run before the snapshot is read, so a typo is
 // reported as itself, not as a snapshot error.
 func TestCLIFlagTyposAreReportedBeforeTheSnapshotIsRead(t *testing.T) {

@@ -17,9 +17,8 @@ import (
 // and capped at --limit, and the same for the union of the groups.
 type SnapshotCalls struct {
 	snap *snapshot.Snapshot
-	// phrase names the graph in errors ("the t snapshot", "the scip-go
-	// index"); wording words the warnings.
-	phrase  string
+	// wording names the graph in errors and words the warnings ("the t
+	// snapshot", "the scip-go index").
 	wording Wording
 	byName  map[string][]snapshot.Node
 	byID    map[string]snapshot.Node
@@ -33,7 +32,7 @@ func NewSnapshotCalls(snap *snapshot.Snapshot) *SnapshotCalls {
 	if tool == "" {
 		tool = "the snapshot's tool"
 	}
-	return indexCalls(snap, snapshotPhrase(snap), Wording{
+	return indexCalls(snap, Wording{
 		Graph:   snapshotPhrase(snap),
 		Tool:    tool,
 		Limit:   "--limit",
@@ -42,9 +41,9 @@ func NewSnapshotCalls(snap *snapshot.Snapshot) *SnapshotCalls {
 	})
 }
 
-// indexCalls indexes snap for lookups, naming the graph with phrase and w.
-func indexCalls(snap *snapshot.Snapshot, phrase string, w Wording) *SnapshotCalls {
-	s := &SnapshotCalls{snap: snap, phrase: phrase, wording: w, byName: map[string][]snapshot.Node{}, byID: map[string]snapshot.Node{},
+// indexCalls indexes snap for lookups, worded by w.
+func indexCalls(snap *snapshot.Snapshot, w Wording) *SnapshotCalls {
+	s := &SnapshotCalls{snap: snap, wording: w, byName: map[string][]snapshot.Node{}, byID: map[string]snapshot.Node{},
 		in: map[string][]snapshot.Edge{}, out: map[string][]snapshot.Edge{}}
 	for _, n := range snap.Nodes {
 		s.byID[n.ID] = n
@@ -96,7 +95,7 @@ func (s *SnapshotCalls) lookup(query string) []snapshot.Node {
 // (`T.Run`, not every Run).
 func (s *SnapshotCalls) Resolve(query string) (string, error) {
 	if len(s.lookup(query)) == 0 {
-		return "", &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: symbol '%s' not found in %s — check the spelling/casing. codeshot matches an exact name, or a qualified one such as Type.method; it never guesses.", query, s.phrase)}
+		return "", &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: symbol '%s' not found in %s — check the spelling/casing. codeshot matches an exact name, or a qualified one such as Type.method; it never guesses.", query, s.wording.Graph)}
 	}
 	return query, nil
 }
@@ -129,7 +128,7 @@ func (s *SnapshotCalls) Edges(direction, name string, limit int, fatal bool) (*c
 		if !fatal {
 			return nil, nil
 		}
-		return nil, &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: symbol '%s' not found in %s.", name, s.phrase)}
+		return nil, &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: symbol '%s' not found in %s.", name, s.wording.Graph)}
 	}
 	type group struct {
 		file  string
