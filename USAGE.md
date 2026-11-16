@@ -151,6 +151,24 @@ one directory diagramming different subtrees don't share an image. (Two
 subtrees embedded in the same doc share one marker block, as they do with
 codegraph.)
 
+A SCIP index also feeds symbol mode and `--diff`:
+
+```bash
+codeshot Router.ServeHTTP --source scip --depth 2 --out sym.svg --format svg
+codeshot --diff --source scip --out diff.svg --format svg
+```
+
+A reference is drawn from the innermost function, method or type whose
+enclosing range (written by scip-go, scip-typescript and scip-python) holds
+it, from the definition's own line on; code outside every definition is drawn
+from its file. SCIP records references, not calls, so a type used in a
+signature and a package-level constant are callees too. Names are matched as
+with a snapshot: exact, or qualified (`Router.ServeHTTP`). A definition the
+indexer gave no enclosing range can't be a caller, and stderr counts them;
+old-style JavaScript property functions (`req.accepts = function () {}`) get
+no range and no node from scip-typescript, so they aren't drawn at all. With
+`--embed`, the marker and image name end in `-scip-<indexer>`.
+
 ## Diagramming just what a diff touched
 
 A third question, narrower than either of the above: "what does *this
