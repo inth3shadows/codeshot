@@ -257,3 +257,25 @@ func BlankEmbedRefusal(dot, embedFile string, check bool) string {
 	}
 	return fmt.Sprintf("%s Refusing to overwrite the existing diagram embedded in '%s' with a blank one; drop --embed to render the (blank) image on its own.", why, embedFile)
 }
+
+// depthSkipWarning names the --depth hops that got no answer: a symbol
+// whose own callers/callees lookup failed or found nothing, so the graph
+// past it is missing rather than empty.
+func depthSkipWarning(w Wording, skipped []string) string {
+	if len(skipped) == 0 {
+		return ""
+	}
+	shown := make([]string, 0, 5)
+	for _, n := range skipped[:min(5, len(skipped))] {
+		if n == "" {
+			n = "(unnamed)"
+		}
+		shown = append(shown, "'"+n+"'")
+	}
+	more := ""
+	if len(skipped) > len(shown) {
+		more = fmt.Sprintf(" and %d more", len(skipped)-len(shown))
+	}
+	return fmt.Sprintf("codeshot: --depth got no answer from %s for %d symbol(s) (%s%s) — the graph past them is missing, not empty.",
+		w.Graph, len(skipped), strings.Join(shown, ", "), more)
+}

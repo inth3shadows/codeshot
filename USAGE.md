@@ -123,9 +123,12 @@ codeshot --diff --source snapshot:snap.json --out diff.svg --format svg
 ```
 
 A symbol is matched by its exact name, or a qualified one such as
-`Client.Edges` or `pkg::run`; a partial or misspelled name is reported as not
-found, never guessed. A name defined in several files gets each file's own
-callers and callees. `--diff` still asks git under `--path` which files
+`Client.Edges`, `pkg::run` or `Type#method`, which draws only the definitions it
+names; a partial or misspelled name is reported as not found, never guessed. A
+name defined in several files gets each file's own callers and callees. With
+`--limit`, the callers or callees kept are the first in file-path order. Edge
+kinds codeshot doesn't follow (e.g. another tool's `invokes`) are named in a
+warning. `--diff` still asks git under `--path` which files
 changed, so the snapshot's paths must be relative to that repository's root.
 With `--embed`, the marker and image name end in `-snapshot-<tool>`.
 

@@ -48,21 +48,21 @@ var scopeSepRe = regexp.MustCompile(`::|[/#]`)
 // `pkg/f` and `pkg.f` compare equal.
 func canonicalScope(s string) string { return scopeSepRe.ReplaceAllString(s, ".") }
 
-func isQualified(q string) bool { return strings.ContainsAny(q, "./") || strings.Contains(q, "::") }
+func isQualified(q string) bool { return strings.ContainsAny(q, "./#") || strings.Contains(q, "::") }
 
-// lookup is every node the query names: an exact name, or for a qualified
-// query (`T.m`, `pkg::f`) the nodes named its last part whose qualified
-// name ends with it. Never a fuzzy hit: a partial or mistyped name finds
-// nothing, as in codegraph since #1473.
+// lookup is every node the query names: an exact name first (a name may
+// itself hold a separator: `App.Fmt`, `a.go`), else for a qualified query
+// (`T.m`, `pkg::f`, `T#m`) the nodes whose qualified name is it or ends
+// with it. Never a fuzzy hit: a partial or mistyped name finds nothing, as
+// in codegraph since #1473.
 func (s *SnapshotCalls) lookup(query string) []snapshot.Node {
-	if !isQualified(query) {
-		return s.byName[query]
+	if nodes := s.byName[query]; len(nodes) > 0 || !isQualified(query) {
+		return nodes
 	}
 	want := canonicalScope(query)
-	parts := strings.Split(want, ".")
 	var out []snapshot.Node
-	for _, n := range s.byName[parts[len(parts)-1]] {
-		if n.QName == nil {
+	for _, n := range s.snap.Nodes {
+		if n.Name == "" || n.QName == nil {
 			continue
 		}
 		if q := canonicalScope(*n.QName); q == want || strings.HasSuffix(q, "."+want) {
@@ -72,12 +72,14 @@ func (s *SnapshotCalls) lookup(query string) []snapshot.Node {
 	return out
 }
 
+// Resolve keeps the query as given: lookup matches it exactly or as a
+// qualified name, so passing it on to Edges draws only what it names
+// (`T.Run`, not every Run).
 func (s *SnapshotCalls) Resolve(query string) (string, error) {
-	nodes := s.lookup(query)
-	if len(nodes) == 0 {
+	if len(s.lookup(query)) == 0 {
 		return "", &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: symbol '%s' not found in %s — check the spelling/casing. With a snapshot, codeshot matches an exact name, or a qualified one such as Type.method; it never guesses.", query, snapshotPhrase(s.snap))}
 	}
-	return nodes[0].Name, nil
+	return query, nil
 }
 
 func (s *SnapshotCalls) node(n snapshot.Node) Node {
@@ -169,16 +171,16 @@ func (s *SnapshotCalls) Edges(direction, name string, limit int, fatal bool) (*c
 	return r, nil
 }
 
-// capped is nodes cut to limit, with the uncut total and whether it cut.
+// capped is nodes sorted, then cut to limit, with the uncut total and
+// whether it cut. Sorting first keeps which neighbours survive the cut
+// independent of the snapshot's node and edge order.
 func (s *SnapshotCalls) capped(nodes []snapshot.Node, limit int) ([]Node, float64, bool) {
-	out := []Node{}
+	all := make([]Node, len(nodes))
 	for i, n := range nodes {
-		if i == limit {
-			break
-		}
-		out = append(out, s.node(n))
+		all[i] = s.node(n)
 	}
-	return out, float64(len(nodes)), len(nodes) > limit
+	all = SortSymbolsForEnumeration(all)
+	return all[:min(limit, len(all))], float64(len(all)), len(all) > limit
 }
 
 // Symbols is every named node in enumeration order, with its real qualified

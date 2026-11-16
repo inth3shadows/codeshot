@@ -405,6 +405,8 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		if arch {
 			warn(stderr, UndrawnEdgeKindsWarning(snap))
+		} else {
+			warn(stderr, UnfollowedEdgeKindsWarning(snap))
 		}
 	}
 	var scipIdx *scipindex.Index

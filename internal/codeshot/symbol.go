@@ -8,8 +8,9 @@ import (
 
 // collectTransitive walks hops 2..maxDepth in one direction, sharing the
 // discovered set (and its node budget) across both directions. One node's
-// exec failure is skipped; a fatal codegraph answer still ends the run.
-func collectTransitive(src CallSource, direction string, limit, maxDepth int, seeds []Node, discovered map[string]bool, budget int) ([]Edge, bool, error) {
+// exec failure or miss is skipped and counted in *skipped; a fatal codegraph
+// answer still ends the run.
+func collectTransitive(src CallSource, direction string, limit, maxDepth int, seeds []Node, discovered map[string]bool, budget int, skipped *[]string) ([]Edge, bool, error) {
 	var edges []Edge
 	frontier := seeds
 	truncated := len(discovered) >= budget
@@ -21,6 +22,7 @@ func collectTransitive(src CallSource, direction string, limit, maxDepth int, se
 				if codegraph.IsFatal(err) {
 					return nil, false, err
 				}
+				*skipped = append(*skipped, node.Name)
 				continue
 			}
 			for _, x := range DedupeNodes(SortSymbolsForEnumeration(r.List(direction))) {
@@ -82,15 +84,17 @@ func RunSymbolMode(src CallSource, symbol string, p SymbolParams, stderr io.Writ
 		for _, n := range DedupeNodes(append(append([]Node{}, callers...), callees...)) {
 			discovered[NodeKey(n)] = true
 		}
-		ce, ct, err := collectTransitive(src, "callers", p.Limit, p.Depth, DedupeNodes(callers), discovered, p.MaxDepthNodes)
+		var skipped []string
+		ce, ct, err := collectTransitive(src, "callers", p.Limit, p.Depth, DedupeNodes(callers), discovered, p.MaxDepthNodes, &skipped)
 		if err != nil {
 			return "", "", err
 		}
-		ee, et, err := collectTransitive(src, "callees", p.Limit, p.Depth, DedupeNodes(callees), discovered, p.MaxDepthNodes)
+		ee, et, err := collectTransitive(src, "callees", p.Limit, p.Depth, DedupeNodes(callees), discovered, p.MaxDepthNodes, &skipped)
 		if err != nil {
 			return "", "", err
 		}
 		trans = append(ce, ee...)
+		warn(stderr, depthSkipWarning(w, skipped))
 		warn(stderr, DepthBudgetWarning(ct || et, p.MaxDepthNodes))
 	}
 

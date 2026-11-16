@@ -6,13 +6,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/inth3shadows/codeshot/internal/snapshot"
 )
 
-// Callers and callees follow the callee kinds in edge order, deduped by
-// node, without the symbol itself; contains edges and self-calls are out.
+// Callers and callees follow the callee kinds, deduped by node and sorted,
+// without the symbol itself; contains edges and self-calls are out.
 func TestSnapshotCallsFollowCalleeKindsInEdgeOrder(t *testing.T) {
 	snap := testSnapshot(t)
 	snap.Edges = append(snap.Edges, snapshot.Edge{Src: "B", Dst: "B", Kind: "calls"})
@@ -25,7 +27,7 @@ func TestSnapshotCallsFollowCalleeKindsInEdgeOrder(t *testing.T) {
 		t.Errorf("callers of B %v, want [A Run] (R reaches B twice, B calls itself)", got)
 	}
 	r, _ = s.Edges("callees", "A", 20, true)
-	if got := names(r.Callees); !reflect.DeepEqual(got, []string{"B", "C", "b.go", "Run"}) {
+	if got := names(r.Callees); !reflect.DeepEqual(got, []string{"Run", "B", "b.go", "C"}) {
 		t.Errorf("callees of A %v", got)
 	}
 	if *r.Total != 4 || *r.Truncated {
@@ -72,15 +74,15 @@ func TestSnapshotCallsSplitSameNamedDefinitionsAndCapAtLimit(t *testing.T) {
 	}
 }
 
-// Lookup is exact or qualified, never fuzzy.
+// Lookup is exact or qualified, never fuzzy; Resolve keeps the query.
 func TestSnapshotCallsResolveExactOrQualifiedNames(t *testing.T) {
 	s := NewSnapshotCalls(testSnapshot(t))
-	for query, want := range map[string]string{"Run": "Run", "T.Run": "Run", "T::Run": "Run", "B": "B"} {
+	for query, want := range map[string]string{"Run": "Run", "T.Run": "T.Run", "T::Run": "T::Run", "T#Run": "T#Run", "B": "B"} {
 		if got, err := s.Resolve(query); err != nil || got != want {
 			t.Errorf("Resolve(%q) = %q, %v; want %q", query, got, err, want)
 		}
 	}
-	for _, query := range []string{"Ru", "run", "U.Run", "X.T.Run"} {
+	for _, query := range []string{"Ru", "run", "U.Run", "X.T.Run", "U#Run"} {
 		_, err := s.Resolve(query)
 		if err == nil {
 			t.Errorf("Resolve(%q) found something", query)
@@ -207,4 +209,86 @@ func TestSymbolDotDoesNotDependOnNeighbourOrder(t *testing.T) {
 			t.Errorf("%s: DOT depends on edge order:\n%s\n---\n%s", sym, a, b)
 		}
 	}
+}
+
+// F1: a qualified query draws only the definitions it names, and a name
+// that itself holds a separator (Go's App.Fmt method, a file node a.go) is
+// found by its exact name, not split into scope and tail.
+func TestSnapshotCallsQualifiedQueryKeepsItsScope(t *testing.T) {
+	q := func(s string) *string { return &s }
+	snap := &snapshot.Snapshot{Schema: snapshot.Schema,
+		Nodes: []snapshot.Node{
+			{ID: "tr", Kind: "method", Name: "Run", QName: q("T.Run"), File: "t.go"},
+			{ID: "ur", Kind: "method", Name: "Run", QName: q("U.Run"), File: "u.go"},
+			{ID: "f", Kind: "method", Name: "App.Fmt", QName: q("App.Fmt"), File: "app.go"},
+			{ID: "g", Kind: "method", Name: "Fmt", QName: q("Other.Fmt"), File: "other.go"},
+			{ID: "p", Kind: "function", Name: "P", QName: q("P"), File: "p.go"},
+			{ID: "r", Kind: "function", Name: "R", QName: q("R"), File: "r.go"},
+		},
+		Edges: []snapshot.Edge{
+			{Kind: "calls", Src: "p", Dst: "tr"}, {Kind: "calls", Src: "r", Dst: "ur"},
+			{Kind: "calls", Src: "p", Dst: "f"}, {Kind: "calls", Src: "r", Dst: "g"},
+		},
+	}
+	s := NewSnapshotCalls(snap)
+	for query, want := range map[string][]string{"T.Run": {"P"}, "U::Run": {"R"}, "Run": {"P", "R"}, "App.Fmt": {"P"}, "Other.Fmt": {"R"}} {
+		dot, resolved, err := RunSymbolMode(s, query, SymbolParams{Limit: 20, MaxRender: Unlimited, Depth: 1, MaxDepthNodes: 200}, io.Discard)
+		if err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		r, _ := s.Edges("callers", resolved, 20, true)
+		if got := names(r.Callers); !reflect.DeepEqual(got, want) {
+			t.Errorf("callers of %s = %v, want %v\n%s", query, got, want, dot)
+		}
+	}
+}
+
+// F2: under a --limit cut, which neighbours survive never depends on the
+// order the snapshot lists its nodes and edges in.
+func TestSnapshotCallsLimitCutIsOrderIndependent(t *testing.T) {
+	fwd := testSnapshot(t)
+	rev := testSnapshot(t)
+	slices.Reverse(rev.Edges)
+	slices.Reverse(rev.Nodes)
+	for _, sym := range []string{"A", "B"} {
+		for _, dir := range []string{"callers", "callees"} {
+			a, _ := NewSnapshotCalls(fwd).Edges(dir, sym, 1, true)
+			b, _ := NewSnapshotCalls(rev).Edges(dir, sym, 1, true)
+			if !reflect.DeepEqual(a.List(dir), b.List(dir)) {
+				t.Errorf("%s of %s at --limit 1: %v vs %v", dir, sym, names(a.List(dir)), names(b.List(dir)))
+			}
+		}
+	}
+}
+
+// F3: symbol mode and --diff name a kind they don't follow, instead of
+// drawing lone boxes with no word why.
+func TestCLISymbolModeNamesUnfollowedEdgeKinds(t *testing.T) {
+	requireBins(t, "dot")
+	body := `{"schema":"graph-assay/snapshot@1","subject":{"name":"t"},
+ "capabilities":{"siteLines":false,"siteColumns":false,"unresolved":false,"provenance":false},
+ "files":[],"unresolved":[],
+ "nodes":[{"id":"1","kind":"function","name":"A","qname":"A","file":"a.go","start":1,"end":2},
+          {"id":"2","kind":"function","name":"B","qname":"B","file":"b.go","start":1,"end":2}],
+ "edges":[{"kind":"invokes","src":"1","dst":"2"},{"kind":"contains","src":"1","dst":"2"}]}`
+	snap := writeSnapshotFile(t, body)
+	code, _, stderr := runCLI("B", "--source", "snapshot:"+snap, "--format", "dot", "--out", filepath.Join(t.TempDir(), "x.dot"))
+	if code != 0 {
+		t.Fatalf("exit %d; stderr: %s", code, stderr)
+	}
+	wantMatch(t, `the t snapshot has edge kinds codeshot doesn't follow: invokes \(1\)\. Callers and callees come from calls, .* edges`, stderr)
+	wantNoMatch(t, `contains`, stderr)
+	wantNoMatch(t, `--architecture`, stderr)
+}
+
+// F6: a --depth hop that gets no answer is named, not skipped silently.
+func TestSymbolModeNamesSkippedDepthHops(t *testing.T) {
+	snap := testSnapshot(t)
+	snap.Nodes = append(snap.Nodes, snapshot.Node{ID: "anon", Kind: "function", File: "z.go"})
+	snap.Edges = append(snap.Edges, snapshot.Edge{Src: "anon", Dst: "B", Kind: "calls"})
+	var buf strings.Builder
+	if _, _, err := RunSymbolMode(NewSnapshotCalls(snap), "B", SymbolParams{Limit: 50, MaxRender: Unlimited, Depth: 2, MaxDepthNodes: 200}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	wantMatch(t, `--depth got no answer from the snapshot for 1 symbol\(s\) \('\(unnamed\)'\) — the graph past them is missing`, buf.String())
 }
