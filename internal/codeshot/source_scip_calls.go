@@ -54,10 +54,11 @@ func NewScipCalls(x *scipindex.Index) (*SnapshotCalls, string) {
 // scipTool names the indexer in advice as its metadata does ("scip-go",
 // "rust-analyzer"), not as the file-safe scipLabel, which may add a
 // "scip-" no binary has; "the SCIP indexer" when the name is missing or
-// carries control characters.
+// carries control or format characters (a bidi override would reorder the
+// advice on screen).
 func scipTool(x *scipindex.Index) string {
 	t := strings.TrimSpace(x.Tool)
-	if t == "" || strings.ContainsFunc(t, unicode.IsControl) {
+	if t == "" || strings.ContainsFunc(t, func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) {
 		return "the SCIP indexer"
 	}
 	return t
@@ -65,13 +66,14 @@ func scipTool(x *scipindex.Index) string {
 
 // scipRangeWarning counts the functions, methods and types the indexer gave
 // no enclosing range: references inside them can't be pinned to them, so
-// they are drawn from their file. (Old-style JS `obj.m = function () {}`
+// they are drawn from the ranged definition around them, or their file.
+// (Old-style JS `obj.m = function () {}`
 // isn't counted: scip-typescript gives it neither a range nor a function
 // kind, so it is no definition at all.)
 func scipRangeWarning(x *scipindex.Index, g *scipindex.CallGraph) string {
 	if g.Unranged == 0 {
 		return ""
 	}
-	return fmt.Sprintf("codeshot: %d of %d definitions in %s have no enclosing range, so the references inside them are drawn from their file rather than from them.",
+	return fmt.Sprintf("codeshot: %d of %d definitions in %s have no enclosing range, so the references inside them are drawn from the definition or file around them.",
 		g.Unranged, len(g.Defs), scipPhrase(x))
 }

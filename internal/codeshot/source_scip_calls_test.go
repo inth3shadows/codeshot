@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/inth3shadows/codeshot/internal/scipindex"
 	"github.com/scip-code/scip/bindings/go/scip"
 	"google.golang.org/protobuf/proto"
 )
@@ -176,39 +177,52 @@ func TestCLIDiffModeFromAScipIndex(t *testing.T) {
 	wantNoMatch(t, `codegraph`, stderr)
 }
 
-// F3 (PR #68 review): an index built in a subdirectory names files from
-// there, and --diff --path <subdir> matches git's changes against it.
-// F7: the advice names the indexer as its metadata does.
-func TestCLIDiffModeFromAScipIndexInASubdirectory(t *testing.T) {
+// M1 (PR #68 verify round): git names changed files from the repo root,
+// as an index built there does, so --diff --path <subdir> with that index
+// still matches. F7: the advice names the indexer as its metadata does.
+func TestCLIDiffModeUnderASubdirectoryMatchesRepoRootPaths(t *testing.T) {
 	requireBins(t, "dot", "git")
-	repo, run := gitRepo(t, "svc/src/a.go", "svc/lib/b.go", "svc/docs/x.md", "other/c.go")
-	svc := filepath.Join(repo, "svc")
-	writeScipCallsBy(t, svc, "rust-analyzer")
+	repo, run := gitRepo(t, "src/a.go", "lib/b.go", "docs/x.md")
+	index := writeScipCallsBy(t, repo, "rust-analyzer")
 	run("add", ".")
 	run("commit", "-q", "-m", "v1")
 	out := filepath.Join(t.TempDir(), "diff.dot")
-	for _, f := range []string{"svc/src/a.go", "other/c.go"} {
-		if err := os.WriteFile(filepath.Join(repo, f), []byte("v2\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(filepath.Join(repo, "src/a.go"), []byte("v2\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	code, _, stderr := runCLI("--diff", "--source", "scip", "--path", svc, "--format", "dot", "--out", out)
+	code, _, stderr := runCLI("--diff", "--source", "scip:"+index, "--path", filepath.Join(repo, "src"), "--format", "dot", "--out", out)
 	if code != 0 {
 		t.Fatalf("exit %d; stderr: %s", code, stderr)
 	}
 	got, _ := os.ReadFile(out)
 	wantMatch(t, `\bRun -> Helper\b`, string(got))
 
-	run("checkout", "-q", "--", "svc/src/a.go")
-	if err := os.WriteFile(filepath.Join(svc, "docs/x.md"), []byte("v2\n"), 0o644); err != nil {
+	run("checkout", "-q", "--", "src/a.go")
+	if err := os.WriteFile(filepath.Join(repo, "docs/x.md"), []byte("v2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, _, stderr = runCLI("--diff", "--source", "scip", "--path", svc, "--format", "dot", "--out", out)
+	code, _, stderr = runCLI("--diff", "--source", "scip", "--path", repo, "--format", "dot", "--out", out)
 	if code != 0 {
 		t.Fatalf("exit %d; stderr: %s", code, stderr)
 	}
-	wantMatch(t, `found 1 changed file\(s\)`, stderr) // other/c.go is outside --path
 	wantMatch(t, `a language rust-analyzer doesn't index, or the index may be stale \(rerun rust-analyzer on the current code\)`, stderr)
+}
+
+// V3 (PR #68 verify round): a control or format character in the indexer's
+// name (a bidi override) keeps it out of the advice.
+func TestScipToolRejectsControlAndFormatCharacters(t *testing.T) {
+	for name, want := range map[string]string{
+		"scip-go":          "scip-go",
+		" rust-analyzer ":  "rust-analyzer",
+		"":                 "the SCIP indexer",
+		"scip-go\n--evil":  "the SCIP indexer",
+		"scip-go\u202eog-": "the SCIP indexer",
+		"scip-go\u200dx":   "the SCIP indexer",
+	} {
+		if got := scipTool(&scipindex.Index{Tool: name}); got != want {
+			t.Errorf("scipTool(%q) = %q, want %q", name, got, want)
+		}
+	}
 }
 
 // F1 (PR #68 review): a symbol defined three times in one file (overloads)

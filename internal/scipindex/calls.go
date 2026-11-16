@@ -1,9 +1,7 @@
 package scipindex
 
 import (
-	"maps"
 	"path"
-	"slices"
 	"sort"
 	"strings"
 
@@ -80,9 +78,9 @@ func (x *Index) Calls() *CallGraph {
 	inFile := map[string][]container{}
 	type key struct{ sym, path string }
 	defAt := map[key]int{}
-	var unranged []bool // per Def: contains, but none of its definitions is ranged
-	for _, p := range slices.Sorted(maps.Keys(x.raw)) {
-		d := x.raw[p]
+	var unranged []bool          // per Def: contains, but none of its definitions is ranged
+	for _, doc := range x.Docs { // sorted by path
+		p, d := doc.Path, x.raw[doc.Path]
 		kinds := map[string]scip.SymbolInformation_Kind{}
 		for _, si := range d.GetSymbols() {
 			kinds[si.GetSymbol()] = si.GetKind()
@@ -152,7 +150,8 @@ func (x *Index) Calls() *CallGraph {
 		return best
 	}
 	seen := map[Ref]bool{}
-	for _, p := range slices.Sorted(maps.Keys(x.raw)) {
+	for _, doc := range x.Docs {
+		p := doc.Path
 		for _, o := range x.raw[p].GetOccurrences() {
 			sym := o.GetSymbol()
 			roles := o.GetSymbolRoles()
