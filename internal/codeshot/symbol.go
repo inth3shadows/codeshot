@@ -1,43 +1,32 @@
 package codeshot
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/inth3shadows/codeshot/internal/codegraph"
 )
 
-// resolveSymbol maps a possibly partial query to codegraph's canonical name:
-// callers/callees fuzzy-match but echo the raw query back.
-func resolveSymbol(cg *codegraph.Client, query, repoPath string) (string, error) {
-	nodes, err := cg.Query(repoPath, 1, query)
-	if err != nil {
-		return "", err
-	}
-	if len(nodes) == 0 {
-		return "", &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: symbol '%s' not found in codegraph's index — check the spelling/casing, or confirm --path points at the repo that contains it.", query)}
-	}
-	return nodes[0].Name, nil
-}
-
 // collectTransitive walks hops 2..maxDepth in one direction, sharing the
-// discovered set (and its node budget) across both directions. One node's
-// exec failure is skipped; a fatal codegraph answer still ends the run.
-func collectTransitive(cg *codegraph.Client, direction, repoPath string, limit, maxDepth int, seeds []Node, discovered map[string]bool, budget int) ([]Edge, bool, error) {
+// discovered set (and its node budget) across both directions. A node whose
+// lookup fails without a fatal error (a snapshot miss, a codegraph exec
+// failure) is skipped and added to *skipped; a fatal error ends the run, and
+// for codegraph that includes a hop it reports as not found (#55).
+func collectTransitive(src CallSource, direction string, limit, maxDepth int, seeds []Node, discovered map[string]bool, budget int, skipped *[]Node) ([]Edge, bool, error) {
 	var edges []Edge
 	frontier := seeds
 	truncated := len(discovered) >= budget
 	for hop := 2; hop <= maxDepth && len(frontier) > 0 && !truncated; hop++ {
 		var next []Node
 		for _, node := range frontier {
-			r, err := cg.Edges(direction, repoPath, limit, node.Name, true)
+			r, err := src.Edges(direction, node.Name, limit, true)
 			if err != nil {
 				if codegraph.IsFatal(err) {
 					return nil, false, err
 				}
+				*skipped = append(*skipped, node)
 				continue
 			}
-			for _, x := range DedupeNodes(r.List(direction)) {
+			for _, x := range DedupeNodes(SortSymbolsForEnumeration(r.List(direction))) {
 				if direction == "callers" {
 					edges = append(edges, Edge{From: x, To: node, Depth: hop})
 				} else {
@@ -68,23 +57,27 @@ type SymbolParams struct {
 
 // RunSymbolMode draws one symbol's caller/callee trail. Returns the DOT and
 // the resolved symbol name.
-func RunSymbolMode(cg *codegraph.Client, repoPath, symbol string, p SymbolParams, stderr io.Writer) (string, string, error) {
-	resolved, err := resolveSymbol(cg, symbol, repoPath)
+func RunSymbolMode(src CallSource, symbol string, p SymbolParams, stderr io.Writer) (string, string, error) {
+	resolved, err := src.Resolve(symbol)
 	if err != nil {
 		return "", "", err
 	}
-	callersR, err := cg.Edges("callers", repoPath, p.Limit, resolved, true)
+	w := src.Wording()
+	callersR, err := src.Edges("callers", resolved, p.Limit, true)
 	if err != nil {
 		return "", "", err
 	}
-	calleesR, err := cg.Edges("callees", repoPath, p.Limit, resolved, true)
+	calleesR, err := src.Edges("callees", resolved, p.Limit, true)
 	if err != nil {
 		return "", "", err
 	}
-	callers, callees := callersR.List("callers"), calleesR.List("callees")
-	warn(stderr, TruncationWarning("callers", callers, p.Limit, ReadTruncation(callersR.Truncated, callersR.Total, callers, p.Limit)))
-	warn(stderr, TruncationWarning("callees", callees, p.Limit, ReadTruncation(calleesR.Truncated, calleesR.Total, callees, p.Limit)))
-	warn(stderr, EmptyGraphWarning(resolved, len(callers), len(callees)))
+	// Sorted, so the diagram never depends on the order a source lists
+	// neighbours in (codegraph's SQL has no ORDER BY; a snapshot keeps its
+	// file's order).
+	callers, callees := SortSymbolsForEnumeration(callersR.List("callers")), SortSymbolsForEnumeration(calleesR.List("callees"))
+	warn(stderr, truncationWarning(w, "callers", callers, p.Limit, ReadTruncation(callersR.Truncated, callersR.Total, callers, p.Limit)))
+	warn(stderr, truncationWarning(w, "callees", callees, p.Limit, ReadTruncation(calleesR.Truncated, calleesR.Total, callees, p.Limit)))
+	warn(stderr, emptyGraphWarning(w, resolved, len(callers), len(callees)))
 
 	var trans []Edge
 	if p.Depth > 1 {
@@ -92,15 +85,17 @@ func RunSymbolMode(cg *codegraph.Client, repoPath, symbol string, p SymbolParams
 		for _, n := range DedupeNodes(append(append([]Node{}, callers...), callees...)) {
 			discovered[NodeKey(n)] = true
 		}
-		ce, ct, err := collectTransitive(cg, "callers", repoPath, p.Limit, p.Depth, DedupeNodes(callers), discovered, p.MaxDepthNodes)
+		var skipped []Node
+		ce, ct, err := collectTransitive(src, "callers", p.Limit, p.Depth, DedupeNodes(callers), discovered, p.MaxDepthNodes, &skipped)
 		if err != nil {
 			return "", "", err
 		}
-		ee, et, err := collectTransitive(cg, "callees", repoPath, p.Limit, p.Depth, DedupeNodes(callees), discovered, p.MaxDepthNodes)
+		ee, et, err := collectTransitive(src, "callees", p.Limit, p.Depth, DedupeNodes(callees), discovered, p.MaxDepthNodes, &skipped)
 		if err != nil {
 			return "", "", err
 		}
 		trans = append(ce, ee...)
+		warn(stderr, depthSkipWarning(w, skipped))
 		warn(stderr, DepthBudgetWarning(ct || et, p.MaxDepthNodes))
 	}
 

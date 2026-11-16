@@ -168,8 +168,8 @@ func TestCLIArchitectureFromASnapshotNeedsNoCodegraph(t *testing.T) {
 
 func TestCLISourceIsValidatedBeforeAnyWork(t *testing.T) {
 	wantRejected(t, `--source must be 'codegraph', 'snapshot:<file>' or 'scip\[:<file>\]', got 'snapshot:'`, "--architecture", "--source", "snapshot:")
-	wantRejected(t, `works with --architecture only so far`, "Foo", "--source", "snapshot:x.json")
-	wantRejected(t, `works with --architecture only so far`, "--diff", "--source", "snapshot:x.json")
+	wantRejected(t, `could not read snapshot 'x\.json'`, "Foo", "--source", "snapshot:x.json")
+	wantRejected(t, `could not read snapshot 'x\.json'`, "--diff", "--source", "snapshot:x.json")
 	wantRejected(t, `could not read snapshot '.*': schema is "graph-assay/snapshot@2"`, "--architecture", "--source",
 		"snapshot:"+writeSnapshotFile(t, strings.Replace(cliSnapshot, "@1", "@2", 1)))
 	wantRejected(t, `could not read snapshot 'missing\.json'`, "--architecture", "--source", "snapshot:missing.json")
@@ -199,10 +199,10 @@ func TestFileEdgesDoNotDependOnRowOrder(t *testing.T) {
 	}
 }
 
-// F5: --source is --architecture-only, whatever its value.
-func TestCLISourceCodegraphIsRejectedOutsideArchitecture(t *testing.T) {
-	wantRejected(t, `--source works with --architecture only so far`, "Foo", "--source", "codegraph")
-	wantRejected(t, `--source works with --architecture only so far`, "--diff", "--source", "codegraph")
+// P2c-1: codegraph and snapshots feed every mode; SCIP only --architecture.
+func TestCLIScipSourceIsRejectedOutsideArchitecture(t *testing.T) {
+	wantRejected(t, `--source scip works with --architecture only so far`, "Foo", "--source", "scip")
+	wantRejected(t, `--source scip works with --architecture only so far`, "--diff", "--source", "scip:x.scip")
 }
 
 // F7: cheap flag checks run before the snapshot is read, so a typo is

@@ -15,110 +15,110 @@
 <path fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5" d="M609.6,-737C609.6,-737 552.3,-737 552.3,-737 546.3,-737 540.3,-731 540.3,-725 540.3,-725 540.3,-713 540.3,-713 540.3,-707 546.3,-701 552.3,-701 552.3,-701 609.6,-701 609.6,-701 615.6,-701 621.6,-707 621.6,-713 621.6,-713 621.6,-725 621.6,-725 621.6,-731 615.6,-737 609.6,-737"/>
 <text xml:space="preserve" text-anchor="middle" x="580.95" y="-715.3" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#0f172a">BuildDot</text>
 </g>
-<!-- DedupeNodes -->
+<!-- Node -->
 <g id="node26" class="node">
-<title>DedupeNodes</title>
-<g id="a_node26"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M792.77,-1195C792.77,-1195 711.48,-1195 711.48,-1195 705.48,-1195 699.48,-1189 699.48,-1183 699.48,-1183 699.48,-1171 699.48,-1171 699.48,-1165 705.48,-1159 711.48,-1159 711.48,-1159 792.77,-1159 792.77,-1159 798.77,-1159 804.77,-1165 804.77,-1171 804.77,-1171 804.77,-1183 804.77,-1183 804.77,-1189 798.77,-1195 792.77,-1195"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1173.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DedupeNodes</text>
+<title>Node</title>
+<g id="a_node26"><a xlink:title="internal/codegraph/codegraph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M768.77,-1195C768.77,-1195 735.48,-1195 735.48,-1195 729.48,-1195 723.48,-1189 723.48,-1183 723.48,-1183 723.48,-1171 723.48,-1171 723.48,-1165 729.48,-1159 735.48,-1159 735.48,-1159 768.77,-1159 768.77,-1159 774.77,-1159 780.77,-1165 780.77,-1171 780.77,-1171 780.77,-1183 780.77,-1183 780.77,-1189 774.77,-1195 768.77,-1195"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1173.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">Node</text>
 </a>
 </g>
 </g>
-<!-- BuildDot&#45;&gt;DedupeNodes -->
+<!-- BuildDot&#45;&gt;Node -->
 <g id="edge25" class="edge">
-<title>BuildDot&#45;&gt;DedupeNodes</title>
-<path fill="none" stroke="#94a3b8" d="M586.08,-737.67C604.3,-820.04 676.6,-1147 676.6,-1147 676.6,-1147 686.22,-1150.87 698.54,-1155.83"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="697.45,-1157.66 703.8,-1157.95 699.01,-1153.76 697.45,-1157.66"/>
+<title>BuildDot&#45;&gt;Node</title>
+<path fill="none" stroke="#94a3b8" d="M586.08,-737.67C604.3,-820.04 676.6,-1147 676.6,-1147 676.6,-1147 696.8,-1155.13 716.17,-1162.93"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="715.2,-1164.8 721.55,-1165.09 716.76,-1160.9 715.2,-1164.8"/>
 </g>
-<!-- DedupeEdges -->
+<!-- DotOptions -->
 <g id="node27" class="node">
-<title>DedupeEdges</title>
-<g id="a_node27"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M792.02,-1134C792.02,-1134 712.23,-1134 712.23,-1134 706.23,-1134 700.23,-1128 700.23,-1122 700.23,-1122 700.23,-1110 700.23,-1110 700.23,-1104 706.23,-1098 712.23,-1098 712.23,-1098 792.02,-1098 792.02,-1098 798.02,-1098 804.02,-1104 804.02,-1110 804.02,-1110 804.02,-1122 804.02,-1122 804.02,-1128 798.02,-1134 792.02,-1134"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1112.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DedupeEdges</text>
+<title>DotOptions</title>
+<g id="a_node27"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M785.65,-1134C785.65,-1134 718.6,-1134 718.6,-1134 712.6,-1134 706.6,-1128 706.6,-1122 706.6,-1122 706.6,-1110 706.6,-1110 706.6,-1104 712.6,-1098 718.6,-1098 718.6,-1098 785.65,-1098 785.65,-1098 791.65,-1098 797.65,-1104 797.65,-1110 797.65,-1110 797.65,-1122 797.65,-1122 797.65,-1128 791.65,-1134 785.65,-1134"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1112.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DotOptions</text>
 </a>
 </g>
 </g>
-<!-- BuildDot&#45;&gt;DedupeEdges -->
+<!-- BuildDot&#45;&gt;DotOptions -->
 <g id="edge26" class="edge">
-<title>BuildDot&#45;&gt;DedupeEdges</title>
-<path fill="none" stroke="#94a3b8" d="M586.77,-737.7C606.06,-812.49 676.6,-1086 676.6,-1086 676.6,-1086 686.22,-1089.87 698.54,-1094.83"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="697.45,-1096.66 703.8,-1096.95 699.01,-1092.76 697.45,-1096.66"/>
+<title>BuildDot&#45;&gt;DotOptions</title>
+<path fill="none" stroke="#94a3b8" d="M586.77,-737.7C606.06,-812.49 676.6,-1086 676.6,-1086 676.6,-1086 686.58,-1090.02 699.23,-1095.11"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="698.3,-1097 704.65,-1097.29 699.87,-1093.1 698.3,-1097"/>
 </g>
-<!-- AllocateRenderBudget -->
+<!-- edgeAttrs -->
 <g id="node28" class="node">
-<title>AllocateRenderBudget</title>
-<g id="a_node28"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M815.65,-1073C815.65,-1073 688.6,-1073 688.6,-1073 682.6,-1073 676.6,-1067 676.6,-1061 676.6,-1061 676.6,-1049 676.6,-1049 676.6,-1043 682.6,-1037 688.6,-1037 688.6,-1037 815.65,-1037 815.65,-1037 821.65,-1037 827.65,-1043 827.65,-1049 827.65,-1049 827.65,-1061 827.65,-1061 827.65,-1067 821.65,-1073 815.65,-1073"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1051.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">AllocateRenderBudget</text>
+<title>edgeAttrs</title>
+<g id="a_node28"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M781.52,-1073C781.52,-1073 722.73,-1073 722.73,-1073 716.73,-1073 710.73,-1067 710.73,-1061 710.73,-1061 710.73,-1049 710.73,-1049 710.73,-1043 716.73,-1037 722.73,-1037 722.73,-1037 781.52,-1037 781.52,-1037 787.52,-1037 793.52,-1043 793.52,-1049 793.52,-1049 793.52,-1061 793.52,-1061 793.52,-1067 787.52,-1073 781.52,-1073"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1051.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">edgeAttrs</text>
 </a>
 </g>
 </g>
-<!-- BuildDot&#45;&gt;AllocateRenderBudget -->
+<!-- BuildDot&#45;&gt;edgeAttrs -->
 <g id="edge27" class="edge">
-<title>BuildDot&#45;&gt;AllocateRenderBudget</title>
-<path fill="none" stroke="#94a3b8" d="M587.73,-737.68C608.28,-804.12 676.6,-1025 676.6,-1025 676.6,-1025 686.22,-1028.87 698.54,-1033.83"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="697.45,-1035.66 703.8,-1035.95 699.01,-1031.76 697.45,-1035.66"/>
+<title>BuildDot&#45;&gt;edgeAttrs</title>
+<path fill="none" stroke="#94a3b8" d="M587.73,-737.68C608.28,-804.12 676.6,-1025 676.6,-1025 676.6,-1025 688.91,-1029.96 703.53,-1035.84"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="702.62,-1037.74 708.97,-1038.03 704.19,-1033.84 702.62,-1037.74"/>
 </g>
-<!-- newIdentities -->
+<!-- graphAttrs -->
 <g id="node29" class="node">
-<title>newIdentities</title>
-<g id="a_node29"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M791.27,-1012C791.27,-1012 712.98,-1012 712.98,-1012 706.98,-1012 700.98,-1006 700.98,-1000 700.98,-1000 700.98,-988 700.98,-988 700.98,-982 706.98,-976 712.98,-976 712.98,-976 791.27,-976 791.27,-976 797.27,-976 803.27,-982 803.27,-988 803.27,-988 803.27,-1000 803.27,-1000 803.27,-1006 797.27,-1012 791.27,-1012"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-990.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">newIdentities</text>
+<title>graphAttrs</title>
+<g id="a_node29"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M783.77,-1012C783.77,-1012 720.48,-1012 720.48,-1012 714.48,-1012 708.48,-1006 708.48,-1000 708.48,-1000 708.48,-988 708.48,-988 708.48,-982 714.48,-976 720.48,-976 720.48,-976 783.77,-976 783.77,-976 789.77,-976 795.77,-982 795.77,-988 795.77,-988 795.77,-1000 795.77,-1000 795.77,-1006 789.77,-1012 783.77,-1012"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-990.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">graphAttrs</text>
 </a>
 </g>
 </g>
-<!-- BuildDot&#45;&gt;newIdentities -->
+<!-- BuildDot&#45;&gt;graphAttrs -->
 <g id="edge28" class="edge">
-<title>BuildDot&#45;&gt;newIdentities</title>
-<path fill="none" stroke="#94a3b8" d="M589.06,-737.41C611.08,-794.39 676.6,-964 676.6,-964 676.6,-964 686.22,-967.87 698.54,-972.83"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="697.45,-974.66 703.8,-974.95 699.01,-970.76 697.45,-974.66"/>
+<title>BuildDot&#45;&gt;graphAttrs</title>
+<path fill="none" stroke="#94a3b8" d="M589.06,-737.41C611.08,-794.39 676.6,-964 676.6,-964 676.6,-964 687.71,-968.47 701.34,-973.96"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="700.45,-975.86 706.8,-976.16 702.02,-971.97 700.45,-975.86"/>
 </g>
-<!-- esc -->
+<!-- nodeAttrs -->
 <g id="node30" class="node">
-<title>esc</title>
-<g id="a_node30"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M767.12,-951C767.12,-951 737.12,-951 737.12,-951 731.12,-951 725.12,-945 725.12,-939 725.12,-939 725.12,-927 725.12,-927 725.12,-921 731.12,-915 737.12,-915 737.12,-915 767.12,-915 767.12,-915 773.12,-915 779.12,-921 779.12,-927 779.12,-927 779.12,-939 779.12,-939 779.12,-945 773.12,-951 767.12,-951"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-929.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">esc</text>
+<title>nodeAttrs</title>
+<g id="a_node30"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M781.52,-951C781.52,-951 722.73,-951 722.73,-951 716.73,-951 710.73,-945 710.73,-939 710.73,-939 710.73,-927 710.73,-927 710.73,-921 716.73,-915 722.73,-915 722.73,-915 781.52,-915 781.52,-915 787.52,-915 793.52,-921 793.52,-927 793.52,-927 793.52,-939 793.52,-939 793.52,-945 787.52,-951 781.52,-951"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-929.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">nodeAttrs</text>
 </a>
 </g>
 </g>
-<!-- BuildDot&#45;&gt;esc -->
+<!-- BuildDot&#45;&gt;nodeAttrs -->
 <g id="edge29" class="edge">
-<title>BuildDot&#45;&gt;esc</title>
-<path fill="none" stroke="#94a3b8" d="M591.55,-737.66C615.61,-784.43 676.6,-903 676.6,-903 676.6,-903 697.9,-911.57 717.73,-919.56"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="716.89,-921.48 723.24,-921.77 718.45,-917.58 716.89,-921.48"/>
-</g>
-<!-- idOf -->
-<g id="node31" class="node">
-<title>idOf</title>
-<g id="a_node31"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M767.12,-890C767.12,-890 737.12,-890 737.12,-890 731.12,-890 725.12,-884 725.12,-878 725.12,-878 725.12,-866 725.12,-866 725.12,-860 731.12,-854 737.12,-854 737.12,-854 767.12,-854 767.12,-854 773.12,-854 779.12,-860 779.12,-866 779.12,-866 779.12,-878 779.12,-878 779.12,-884 773.12,-890 767.12,-890"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-868.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">idOf</text>
-</a>
-</g>
-</g>
-<!-- BuildDot&#45;&gt;idOf -->
-<g id="edge30" class="edge">
-<title>BuildDot&#45;&gt;idOf</title>
-<path fill="none" stroke="#94a3b8" d="M596.33,-737.68C622.8,-772.09 676.6,-842 676.6,-842 676.6,-842 697.9,-850.57 717.73,-858.56"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="716.89,-860.48 723.24,-860.77 718.45,-856.58 716.89,-860.48"/>
+<title>BuildDot&#45;&gt;nodeAttrs</title>
+<path fill="none" stroke="#94a3b8" d="M591.55,-737.66C615.61,-784.43 676.6,-903 676.6,-903 676.6,-903 688.91,-907.96 703.53,-913.84"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="702.62,-915.74 708.97,-916.03 704.19,-911.84 702.62,-915.74"/>
 </g>
 <!-- nodeDecl -->
-<g id="node32" class="node">
+<g id="node31" class="node">
 <title>nodeDecl</title>
-<g id="a_node32"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M780.02,-829C780.02,-829 724.23,-829 724.23,-829 718.23,-829 712.23,-823 712.23,-817 712.23,-817 712.23,-805 712.23,-805 712.23,-799 718.23,-793 724.23,-793 724.23,-793 780.02,-793 780.02,-793 786.02,-793 792.02,-799 792.02,-805 792.02,-805 792.02,-817 792.02,-817 792.02,-823 786.02,-829 780.02,-829"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-807.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">nodeDecl</text>
+<g id="a_node31"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M780.02,-890C780.02,-890 724.23,-890 724.23,-890 718.23,-890 712.23,-884 712.23,-878 712.23,-878 712.23,-866 712.23,-866 712.23,-860 718.23,-854 724.23,-854 724.23,-854 780.02,-854 780.02,-854 786.02,-854 792.02,-860 792.02,-866 792.02,-866 792.02,-878 792.02,-878 792.02,-884 786.02,-890 780.02,-890"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-868.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">nodeDecl</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;nodeDecl -->
-<g id="edge31" class="edge">
+<g id="edge30" class="edge">
 <title>BuildDot&#45;&gt;nodeDecl</title>
-<path fill="none" stroke="#94a3b8" d="M610.35,-737.6C638.23,-755.86 676.6,-781 676.6,-781 676.6,-781 689.77,-786.3 705.04,-792.45"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="703.93,-794.26 710.28,-794.56 705.49,-790.37 703.93,-794.26"/>
+<path fill="none" stroke="#94a3b8" d="M596.33,-737.68C622.8,-772.09 676.6,-842 676.6,-842 676.6,-842 689.77,-847.3 705.04,-853.45"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="703.93,-855.26 710.28,-855.56 705.49,-851.37 703.93,-855.26"/>
+</g>
+<!-- rootStyle -->
+<g id="node32" class="node">
+<title>rootStyle</title>
+<g id="a_node32"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M779.65,-829C779.65,-829 724.6,-829 724.6,-829 718.6,-829 712.6,-823 712.6,-817 712.6,-817 712.6,-805 712.6,-805 712.6,-799 718.6,-793 724.6,-793 724.6,-793 779.65,-793 779.65,-793 785.65,-793 791.65,-799 791.65,-805 791.65,-805 791.65,-817 791.65,-817 791.65,-823 785.65,-829 779.65,-829"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-807.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">rootStyle</text>
+</a>
+</g>
+</g>
+<!-- BuildDot&#45;&gt;rootStyle -->
+<g id="edge31" class="edge">
+<title>BuildDot&#45;&gt;rootStyle</title>
+<path fill="none" stroke="#94a3b8" d="M610.35,-737.6C638.23,-755.86 676.6,-781 676.6,-781 676.6,-781 689.99,-786.39 705.41,-792.6"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="704.36,-794.44 710.71,-794.73 705.93,-790.54 704.36,-794.44"/>
 </g>
 <!-- styleSuffix -->
 <g id="node33" class="node">
@@ -135,298 +135,298 @@
 <path fill="none" stroke="#94a3b8" d="M622.04,-726.35C645.7,-730.68 675.84,-736.21 701.05,-740.82"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="700.59,-742.88 706.87,-741.89 701.35,-738.74 700.59,-742.88"/>
 </g>
-<!-- edgeStyleAttrs -->
+<!-- AllocateRenderBudget -->
 <g id="node34" class="node">
-<title>edgeStyleAttrs</title>
+<title>AllocateRenderBudget</title>
 <g id="a_node34"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M795.4,-707C795.4,-707 708.85,-707 708.85,-707 702.85,-707 696.85,-701 696.85,-695 696.85,-695 696.85,-683 696.85,-683 696.85,-677 702.85,-671 708.85,-671 708.85,-671 795.4,-671 795.4,-671 801.4,-671 807.4,-677 807.4,-683 807.4,-683 807.4,-695 807.4,-695 807.4,-701 801.4,-707 795.4,-707"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-685.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">edgeStyleAttrs</text>
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M815.65,-707C815.65,-707 688.6,-707 688.6,-707 682.6,-707 676.6,-701 676.6,-695 676.6,-695 676.6,-683 676.6,-683 676.6,-677 682.6,-671 688.6,-671 688.6,-671 815.65,-671 815.65,-671 821.65,-671 827.65,-677 827.65,-683 827.65,-683 827.65,-695 827.65,-695 827.65,-701 821.65,-707 815.65,-707"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-685.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">AllocateRenderBudget</text>
 </a>
 </g>
 </g>
-<!-- BuildDot&#45;&gt;edgeStyleAttrs -->
+<!-- BuildDot&#45;&gt;AllocateRenderBudget -->
 <g id="edge33" class="edge">
-<title>BuildDot&#45;&gt;edgeStyleAttrs</title>
-<path fill="none" stroke="#94a3b8" d="M622.04,-711.89C642.14,-708.33 666.93,-703.93 689.4,-699.95"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="689.57,-702.05 695.11,-698.93 688.84,-697.91 689.57,-702.05"/>
+<title>BuildDot&#45;&gt;AllocateRenderBudget</title>
+<path fill="none" stroke="#94a3b8" d="M622.04,-711.89C636.23,-709.37 652.76,-706.44 669.16,-703.53"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="669.14,-705.67 674.68,-702.56 668.41,-701.54 669.14,-705.67"/>
+</g>
+<!-- DedupeEdges -->
+<g id="node35" class="node">
+<title>DedupeEdges</title>
+<g id="a_node35"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M792.02,-646C792.02,-646 712.23,-646 712.23,-646 706.23,-646 700.23,-640 700.23,-634 700.23,-634 700.23,-622 700.23,-622 700.23,-616 706.23,-610 712.23,-610 712.23,-610 792.02,-610 792.02,-610 798.02,-610 804.02,-616 804.02,-622 804.02,-622 804.02,-634 804.02,-634 804.02,-640 798.02,-646 792.02,-646"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-624.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DedupeEdges</text>
+</a>
+</g>
+</g>
+<!-- BuildDot&#45;&gt;DedupeEdges -->
+<g id="edge34" class="edge">
+<title>BuildDot&#45;&gt;DedupeEdges</title>
+<path fill="none" stroke="#94a3b8" d="M611.38,-700.34C639.16,-682.73 676.6,-659 676.6,-659 676.6,-659 687.13,-654.62 700.28,-649.15"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-651.22 705.51,-646.97 699.17,-647.34 700.78,-651.22"/>
+</g>
+<!-- DedupeNodes -->
+<g id="node36" class="node">
+<title>DedupeNodes</title>
+<g id="a_node36"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M792.77,-585C792.77,-585 711.48,-585 711.48,-585 705.48,-585 699.48,-579 699.48,-573 699.48,-573 699.48,-561 699.48,-561 699.48,-555 705.48,-549 711.48,-549 711.48,-549 792.77,-549 792.77,-549 798.77,-549 804.77,-555 804.77,-561 804.77,-561 804.77,-573 804.77,-573 804.77,-579 798.77,-585 792.77,-585"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-563.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DedupeNodes</text>
+</a>
+</g>
+</g>
+<!-- BuildDot&#45;&gt;DedupeNodes -->
+<g id="edge35" class="edge">
+<title>BuildDot&#45;&gt;DedupeNodes</title>
+<path fill="none" stroke="#94a3b8" d="M596.53,-700.36C623.08,-666.42 676.6,-598 676.6,-598 676.6,-598 687.13,-593.62 700.28,-588.15"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-590.22 705.51,-585.97 699.17,-586.34 700.78,-590.22"/>
 </g>
 <!-- DepthColor -->
-<g id="node35" class="node">
+<g id="node37" class="node">
 <title>DepthColor</title>
-<g id="a_node35"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M785.27,-646C785.27,-646 718.98,-646 718.98,-646 712.98,-646 706.98,-640 706.98,-634 706.98,-634 706.98,-622 706.98,-622 706.98,-616 712.98,-610 718.98,-610 718.98,-610 785.27,-610 785.27,-610 791.27,-610 797.27,-616 797.27,-622 797.27,-622 797.27,-634 797.27,-634 797.27,-640 791.27,-646 785.27,-646"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-624.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DepthColor</text>
+<g id="a_node37"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M785.27,-524C785.27,-524 718.98,-524 718.98,-524 712.98,-524 706.98,-518 706.98,-512 706.98,-512 706.98,-500 706.98,-500 706.98,-494 712.98,-488 718.98,-488 718.98,-488 785.27,-488 785.27,-488 791.27,-488 797.27,-494 797.27,-500 797.27,-500 797.27,-512 797.27,-512 797.27,-518 791.27,-524 785.27,-524"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-502.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DepthColor</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;DepthColor -->
-<g id="edge34" class="edge">
-<title>BuildDot&#45;&gt;DepthColor</title>
-<path fill="none" stroke="#94a3b8" d="M611.38,-700.34C639.16,-682.73 676.6,-659 676.6,-659 676.6,-659 687.13,-654.62 700.28,-649.15"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-651.22 705.51,-646.97 699.17,-647.34 700.78,-651.22"/>
-</g>
-<!-- rootStyle -->
-<g id="node36" class="node">
-<title>rootStyle</title>
-<g id="a_node36"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M779.65,-585C779.65,-585 724.6,-585 724.6,-585 718.6,-585 712.6,-579 712.6,-573 712.6,-573 712.6,-561 712.6,-561 712.6,-555 718.6,-549 724.6,-549 724.6,-549 779.65,-549 779.65,-549 785.65,-549 791.65,-555 791.65,-561 791.65,-561 791.65,-573 791.65,-573 791.65,-579 785.65,-585 779.65,-585"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-563.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">rootStyle</text>
-</a>
-</g>
-</g>
-<!-- BuildDot&#45;&gt;rootStyle -->
-<g id="edge35" class="edge">
-<title>BuildDot&#45;&gt;rootStyle</title>
-<path fill="none" stroke="#94a3b8" d="M596.53,-700.36C623.08,-666.42 676.6,-598 676.6,-598 676.6,-598 689.99,-592.43 705.41,-586.01"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="705.99,-588.05 710.72,-583.81 704.37,-584.17 705.99,-588.05"/>
-</g>
-<!-- edgeAttrs -->
-<g id="node37" class="node">
-<title>edgeAttrs</title>
-<g id="a_node37"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M781.52,-524C781.52,-524 722.73,-524 722.73,-524 716.73,-524 710.73,-518 710.73,-512 710.73,-512 710.73,-500 710.73,-500 710.73,-494 716.73,-488 722.73,-488 722.73,-488 781.52,-488 781.52,-488 787.52,-488 793.52,-494 793.52,-500 793.52,-500 793.52,-512 793.52,-512 793.52,-518 787.52,-524 781.52,-524"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-502.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">edgeAttrs</text>
-</a>
-</g>
-</g>
-<!-- BuildDot&#45;&gt;edgeAttrs -->
 <g id="edge36" class="edge">
-<title>BuildDot&#45;&gt;edgeAttrs</title>
-<path fill="none" stroke="#94a3b8" d="M591.55,-700.55C615.61,-654.28 676.6,-537 676.6,-537 676.6,-537 688.91,-531.88 703.53,-525.8"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="704.24,-527.78 708.98,-523.53 702.63,-523.9 704.24,-527.78"/>
+<title>BuildDot&#45;&gt;DepthColor</title>
+<path fill="none" stroke="#94a3b8" d="M591.55,-700.55C615.61,-654.28 676.6,-537 676.6,-537 676.6,-537 687.13,-532.62 700.28,-527.15"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-529.22 705.51,-524.97 699.17,-525.34 700.78,-529.22"/>
 </g>
-<!-- nodeAttrs -->
+<!-- edgeStyleAttrs -->
 <g id="node38" class="node">
-<title>nodeAttrs</title>
-<g id="a_node38"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M781.52,-463C781.52,-463 722.73,-463 722.73,-463 716.73,-463 710.73,-457 710.73,-451 710.73,-451 710.73,-439 710.73,-439 710.73,-433 716.73,-427 722.73,-427 722.73,-427 781.52,-427 781.52,-427 787.52,-427 793.52,-433 793.52,-439 793.52,-439 793.52,-451 793.52,-451 793.52,-457 787.52,-463 781.52,-463"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-441.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">nodeAttrs</text>
+<title>edgeStyleAttrs</title>
+<g id="a_node38"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M795.4,-463C795.4,-463 708.85,-463 708.85,-463 702.85,-463 696.85,-457 696.85,-451 696.85,-451 696.85,-439 696.85,-439 696.85,-433 702.85,-427 708.85,-427 708.85,-427 795.4,-427 795.4,-427 801.4,-427 807.4,-433 807.4,-439 807.4,-439 807.4,-451 807.4,-451 807.4,-457 801.4,-463 795.4,-463"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-441.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">edgeStyleAttrs</text>
 </a>
 </g>
 </g>
-<!-- BuildDot&#45;&gt;nodeAttrs -->
+<!-- BuildDot&#45;&gt;edgeStyleAttrs -->
 <g id="edge37" class="edge">
-<title>BuildDot&#45;&gt;nodeAttrs</title>
-<path fill="none" stroke="#94a3b8" d="M589.22,-700.34C611.38,-643.43 676.6,-476 676.6,-476 676.6,-476 688.91,-470.88 703.53,-464.8"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="704.24,-466.78 708.98,-462.53 702.63,-462.9 704.24,-466.78"/>
+<title>BuildDot&#45;&gt;edgeStyleAttrs</title>
+<path fill="none" stroke="#94a3b8" d="M589.22,-700.34C611.38,-643.43 676.6,-476 676.6,-476 676.6,-476 687.13,-471.62 700.28,-466.15"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-468.22 705.51,-463.97 699.17,-464.34 700.78,-468.22"/>
 </g>
-<!-- graphAttrs -->
+<!-- esc -->
 <g id="node39" class="node">
-<title>graphAttrs</title>
-<g id="a_node39"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M783.77,-402C783.77,-402 720.48,-402 720.48,-402 714.48,-402 708.48,-396 708.48,-390 708.48,-390 708.48,-378 708.48,-378 708.48,-372 714.48,-366 720.48,-366 720.48,-366 783.77,-366 783.77,-366 789.77,-366 795.77,-372 795.77,-378 795.77,-378 795.77,-390 795.77,-390 795.77,-396 789.77,-402 783.77,-402"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-380.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">graphAttrs</text>
+<title>esc</title>
+<g id="a_node39"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M767.12,-402C767.12,-402 737.12,-402 737.12,-402 731.12,-402 725.12,-396 725.12,-390 725.12,-390 725.12,-378 725.12,-378 725.12,-372 731.12,-366 737.12,-366 737.12,-366 767.12,-366 767.12,-366 773.12,-366 779.12,-372 779.12,-378 779.12,-378 779.12,-390 779.12,-390 779.12,-396 773.12,-402 767.12,-402"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-380.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">esc</text>
 </a>
 </g>
 </g>
-<!-- BuildDot&#45;&gt;graphAttrs -->
+<!-- BuildDot&#45;&gt;esc -->
 <g id="edge38" class="edge">
-<title>BuildDot&#45;&gt;graphAttrs</title>
-<path fill="none" stroke="#94a3b8" d="M587.73,-700.44C608.28,-634.44 676.6,-415 676.6,-415 676.6,-415 687.71,-410.38 701.34,-404.71"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="702.07,-406.68 706.81,-402.43 700.46,-402.8 702.07,-406.68"/>
+<title>BuildDot&#45;&gt;esc</title>
+<path fill="none" stroke="#94a3b8" d="M587.73,-700.44C608.28,-634.44 676.6,-415 676.6,-415 676.6,-415 697.9,-406.14 717.73,-397.89"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="718.51,-399.84 723.24,-395.6 716.9,-395.96 718.51,-399.84"/>
 </g>
-<!-- Node -->
+<!-- idOf -->
 <g id="node40" class="node">
-<title>Node</title>
-<g id="a_node40"><a xlink:title="internal/codegraph/codegraph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M768.77,-341C768.77,-341 735.48,-341 735.48,-341 729.48,-341 723.48,-335 723.48,-329 723.48,-329 723.48,-317 723.48,-317 723.48,-311 729.48,-305 735.48,-305 735.48,-305 768.77,-305 768.77,-305 774.77,-305 780.77,-311 780.77,-317 780.77,-317 780.77,-329 780.77,-329 780.77,-335 774.77,-341 768.77,-341"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-319.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">Node</text>
+<title>idOf</title>
+<g id="a_node40"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M767.12,-341C767.12,-341 737.12,-341 737.12,-341 731.12,-341 725.12,-335 725.12,-329 725.12,-329 725.12,-317 725.12,-317 725.12,-311 731.12,-305 737.12,-305 737.12,-305 767.12,-305 767.12,-305 773.12,-305 779.12,-311 779.12,-317 779.12,-317 779.12,-329 779.12,-329 779.12,-335 773.12,-341 767.12,-341"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-319.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">idOf</text>
 </a>
 </g>
 </g>
-<!-- BuildDot&#45;&gt;Node -->
+<!-- BuildDot&#45;&gt;idOf -->
 <g id="edge39" class="edge">
-<title>BuildDot&#45;&gt;Node</title>
-<path fill="none" stroke="#94a3b8" d="M586.77,-700.4C606.06,-626.02 676.6,-354 676.6,-354 676.6,-354 696.8,-345.6 716.17,-337.54"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="716.82,-339.54 721.55,-335.3 715.21,-335.67 716.82,-339.54"/>
+<title>BuildDot&#45;&gt;idOf</title>
+<path fill="none" stroke="#94a3b8" d="M586.77,-700.4C606.06,-626.02 676.6,-354 676.6,-354 676.6,-354 697.9,-345.14 717.73,-336.89"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="718.51,-338.84 723.24,-334.6 716.9,-334.96 718.51,-338.84"/>
 </g>
-<!-- DotOptions -->
+<!-- newIdentities -->
 <g id="node41" class="node">
-<title>DotOptions</title>
-<g id="a_node41"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M785.65,-280C785.65,-280 718.6,-280 718.6,-280 712.6,-280 706.6,-274 706.6,-268 706.6,-268 706.6,-256 706.6,-256 706.6,-250 712.6,-244 718.6,-244 718.6,-244 785.65,-244 785.65,-244 791.65,-244 797.65,-250 797.65,-256 797.65,-256 797.65,-268 797.65,-268 797.65,-274 791.65,-280 785.65,-280"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-258.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DotOptions</text>
+<title>newIdentities</title>
+<g id="a_node41"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M791.27,-280C791.27,-280 712.98,-280 712.98,-280 706.98,-280 700.98,-274 700.98,-268 700.98,-268 700.98,-256 700.98,-256 700.98,-250 706.98,-244 712.98,-244 712.98,-244 791.27,-244 791.27,-244 797.27,-244 803.27,-250 803.27,-256 803.27,-256 803.27,-268 803.27,-268 803.27,-274 797.27,-280 791.27,-280"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-258.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">newIdentities</text>
 </a>
 </g>
 </g>
-<!-- BuildDot&#45;&gt;DotOptions -->
+<!-- BuildDot&#45;&gt;newIdentities -->
 <g id="edge40" class="edge">
-<title>BuildDot&#45;&gt;DotOptions</title>
+<title>BuildDot&#45;&gt;newIdentities</title>
 <path fill="none" stroke="#94a3b8" d="M586.08,-700.42C604.3,-618.43 676.6,-293 676.6,-293 676.6,-293 687.13,-288.62 700.28,-283.15"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-285.22 705.51,-280.97 699.17,-281.34 700.78,-285.22"/>
 </g>
-<!-- TestBuildDotEmitsDigraphHeaderAndHighlightedSymbolNode -->
-<g id="node2" class="node">
-<title>TestBuildDotEmitsDigraphHeaderAndHighlightedSymbolNode</title>
-<g id="a_node2"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M398.55,-1439C398.55,-1439 60,-1439 60,-1439 54,-1439 48,-1433 48,-1427 48,-1427 48,-1415 48,-1415 48,-1409 54,-1403 60,-1403 60,-1403 398.55,-1403 398.55,-1403 404.55,-1403 410.55,-1409 410.55,-1415 410.55,-1415 410.55,-1427 410.55,-1427 410.55,-1433 404.55,-1439 398.55,-1439"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1417.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotEmitsDigraphHeaderAndHighlightedSymbolNode</text>
-</a>
-</g>
-</g>
-<!-- TestBuildDotEmitsDigraphHeaderAndHighlightedSymbolNode&#45;&gt;BuildDot -->
-<g id="edge1" class="edge">
-<title>TestBuildDotEmitsDigraphHeaderAndHighlightedSymbolNode&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-1402.47C418.11,-1396.31 458.55,-1391 458.55,-1391 458.55,-1391 513.3,-1316 513.3,-1316 513.3,-1316 564.26,-859.51 577.06,-744.87"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="579.14,-745.22 577.71,-739.03 574.96,-744.76 579.14,-745.22"/>
-<text xml:space="preserve" text-anchor="middle" x="499.42" y="-1357.45" font-family="Times,serif" font-size="14.00">test</text>
-</g>
-<!-- TestBuildDotDrawsCallerToSymbolAndSymbolToCalleeEdges -->
-<g id="node3" class="node">
-<title>TestBuildDotDrawsCallerToSymbolAndSymbolToCalleeEdges</title>
-<g id="a_node3"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M394.42,-1378C394.42,-1378 64.12,-1378 64.12,-1378 58.12,-1378 52.12,-1372 52.12,-1366 52.12,-1366 52.12,-1354 52.12,-1354 52.12,-1348 58.12,-1342 64.12,-1342 64.12,-1342 394.42,-1342 394.42,-1342 400.42,-1342 406.42,-1348 406.42,-1354 406.42,-1354 406.42,-1366 406.42,-1366 406.42,-1372 400.42,-1378 394.42,-1378"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1356.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotDrawsCallerToSymbolAndSymbolToCalleeEdges</text>
-</a>
-</g>
-</g>
-<!-- TestBuildDotDrawsCallerToSymbolAndSymbolToCalleeEdges&#45;&gt;BuildDot -->
-<g id="edge2" class="edge">
-<title>TestBuildDotDrawsCallerToSymbolAndSymbolToCalleeEdges&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-1341.47C418.11,-1335.31 458.55,-1330 458.55,-1330 458.55,-1330 513.3,-1255 513.3,-1255 513.3,-1255 563.5,-851.31 576.77,-744.61"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="578.81,-745.17 577.47,-738.95 574.64,-744.65 578.81,-745.17"/>
-<text xml:space="preserve" text-anchor="middle" x="499.42" y="-1296.45" font-family="Times,serif" font-size="14.00">test</text>
-</g>
 <!-- TestBuildDotDashesEdgesFromTestCallers -->
-<g id="node4" class="node">
+<g id="node2" class="node">
 <title>TestBuildDotDashesEdgesFromTestCallers</title>
-<g id="a_node4"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M345.67,-1317C345.67,-1317 112.88,-1317 112.88,-1317 106.88,-1317 100.87,-1311 100.87,-1305 100.87,-1305 100.87,-1293 100.87,-1293 100.87,-1287 106.87,-1281 112.87,-1281 112.87,-1281 345.67,-1281 345.67,-1281 351.67,-1281 357.67,-1287 357.67,-1293 357.67,-1293 357.67,-1305 357.67,-1305 357.67,-1311 351.67,-1317 345.67,-1317"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1295.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotDashesEdgesFromTestCallers</text>
+<g id="a_node2"><a xlink:title="internal/codeshot/dot_test.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M345.67,-1439C345.67,-1439 112.88,-1439 112.88,-1439 106.88,-1439 100.87,-1433 100.87,-1427 100.87,-1427 100.87,-1415 100.87,-1415 100.87,-1409 106.87,-1403 112.87,-1403 112.87,-1403 345.67,-1403 345.67,-1403 351.67,-1403 357.67,-1409 357.67,-1415 357.67,-1415 357.67,-1427 357.67,-1427 357.67,-1433 351.67,-1439 345.67,-1439"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1417.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotDashesEdgesFromTestCallers</text>
 </a>
 </g>
 </g>
 <!-- TestBuildDotDashesEdgesFromTestCallers&#45;&gt;BuildDot -->
-<g id="edge3" class="edge">
+<g id="edge1" class="edge">
 <title>TestBuildDotDashesEdgesFromTestCallers&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M358.09,-1282.2C410.26,-1275.35 458.55,-1269 458.55,-1269 458.55,-1269 513.3,-1194 513.3,-1194 513.3,-1194 562.42,-843.92 576.32,-744.84"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="578.37,-745.35 577.13,-739.12 574.21,-744.77 578.37,-745.35"/>
-<text xml:space="preserve" text-anchor="middle" x="499.42" y="-1235.45" font-family="Times,serif" font-size="14.00">test</text>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M358.09,-1404.2C410.26,-1397.35 458.55,-1391 458.55,-1391 458.55,-1391 513.3,-1316 513.3,-1316 513.3,-1316 564.26,-859.51 577.06,-744.87"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="579.14,-745.22 577.71,-739.03 574.96,-744.76 579.14,-745.22"/>
+<text xml:space="preserve" text-anchor="middle" x="499.42" y="-1357.45" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotEscapesDoubleQuotesInNames -->
-<g id="node5" class="node">
-<title>TestBuildDotEscapesDoubleQuotesInNames</title>
-<g id="a_node5"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M351.3,-1256C351.3,-1256 107.25,-1256 107.25,-1256 101.25,-1256 95.25,-1250 95.25,-1244 95.25,-1244 95.25,-1232 95.25,-1232 95.25,-1226 101.25,-1220 107.25,-1220 107.25,-1220 351.3,-1220 351.3,-1220 357.3,-1220 363.3,-1226 363.3,-1232 363.3,-1232 363.3,-1244 363.3,-1244 363.3,-1250 357.3,-1256 351.3,-1256"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1234.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotEscapesDoubleQuotesInNames</text>
+<!-- TestBuildDotDashesTransitiveEdgesFromTestCallersSameAsDirectOnes -->
+<g id="node3" class="node">
+<title>TestBuildDotDashesTransitiveEdgesFromTestCallersSameAsDirectOnes</title>
+<g id="a_node3"><a xlink:title="internal/codeshot/dot_test.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M425.18,-1378C425.18,-1378 33.37,-1378 33.37,-1378 27.37,-1378 21.37,-1372 21.37,-1366 21.37,-1366 21.37,-1354 21.37,-1354 21.37,-1348 27.37,-1342 33.37,-1342 33.37,-1342 425.18,-1342 425.18,-1342 431.18,-1342 437.18,-1348 437.18,-1354 437.18,-1354 437.18,-1366 437.18,-1366 437.18,-1372 431.18,-1378 425.18,-1378"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1356.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotDashesTransitiveEdgesFromTestCallersSameAsDirectOnes</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotEscapesDoubleQuotesInNames&#45;&gt;BuildDot -->
-<g id="edge4" class="edge">
-<title>TestBuildDotEscapesDoubleQuotesInNames&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M363.72,-1220.46C413.68,-1213.9 458.55,-1208 458.55,-1208 458.55,-1208 513.3,-1133 513.3,-1133 513.3,-1133 561.16,-835.73 575.77,-744.99"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="577.84,-745.34 576.72,-739.09 573.69,-744.68 577.84,-745.34"/>
-<text xml:space="preserve" text-anchor="middle" x="499.42" y="-1174.45" font-family="Times,serif" font-size="14.00">test</text>
+<!-- TestBuildDotDashesTransitiveEdgesFromTestCallersSameAsDirectOnes&#45;&gt;BuildDot -->
+<g id="edge2" class="edge">
+<title>TestBuildDotDashesTransitiveEdgesFromTestCallersSameAsDirectOnes&#45;&gt;BuildDot</title>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-1341.47C418.11,-1335.31 458.55,-1330 458.55,-1330 458.55,-1330 513.3,-1255 513.3,-1255 513.3,-1255 563.5,-851.31 576.77,-744.61"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="578.81,-745.17 577.47,-738.95 574.64,-744.65 578.81,-745.17"/>
+<text xml:space="preserve" text-anchor="middle" x="499.42" y="-1296.45" font-family="Times,serif" font-size="14.00">test</text>
 </g>
 <!-- TestBuildDotDedupesRepeatedCallerCalleeEntries -->
-<g id="node6" class="node">
+<g id="node4" class="node">
 <title>TestBuildDotDedupesRepeatedCallerCalleeEntries</title>
-<g id="a_node6"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M367.8,-1195C367.8,-1195 90.75,-1195 90.75,-1195 84.75,-1195 78.75,-1189 78.75,-1183 78.75,-1183 78.75,-1171 78.75,-1171 78.75,-1165 84.75,-1159 90.75,-1159 90.75,-1159 367.8,-1159 367.8,-1159 373.8,-1159 379.8,-1165 379.8,-1171 379.8,-1171 379.8,-1183 379.8,-1183 379.8,-1189 373.8,-1195 367.8,-1195"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1173.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotDedupesRepeatedCallerCalleeEntries</text>
+<g id="a_node4"><a xlink:title="internal/codeshot/dot_test.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M367.8,-1317C367.8,-1317 90.75,-1317 90.75,-1317 84.75,-1317 78.75,-1311 78.75,-1305 78.75,-1305 78.75,-1293 78.75,-1293 78.75,-1287 84.75,-1281 90.75,-1281 90.75,-1281 367.8,-1281 367.8,-1281 373.8,-1281 379.8,-1287 379.8,-1293 379.8,-1293 379.8,-1305 379.8,-1305 379.8,-1311 373.8,-1317 367.8,-1317"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1295.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotDedupesRepeatedCallerCalleeEntries</text>
 </a>
 </g>
 </g>
 <!-- TestBuildDotDedupesRepeatedCallerCalleeEntries&#45;&gt;BuildDot -->
-<g id="edge5" class="edge">
+<g id="edge3" class="edge">
 <title>TestBuildDotDedupesRepeatedCallerCalleeEntries&#45;&gt;BuildDot</title>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-1280.47C418.11,-1274.31 458.55,-1269 458.55,-1269 458.55,-1269 513.3,-1194 513.3,-1194 513.3,-1194 562.42,-843.92 576.32,-744.84"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="578.37,-745.35 577.13,-739.12 574.21,-744.77 578.37,-745.35"/>
+<text xml:space="preserve" text-anchor="middle" x="499.42" y="-1235.45" font-family="Times,serif" font-size="14.00">test</text>
+</g>
+<!-- TestBuildDotDrawsCallerToSymbolAndSymbolToCalleeEdges -->
+<g id="node5" class="node">
+<title>TestBuildDotDrawsCallerToSymbolAndSymbolToCalleeEdges</title>
+<g id="a_node5"><a xlink:title="internal/codeshot/dot_test.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M394.42,-1256C394.42,-1256 64.12,-1256 64.12,-1256 58.12,-1256 52.12,-1250 52.12,-1244 52.12,-1244 52.12,-1232 52.12,-1232 52.12,-1226 58.12,-1220 64.12,-1220 64.12,-1220 394.42,-1220 394.42,-1220 400.42,-1220 406.42,-1226 406.42,-1232 406.42,-1232 406.42,-1244 406.42,-1244 406.42,-1250 400.42,-1256 394.42,-1256"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1234.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotDrawsCallerToSymbolAndSymbolToCalleeEdges</text>
+</a>
+</g>
+</g>
+<!-- TestBuildDotDrawsCallerToSymbolAndSymbolToCalleeEdges&#45;&gt;BuildDot -->
+<g id="edge4" class="edge">
+<title>TestBuildDotDrawsCallerToSymbolAndSymbolToCalleeEdges&#45;&gt;BuildDot</title>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-1219.47C418.11,-1213.31 458.55,-1208 458.55,-1208 458.55,-1208 513.3,-1133 513.3,-1133 513.3,-1133 561.16,-835.73 575.77,-744.99"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="577.84,-745.34 576.72,-739.09 573.69,-744.68 577.84,-745.34"/>
+<text xml:space="preserve" text-anchor="middle" x="499.42" y="-1174.45" font-family="Times,serif" font-size="14.00">test</text>
+</g>
+<!-- TestBuildDotEmitsDigraphHeaderAndHighlightedSymbolNode -->
+<g id="node6" class="node">
+<title>TestBuildDotEmitsDigraphHeaderAndHighlightedSymbolNode</title>
+<g id="a_node6"><a xlink:title="internal/codeshot/dot_test.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M398.55,-1195C398.55,-1195 60,-1195 60,-1195 54,-1195 48,-1189 48,-1183 48,-1183 48,-1171 48,-1171 48,-1165 54,-1159 60,-1159 60,-1159 398.55,-1159 398.55,-1159 404.55,-1159 410.55,-1165 410.55,-1171 410.55,-1171 410.55,-1183 410.55,-1183 410.55,-1189 404.55,-1195 398.55,-1195"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1173.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotEmitsDigraphHeaderAndHighlightedSymbolNode</text>
+</a>
+</g>
+</g>
+<!-- TestBuildDotEmitsDigraphHeaderAndHighlightedSymbolNode&#45;&gt;BuildDot -->
+<g id="edge5" class="edge">
+<title>TestBuildDotEmitsDigraphHeaderAndHighlightedSymbolNode&#45;&gt;BuildDot</title>
 <path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-1158.47C418.11,-1152.31 458.55,-1147 458.55,-1147 458.55,-1147 513.3,-1072 513.3,-1072 513.3,-1072 559.7,-826.23 575.07,-744.83"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="577.13,-745.25 576.18,-738.97 573,-744.48 577.13,-745.25"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-1113.45" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotKeepsDistinctCallersWithTheSameNameButDifferentFilePath -->
+<!-- TestBuildDotEscapesDoubleQuotesInNames -->
 <g id="node7" class="node">
-<title>TestBuildDotKeepsDistinctCallersWithTheSameNameButDifferentFilePath</title>
+<title>TestBuildDotEscapesDoubleQuotesInNames</title>
 <g id="a_node7"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M430.42,-1134C430.42,-1134 28.12,-1134 28.12,-1134 22.12,-1134 16.12,-1128 16.12,-1122 16.12,-1122 16.12,-1110 16.12,-1110 16.12,-1104 22.12,-1098 28.12,-1098 28.12,-1098 430.42,-1098 430.42,-1098 436.42,-1098 442.42,-1104 442.42,-1110 442.42,-1110 442.42,-1122 442.42,-1122 442.42,-1128 436.42,-1134 430.42,-1134"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1112.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotKeepsDistinctCallersWithTheSameNameButDifferentFilePath</text>
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M351.3,-1134C351.3,-1134 107.25,-1134 107.25,-1134 101.25,-1134 95.25,-1128 95.25,-1122 95.25,-1122 95.25,-1110 95.25,-1110 95.25,-1104 101.25,-1098 107.25,-1098 107.25,-1098 351.3,-1098 351.3,-1098 357.3,-1098 363.3,-1104 363.3,-1110 363.3,-1110 363.3,-1122 363.3,-1122 363.3,-1128 357.3,-1134 351.3,-1134"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1112.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotEscapesDoubleQuotesInNames</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotKeepsDistinctCallersWithTheSameNameButDifferentFilePath&#45;&gt;BuildDot -->
+<!-- TestBuildDotEscapesDoubleQuotesInNames&#45;&gt;BuildDot -->
 <g id="edge6" class="edge">
-<title>TestBuildDotKeepsDistinctCallersWithTheSameNameButDifferentFilePath&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-1097.47C418.11,-1091.31 458.55,-1086 458.55,-1086 458.55,-1086 513.3,-1012 513.3,-1012 513.3,-1012 557.88,-816.02 574.12,-744.62"/>
+<title>TestBuildDotEscapesDoubleQuotesInNames&#45;&gt;BuildDot</title>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M363.72,-1098.46C413.68,-1091.9 458.55,-1086 458.55,-1086 458.55,-1086 513.3,-1012 513.3,-1012 513.3,-1012 557.88,-816.02 574.12,-744.62"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="576.16,-745.12 575.45,-738.8 572.07,-744.19 576.16,-745.12"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-1052.95" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotRendersSameNamedCallersAsTwoDistinctBoxesInTheRealImage -->
+<!-- TestBuildDotFileKindStylingTakesPrecedenceOverTestDashStyling -->
 <g id="node8" class="node">
-<title>TestBuildDotRendersSameNamedCallersAsTwoDistinctBoxesInTheRealImage</title>
+<title>TestBuildDotFileKindStylingTakesPrecedenceOverTestDashStyling</title>
 <g id="a_node8"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M440.55,-1073C440.55,-1073 18,-1073 18,-1073 12,-1073 6,-1067 6,-1061 6,-1061 6,-1049 6,-1049 6,-1043 12,-1037 18,-1037 18,-1037 440.55,-1037 440.55,-1037 446.55,-1037 452.55,-1043 452.55,-1049 452.55,-1049 452.55,-1061 452.55,-1061 452.55,-1067 446.55,-1073 440.55,-1073"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1051.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotRendersSameNamedCallersAsTwoDistinctBoxesInTheRealImage</text>
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M409.8,-1073C409.8,-1073 48.75,-1073 48.75,-1073 42.75,-1073 36.75,-1067 36.75,-1061 36.75,-1061 36.75,-1049 36.75,-1049 36.75,-1043 42.75,-1037 48.75,-1037 48.75,-1037 409.8,-1037 409.8,-1037 415.8,-1037 421.8,-1043 421.8,-1049 421.8,-1049 421.8,-1061 421.8,-1061 421.8,-1067 415.8,-1073 409.8,-1073"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-1051.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotFileKindStylingTakesPrecedenceOverTestDashStyling</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotRendersSameNamedCallersAsTwoDistinctBoxesInTheRealImage&#45;&gt;BuildDot -->
+<!-- TestBuildDotFileKindStylingTakesPrecedenceOverTestDashStyling&#45;&gt;BuildDot -->
 <g id="edge7" class="edge">
-<title>TestBuildDotRendersSameNamedCallersAsTwoDistinctBoxesInTheRealImage&#45;&gt;BuildDot</title>
+<title>TestBuildDotFileKindStylingTakesPrecedenceOverTestDashStyling&#45;&gt;BuildDot</title>
 <path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-1036.47C418.11,-1030.31 458.55,-1025 458.55,-1025 458.55,-1025 513.3,-952 513.3,-952 513.3,-952 555.31,-805.15 572.62,-744.61"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="574.56,-745.47 574.19,-739.13 570.52,-744.32 574.56,-745.47"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-992.45" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotOmitsTooltipsByDefault -->
+<!-- TestBuildDotKeepsDistinctCallersWithTheSameNameButDifferentFilePath -->
 <g id="node9" class="node">
-<title>TestBuildDotOmitsTooltipsByDefault</title>
+<title>TestBuildDotKeepsDistinctCallersWithTheSameNameButDifferentFilePath</title>
 <g id="a_node9"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M329.92,-1012C329.92,-1012 128.62,-1012 128.62,-1012 122.62,-1012 116.62,-1006 116.62,-1000 116.62,-1000 116.62,-988 116.62,-988 116.62,-982 122.62,-976 128.62,-976 128.62,-976 329.92,-976 329.92,-976 335.92,-976 341.92,-982 341.92,-988 341.92,-988 341.92,-1000 341.92,-1000 341.92,-1006 335.92,-1012 329.92,-1012"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-990.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotOmitsTooltipsByDefault</text>
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M430.42,-1012C430.42,-1012 28.12,-1012 28.12,-1012 22.12,-1012 16.12,-1006 16.12,-1000 16.12,-1000 16.12,-988 16.12,-988 16.12,-982 22.12,-976 28.12,-976 28.12,-976 430.42,-976 430.42,-976 436.42,-976 442.42,-982 442.42,-988 442.42,-988 442.42,-1000 442.42,-1000 442.42,-1006 436.42,-1012 430.42,-1012"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-990.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotKeepsDistinctCallersWithTheSameNameButDifferentFilePath</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotOmitsTooltipsByDefault&#45;&gt;BuildDot -->
+<!-- TestBuildDotKeepsDistinctCallersWithTheSameNameButDifferentFilePath&#45;&gt;BuildDot -->
 <g id="edge8" class="edge">
-<title>TestBuildDotOmitsTooltipsByDefault&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M342.41,-979.26C400.14,-971.68 458.55,-964 458.55,-964 458.55,-964 513.3,-894 513.3,-894 513.3,-894 551.75,-793.05 570.24,-744.49"/>
+<title>TestBuildDotKeepsDistinctCallersWithTheSameNameButDifferentFilePath&#45;&gt;BuildDot</title>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-975.47C418.11,-969.31 458.55,-964 458.55,-964 458.55,-964 513.3,-894 513.3,-894 513.3,-894 551.75,-793.05 570.24,-744.49"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="572.11,-745.5 572.28,-739.14 568.18,-744 572.11,-745.5"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-932.95" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotWithTooltipsDeclaresEachNodeWithItsFilePath -->
+<!-- TestBuildDotMaxRenderAppliesAfterDedupNotBefore -->
 <g id="node10" class="node">
-<title>TestBuildDotWithTooltipsDeclaresEachNodeWithItsFilePath</title>
+<title>TestBuildDotMaxRenderAppliesAfterDedupNotBefore</title>
 <g id="a_node10"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M390.3,-951C390.3,-951 68.25,-951 68.25,-951 62.25,-951 56.25,-945 56.25,-939 56.25,-939 56.25,-927 56.25,-927 56.25,-921 62.25,-915 68.25,-915 68.25,-915 390.3,-915 390.3,-915 396.3,-915 402.3,-921 402.3,-927 402.3,-927 402.3,-939 402.3,-939 402.3,-945 396.3,-951 390.3,-951"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-929.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotWithTooltipsDeclaresEachNodeWithItsFilePath</text>
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M375.67,-951C375.67,-951 82.88,-951 82.88,-951 76.88,-951 70.87,-945 70.87,-939 70.87,-939 70.87,-927 70.87,-927 70.87,-921 76.87,-915 82.87,-915 82.87,-915 375.67,-915 375.67,-915 381.67,-915 387.67,-921 387.67,-927 387.67,-927 387.67,-939 387.67,-939 387.67,-945 381.67,-951 375.67,-951"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-929.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotMaxRenderAppliesAfterDedupNotBefore</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotWithTooltipsDeclaresEachNodeWithItsFilePath&#45;&gt;BuildDot -->
+<!-- TestBuildDotMaxRenderAppliesAfterDedupNotBefore&#45;&gt;BuildDot -->
 <g id="edge9" class="edge">
-<title>TestBuildDotWithTooltipsDeclaresEachNodeWithItsFilePath&#45;&gt;BuildDot</title>
+<title>TestBuildDotMaxRenderAppliesAfterDedupNotBefore&#45;&gt;BuildDot</title>
 <path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-914.47C418.11,-908.31 458.55,-903 458.55,-903 458.55,-903 513.3,-839 513.3,-839 513.3,-839 546.53,-779.18 566.06,-744.01"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="567.72,-745.34 568.8,-739.07 564.05,-743.3 567.72,-745.34"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-874.95" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotTooltipsCombineWithADisambiguatingLabelOnACollidingNode -->
+<!-- TestBuildDotOmitsTooltipsByDefault -->
 <g id="node11" class="node">
-<title>TestBuildDotTooltipsCombineWithADisambiguatingLabelOnACollidingNode</title>
+<title>TestBuildDotOmitsTooltipsByDefault</title>
 <g id="a_node11"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M433.05,-890C433.05,-890 25.5,-890 25.5,-890 19.5,-890 13.5,-884 13.5,-878 13.5,-878 13.5,-866 13.5,-866 13.5,-860 19.5,-854 25.5,-854 25.5,-854 433.05,-854 433.05,-854 439.05,-854 445.05,-860 445.05,-866 445.05,-866 445.05,-878 445.05,-878 445.05,-884 439.05,-890 433.05,-890"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-868.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotTooltipsCombineWithADisambiguatingLabelOnACollidingNode</text>
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M329.92,-890C329.92,-890 128.62,-890 128.62,-890 122.62,-890 116.62,-884 116.62,-878 116.62,-878 116.62,-866 116.62,-866 116.62,-860 122.62,-854 128.62,-854 128.62,-854 329.92,-854 329.92,-854 335.92,-854 341.92,-860 341.92,-866 341.92,-866 341.92,-878 341.92,-878 341.92,-884 335.92,-890 329.92,-890"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-868.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotOmitsTooltipsByDefault</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotTooltipsCombineWithADisambiguatingLabelOnACollidingNode&#45;&gt;BuildDot -->
+<!-- TestBuildDotOmitsTooltipsByDefault&#45;&gt;BuildDot -->
 <g id="edge10" class="edge">
-<title>TestBuildDotTooltipsCombineWithADisambiguatingLabelOnACollidingNode&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-853.47C418.11,-847.31 458.55,-842 458.55,-842 458.55,-842 513.3,-789 513.3,-789 513.3,-789 538.07,-762.99 557.41,-742.68"/>
+<title>TestBuildDotOmitsTooltipsByDefault&#45;&gt;BuildDot</title>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M342.41,-857.26C400.14,-849.68 458.55,-842 458.55,-842 458.55,-842 513.3,-789 513.3,-789 513.3,-789 538.07,-762.99 557.41,-742.68"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="558.78,-744.28 561.39,-738.49 555.74,-741.39 558.78,-744.28"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-819.45" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotTooltipsReachTheRenderedSvgAsHoverableTitles -->
+<!-- TestBuildDotOutputIsValidDotThatTheRealDotBinaryAccepts -->
 <g id="node12" class="node">
-<title>TestBuildDotTooltipsReachTheRenderedSvgAsHoverableTitles</title>
+<title>TestBuildDotOutputIsValidDotThatTheRealDotBinaryAccepts</title>
 <g id="a_node12"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M399.67,-829C399.67,-829 58.88,-829 58.88,-829 52.88,-829 46.87,-823 46.87,-817 46.87,-817 46.87,-805 46.87,-805 46.87,-799 52.87,-793 58.87,-793 58.87,-793 399.67,-793 399.67,-793 405.67,-793 411.67,-799 411.67,-805 411.67,-805 411.67,-817 411.67,-817 411.67,-823 405.67,-829 399.67,-829"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-807.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotTooltipsReachTheRenderedSvgAsHoverableTitles</text>
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M395.92,-829C395.92,-829 62.62,-829 62.62,-829 56.62,-829 50.62,-823 50.62,-817 50.62,-817 50.62,-805 50.62,-805 50.62,-799 56.62,-793 62.62,-793 62.62,-793 395.92,-793 395.92,-793 401.92,-793 407.92,-799 407.92,-805 407.92,-805 407.92,-817 407.92,-817 407.92,-823 401.92,-829 395.92,-829"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-807.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotOutputIsValidDotThatTheRealDotBinaryAccepts</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotTooltipsReachTheRenderedSvgAsHoverableTitles&#45;&gt;BuildDot -->
+<!-- TestBuildDotOutputIsValidDotThatTheRealDotBinaryAccepts&#45;&gt;BuildDot -->
 <g id="edge11" class="edge">
-<title>TestBuildDotTooltipsReachTheRenderedSvgAsHoverableTitles&#45;&gt;BuildDot</title>
+<title>TestBuildDotOutputIsValidDotThatTheRealDotBinaryAccepts&#45;&gt;BuildDot</title>
 <path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M371.27,-792.47C418.11,-786.31 458.55,-781 458.55,-781 458.55,-781 502.17,-758.72 537.11,-740.88"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="537.79,-742.89 542.18,-738.29 535.88,-739.15 537.79,-742.89"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-769.97" font-family="Times,serif" font-size="14.00">test</text>
@@ -447,114 +447,114 @@
 <polygon fill="#94a3b8" stroke="#94a3b8" points="532.49,-725.32 538.28,-722.69 532.12,-721.13 532.49,-725.32"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-731.26" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotTreatsMaxRenderAsOneSharedBudgetNotACapPerDirection -->
+<!-- TestBuildDotRendersSameNamedCallersAsTwoDistinctBoxesInTheRealImage -->
 <g id="node14" class="node">
-<title>TestBuildDotTreatsMaxRenderAsOneSharedBudgetNotACapPerDirection</title>
+<title>TestBuildDotRendersSameNamedCallersAsTwoDistinctBoxesInTheRealImage</title>
 <g id="a_node14"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M427.8,-707C427.8,-707 30.75,-707 30.75,-707 24.75,-707 18.75,-701 18.75,-695 18.75,-695 18.75,-683 18.75,-683 18.75,-677 24.75,-671 30.75,-671 30.75,-671 427.8,-671 427.8,-671 433.8,-671 439.8,-677 439.8,-683 439.8,-683 439.8,-695 439.8,-695 439.8,-701 433.8,-707 427.8,-707"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-685.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotTreatsMaxRenderAsOneSharedBudgetNotACapPerDirection</text>
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M440.55,-707C440.55,-707 18,-707 18,-707 12,-707 6,-701 6,-695 6,-695 6,-683 6,-683 6,-677 12,-671 18,-671 18,-671 440.55,-671 440.55,-671 446.55,-671 452.55,-677 452.55,-683 452.55,-683 452.55,-695 452.55,-695 452.55,-701 446.55,-707 440.55,-707"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-685.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotRendersSameNamedCallersAsTwoDistinctBoxesInTheRealImage</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotTreatsMaxRenderAsOneSharedBudgetNotACapPerDirection&#45;&gt;BuildDot -->
+<!-- TestBuildDotRendersSameNamedCallersAsTwoDistinctBoxesInTheRealImage&#45;&gt;BuildDot -->
 <g id="edge13" class="edge">
-<title>TestBuildDotTreatsMaxRenderAsOneSharedBudgetNotACapPerDirection&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M440.05,-698.45C481.91,-700.34 513.3,-701.75 513.3,-701.75 513.3,-701.75 521.74,-703.93 532.61,-706.75"/>
+<title>TestBuildDotRendersSameNamedCallersAsTwoDistinctBoxesInTheRealImage&#45;&gt;BuildDot</title>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M452.93,-699.03C488.19,-700.62 513.3,-701.75 513.3,-701.75 513.3,-701.75 521.74,-703.93 532.61,-706.75"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="531.84,-708.72 538.18,-708.19 532.89,-704.65 531.84,-708.72"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-705.7" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotSharedMaxRenderBudgetSpendsWhatCallersLeaveOverOnCallees -->
-<g id="node15" class="node">
-<title>TestBuildDotSharedMaxRenderBudgetSpendsWhatCallersLeaveOverOnCallees</title>
-<g id="a_node15"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M446.55,-646C446.55,-646 12,-646 12,-646 6,-646 0,-640 0,-634 0,-634 0,-622 0,-622 0,-616 6,-610 12,-610 12,-610 446.55,-610 446.55,-610 452.55,-610 458.55,-616 458.55,-622 458.55,-622 458.55,-634 458.55,-634 458.55,-640 452.55,-646 446.55,-646"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-624.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotSharedMaxRenderBudgetSpendsWhatCallersLeaveOverOnCallees</text>
-</a>
-</g>
-</g>
-<!-- TestBuildDotSharedMaxRenderBudgetSpendsWhatCallersLeaveOverOnCallees&#45;&gt;BuildDot -->
-<g id="edge14" class="edge">
-<title>TestBuildDotSharedMaxRenderBudgetSpendsWhatCallersLeaveOverOnCallees&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-646.53C415.44,-653.15 458.55,-659 458.55,-659 458.55,-659 513.3,-677.75 513.3,-677.75 513.3,-677.75 527.96,-686.82 543.53,-696.46"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="542.25,-698.14 548.46,-699.51 544.46,-694.57 542.25,-698.14"/>
-<text xml:space="preserve" text-anchor="middle" x="499.42" y="-681.7" font-family="Times,serif" font-size="14.00">test</text>
-</g>
-<!-- TestBuildDotMaxRenderAppliesAfterDedupNotBefore -->
-<g id="node16" class="node">
-<title>TestBuildDotMaxRenderAppliesAfterDedupNotBefore</title>
-<g id="a_node16"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M375.67,-585C375.67,-585 82.88,-585 82.88,-585 76.88,-585 70.87,-579 70.87,-573 70.87,-573 70.87,-561 70.87,-561 70.87,-555 76.87,-549 82.87,-549 82.87,-549 375.67,-549 375.67,-549 381.67,-549 387.67,-555 387.67,-561 387.67,-561 387.67,-573 387.67,-573 387.67,-579 381.67,-585 375.67,-585"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-563.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotMaxRenderAppliesAfterDedupNotBefore</text>
-</a>
-</g>
-</g>
-<!-- TestBuildDotMaxRenderAppliesAfterDedupNotBefore&#45;&gt;BuildDot -->
-<g id="edge15" class="edge">
-<title>TestBuildDotMaxRenderAppliesAfterDedupNotBefore&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-585.53C415.44,-592.15 458.55,-598 458.55,-598 458.55,-598 513.3,-644.75 513.3,-644.75 513.3,-644.75 538.87,-673.24 558.33,-694.92"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="556.55,-696.08 562.12,-699.14 559.68,-693.27 556.55,-696.08"/>
-<text xml:space="preserve" text-anchor="middle" x="499.42" y="-648.7" font-family="Times,serif" font-size="14.00">test</text>
-</g>
 <!-- TestBuildDotRendersTransitiveEdgesAlongsideDirectOnes -->
-<g id="node17" class="node">
+<g id="node15" class="node">
 <title>TestBuildDotRendersTransitiveEdgesAlongsideDirectOnes</title>
-<g id="a_node17"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M388.8,-524C388.8,-524 69.75,-524 69.75,-524 63.75,-524 57.75,-518 57.75,-512 57.75,-512 57.75,-500 57.75,-500 57.75,-494 63.75,-488 69.75,-488 69.75,-488 388.8,-488 388.8,-488 394.8,-488 400.8,-494 400.8,-500 400.8,-500 400.8,-512 400.8,-512 400.8,-518 394.8,-524 388.8,-524"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-502.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotRendersTransitiveEdgesAlongsideDirectOnes</text>
+<g id="a_node15"><a xlink:title="internal/codeshot/dot_test.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M388.8,-646C388.8,-646 69.75,-646 69.75,-646 63.75,-646 57.75,-640 57.75,-634 57.75,-634 57.75,-622 57.75,-622 57.75,-616 63.75,-610 69.75,-610 69.75,-610 388.8,-610 388.8,-610 394.8,-610 400.8,-616 400.8,-622 400.8,-622 400.8,-634 400.8,-634 400.8,-640 394.8,-646 388.8,-646"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-624.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotRendersTransitiveEdgesAlongsideDirectOnes</text>
 </a>
 </g>
 </g>
 <!-- TestBuildDotRendersTransitiveEdgesAlongsideDirectOnes&#45;&gt;BuildDot -->
-<g id="edge16" class="edge">
+<g id="edge14" class="edge">
 <title>TestBuildDotRendersTransitiveEdgesAlongsideDirectOnes&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-524.53C415.44,-531.15 458.55,-537 458.55,-537 458.55,-537 513.3,-597.75 513.3,-597.75 513.3,-597.75 546.7,-658.51 566.21,-694.01"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="564.22,-694.75 568.95,-698.99 567.9,-692.72 564.22,-694.75"/>
-<text xml:space="preserve" text-anchor="middle" x="499.42" y="-601.7" font-family="Times,serif" font-size="14.00">test</text>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-646.53C415.44,-653.15 458.55,-659 458.55,-659 458.55,-659 513.3,-677.75 513.3,-677.75 513.3,-677.75 527.96,-686.82 543.53,-696.46"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="542.25,-698.14 548.46,-699.51 544.46,-694.57 542.25,-698.14"/>
+<text xml:space="preserve" text-anchor="middle" x="499.42" y="-681.7" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotDashesTransitiveEdgesFromTestCallersSameAsDirectOnes -->
-<g id="node18" class="node">
-<title>TestBuildDotDashesTransitiveEdgesFromTestCallersSameAsDirectOnes</title>
-<g id="a_node18"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M425.18,-463C425.18,-463 33.37,-463 33.37,-463 27.37,-463 21.37,-457 21.37,-451 21.37,-451 21.37,-439 21.37,-439 21.37,-433 27.37,-427 33.37,-427 33.37,-427 425.18,-427 425.18,-427 431.18,-427 437.18,-433 437.18,-439 437.18,-439 437.18,-451 437.18,-451 437.18,-457 431.18,-463 425.18,-463"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-441.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotDashesTransitiveEdgesFromTestCallersSameAsDirectOnes</text>
+<!-- TestBuildDotSharedMaxRenderBudgetSpendsWhatCallersLeaveOverOnCallees -->
+<g id="node16" class="node">
+<title>TestBuildDotSharedMaxRenderBudgetSpendsWhatCallersLeaveOverOnCallees</title>
+<g id="a_node16"><a xlink:title="internal/codeshot/dot_test.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M446.55,-585C446.55,-585 12,-585 12,-585 6,-585 0,-579 0,-573 0,-573 0,-561 0,-561 0,-555 6,-549 12,-549 12,-549 446.55,-549 446.55,-549 452.55,-549 458.55,-555 458.55,-561 458.55,-561 458.55,-573 458.55,-573 458.55,-579 452.55,-585 446.55,-585"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-563.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotSharedMaxRenderBudgetSpendsWhatCallersLeaveOverOnCallees</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotDashesTransitiveEdgesFromTestCallersSameAsDirectOnes&#45;&gt;BuildDot -->
-<g id="edge17" class="edge">
-<title>TestBuildDotDashesTransitiveEdgesFromTestCallersSameAsDirectOnes&#45;&gt;BuildDot</title>
-<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-463.53C415.44,-470.15 458.55,-476 458.55,-476 458.55,-476 513.3,-543.75 513.3,-543.75 513.3,-543.75 551.94,-645.34 570.38,-693.83"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="568.31,-694.3 572.41,-699.16 572.24,-692.81 568.31,-694.3"/>
-<text xml:space="preserve" text-anchor="middle" x="499.42" y="-547.7" font-family="Times,serif" font-size="14.00">test</text>
+<!-- TestBuildDotSharedMaxRenderBudgetSpendsWhatCallersLeaveOverOnCallees&#45;&gt;BuildDot -->
+<g id="edge15" class="edge">
+<title>TestBuildDotSharedMaxRenderBudgetSpendsWhatCallersLeaveOverOnCallees&#45;&gt;BuildDot</title>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-585.53C415.44,-592.15 458.55,-598 458.55,-598 458.55,-598 513.3,-644.75 513.3,-644.75 513.3,-644.75 538.87,-673.24 558.33,-694.92"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="556.55,-696.08 562.12,-699.14 559.68,-693.27 556.55,-696.08"/>
+<text xml:space="preserve" text-anchor="middle" x="499.42" y="-648.7" font-family="Times,serif" font-size="14.00">test</text>
 </g>
 <!-- TestBuildDotStylesAFileKindCallerCalleeDistinctlyFromARealCall -->
-<g id="node19" class="node">
+<g id="node17" class="node">
 <title>TestBuildDotStylesAFileKindCallerCalleeDistinctlyFromARealCall</title>
-<g id="a_node19"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M405.3,-402C405.3,-402 53.25,-402 53.25,-402 47.25,-402 41.25,-396 41.25,-390 41.25,-390 41.25,-378 41.25,-378 41.25,-372 47.25,-366 53.25,-366 53.25,-366 405.3,-366 405.3,-366 411.3,-366 417.3,-372 417.3,-378 417.3,-378 417.3,-390 417.3,-390 417.3,-396 411.3,-402 405.3,-402"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-380.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotStylesAFileKindCallerCalleeDistinctlyFromARealCall</text>
+<g id="a_node17"><a xlink:title="internal/codeshot/dot_test.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M405.3,-524C405.3,-524 53.25,-524 53.25,-524 47.25,-524 41.25,-518 41.25,-512 41.25,-512 41.25,-500 41.25,-500 41.25,-494 47.25,-488 53.25,-488 53.25,-488 405.3,-488 405.3,-488 411.3,-488 417.3,-494 417.3,-500 417.3,-500 417.3,-512 417.3,-512 417.3,-518 411.3,-524 405.3,-524"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-502.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotStylesAFileKindCallerCalleeDistinctlyFromARealCall</text>
 </a>
 </g>
 </g>
 <!-- TestBuildDotStylesAFileKindCallerCalleeDistinctlyFromARealCall&#45;&gt;BuildDot -->
-<g id="edge18" class="edge">
+<g id="edge16" class="edge">
 <title>TestBuildDotStylesAFileKindCallerCalleeDistinctlyFromARealCall&#45;&gt;BuildDot</title>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-524.53C415.44,-531.15 458.55,-537 458.55,-537 458.55,-537 513.3,-597.75 513.3,-597.75 513.3,-597.75 546.7,-658.51 566.21,-694.01"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="564.22,-694.75 568.95,-698.99 567.9,-692.72 564.22,-694.75"/>
+<text xml:space="preserve" text-anchor="middle" x="499.42" y="-601.7" font-family="Times,serif" font-size="14.00">test</text>
+</g>
+<!-- TestBuildDotTooltipsCombineWithADisambiguatingLabelOnACollidingNode -->
+<g id="node18" class="node">
+<title>TestBuildDotTooltipsCombineWithADisambiguatingLabelOnACollidingNode</title>
+<g id="a_node18"><a xlink:title="internal/codeshot/dot_test.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M433.05,-463C433.05,-463 25.5,-463 25.5,-463 19.5,-463 13.5,-457 13.5,-451 13.5,-451 13.5,-439 13.5,-439 13.5,-433 19.5,-427 25.5,-427 25.5,-427 433.05,-427 433.05,-427 439.05,-427 445.05,-433 445.05,-439 445.05,-439 445.05,-451 445.05,-451 445.05,-457 439.05,-463 433.05,-463"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-441.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotTooltipsCombineWithADisambiguatingLabelOnACollidingNode</text>
+</a>
+</g>
+</g>
+<!-- TestBuildDotTooltipsCombineWithADisambiguatingLabelOnACollidingNode&#45;&gt;BuildDot -->
+<g id="edge17" class="edge">
+<title>TestBuildDotTooltipsCombineWithADisambiguatingLabelOnACollidingNode&#45;&gt;BuildDot</title>
+<path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-463.53C415.44,-470.15 458.55,-476 458.55,-476 458.55,-476 513.3,-543.75 513.3,-543.75 513.3,-543.75 551.94,-645.34 570.38,-693.83"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="568.31,-694.3 572.41,-699.16 572.24,-692.81 568.31,-694.3"/>
+<text xml:space="preserve" text-anchor="middle" x="499.42" y="-547.7" font-family="Times,serif" font-size="14.00">test</text>
+</g>
+<!-- TestBuildDotTooltipsReachTheRenderedSvgAsHoverableTitles -->
+<g id="node19" class="node">
+<title>TestBuildDotTooltipsReachTheRenderedSvgAsHoverableTitles</title>
+<g id="a_node19"><a xlink:title="internal/codeshot/dot_test.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M399.67,-402C399.67,-402 58.88,-402 58.88,-402 52.88,-402 46.87,-396 46.87,-390 46.87,-390 46.87,-378 46.87,-378 46.87,-372 52.87,-366 58.87,-366 58.87,-366 399.67,-366 399.67,-366 405.67,-366 411.67,-372 411.67,-378 411.67,-378 411.67,-390 411.67,-390 411.67,-396 405.67,-402 399.67,-402"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-380.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotTooltipsReachTheRenderedSvgAsHoverableTitles</text>
+</a>
+</g>
+</g>
+<!-- TestBuildDotTooltipsReachTheRenderedSvgAsHoverableTitles&#45;&gt;BuildDot -->
+<g id="edge18" class="edge">
+<title>TestBuildDotTooltipsReachTheRenderedSvgAsHoverableTitles&#45;&gt;BuildDot</title>
 <path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-402.53C415.44,-409.15 458.55,-415 458.55,-415 458.55,-415 513.3,-486.75 513.3,-486.75 513.3,-486.75 555.31,-633.13 572.62,-693.47"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="570.52,-693.74 574.19,-698.93 574.55,-692.59 570.52,-693.74"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-490.7" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotFileKindStylingTakesPrecedenceOverTestDashStyling -->
+<!-- TestBuildDotTreatsMaxRenderAsOneSharedBudgetNotACapPerDirection -->
 <g id="node20" class="node">
-<title>TestBuildDotFileKindStylingTakesPrecedenceOverTestDashStyling</title>
+<title>TestBuildDotTreatsMaxRenderAsOneSharedBudgetNotACapPerDirection</title>
 <g id="a_node20"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M409.8,-341C409.8,-341 48.75,-341 48.75,-341 42.75,-341 36.75,-335 36.75,-329 36.75,-329 36.75,-317 36.75,-317 36.75,-311 42.75,-305 48.75,-305 48.75,-305 409.8,-305 409.8,-305 415.8,-305 421.8,-311 421.8,-317 421.8,-317 421.8,-329 421.8,-329 421.8,-335 415.8,-341 409.8,-341"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-319.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotFileKindStylingTakesPrecedenceOverTestDashStyling</text>
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M427.8,-341C427.8,-341 30.75,-341 30.75,-341 24.75,-341 18.75,-335 18.75,-329 18.75,-329 18.75,-317 18.75,-317 18.75,-311 24.75,-305 30.75,-305 30.75,-305 427.8,-305 427.8,-305 433.8,-305 439.8,-311 439.8,-317 439.8,-317 439.8,-329 439.8,-329 439.8,-335 433.8,-341 427.8,-341"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-319.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotTreatsMaxRenderAsOneSharedBudgetNotACapPerDirection</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotFileKindStylingTakesPrecedenceOverTestDashStyling&#45;&gt;BuildDot -->
+<!-- TestBuildDotTreatsMaxRenderAsOneSharedBudgetNotACapPerDirection&#45;&gt;BuildDot -->
 <g id="edge19" class="edge">
-<title>TestBuildDotFileKindStylingTakesPrecedenceOverTestDashStyling&#45;&gt;BuildDot</title>
+<title>TestBuildDotTreatsMaxRenderAsOneSharedBudgetNotACapPerDirection&#45;&gt;BuildDot</title>
 <path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-341.53C415.44,-348.15 458.55,-354 458.55,-354 458.55,-354 513.3,-427.75 513.3,-427.75 513.3,-427.75 557.68,-621.67 574.01,-693.04"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="571.96,-693.48 575.34,-698.86 576.05,-692.55 571.96,-693.48"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-431.7" font-family="Times,serif" font-size="14.00">test</text>
@@ -575,18 +575,18 @@
 <polygon fill="#94a3b8" stroke="#94a3b8" points="573,-693.62 576.18,-699.12 577.12,-692.84 573,-693.62"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-371.7" font-family="Times,serif" font-size="14.00">test</text>
 </g>
-<!-- TestBuildDotOutputIsValidDotThatTheRealDotBinaryAccepts -->
+<!-- TestBuildDotWithTooltipsDeclaresEachNodeWithItsFilePath -->
 <g id="node22" class="node">
-<title>TestBuildDotOutputIsValidDotThatTheRealDotBinaryAccepts</title>
+<title>TestBuildDotWithTooltipsDeclaresEachNodeWithItsFilePath</title>
 <g id="a_node22"><a xlink:title="internal/codeshot/dot_test.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M395.92,-219C395.92,-219 62.62,-219 62.62,-219 56.62,-219 50.62,-213 50.62,-207 50.62,-207 50.62,-195 50.62,-195 50.62,-189 56.62,-183 62.62,-183 62.62,-183 395.92,-183 395.92,-183 401.92,-183 407.92,-189 407.92,-195 407.92,-195 407.92,-207 407.92,-207 407.92,-213 401.92,-219 395.92,-219"/>
-<text xml:space="preserve" text-anchor="middle" x="229.27" y="-197.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotOutputIsValidDotThatTheRealDotBinaryAccepts</text>
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M390.3,-219C390.3,-219 68.25,-219 68.25,-219 62.25,-219 56.25,-213 56.25,-207 56.25,-207 56.25,-195 56.25,-195 56.25,-189 62.25,-183 68.25,-183 68.25,-183 390.3,-183 390.3,-183 396.3,-183 402.3,-189 402.3,-195 402.3,-195 402.3,-207 402.3,-207 402.3,-213 396.3,-219 390.3,-219"/>
+<text xml:space="preserve" text-anchor="middle" x="229.27" y="-197.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">TestBuildDotWithTooltipsDeclaresEachNodeWithItsFilePath</text>
 </a>
 </g>
 </g>
-<!-- TestBuildDotOutputIsValidDotThatTheRealDotBinaryAccepts&#45;&gt;BuildDot -->
+<!-- TestBuildDotWithTooltipsDeclaresEachNodeWithItsFilePath&#45;&gt;BuildDot -->
 <g id="edge21" class="edge">
-<title>TestBuildDotOutputIsValidDotThatTheRealDotBinaryAccepts&#45;&gt;BuildDot</title>
+<title>TestBuildDotWithTooltipsDeclaresEachNodeWithItsFilePath&#45;&gt;BuildDot</title>
 <path fill="none" stroke="#94a3b8" stroke-dasharray="5,2" d="M366.69,-219.53C415.44,-226.15 458.55,-232 458.55,-232 458.55,-232 513.3,-306.75 513.3,-306.75 513.3,-306.75 561.16,-602.76 575.77,-693.12"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="573.68,-693.4 576.72,-698.99 577.83,-692.73 573.68,-693.4"/>
 <text xml:space="preserve" text-anchor="middle" x="499.42" y="-310.7" font-family="Times,serif" font-size="14.00">test</text>

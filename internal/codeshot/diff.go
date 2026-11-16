@@ -177,7 +177,8 @@ func handleEmptyRoots(p DiffParams, refusal, warnMsg, nothingToCheck string, std
 // RunDiffMode diagrams the symbols defined in changed files with their direct
 // callers and callees. Probes run sequentially: concurrent codegraph calls
 // against one index race on its schema_versions table.
-func RunDiffMode(cg *codegraph.Client, repoPath string, p DiffParams, stderr io.Writer) (string, error) {
+func RunDiffMode(src CallSource, repoPath string, p DiffParams, stderr io.Writer) (string, error) {
+	w := src.Wording()
 	changed, err := gitDiffFiles(repoPath, p.DiffRef)
 	if err != nil {
 		return "", err
@@ -188,13 +189,13 @@ func RunDiffMode(cg *codegraph.Client, repoPath string, p DiffParams, stderr io.
 		}
 		return BuildDiffDot(nil, nil, p.MaxRender, p.Tooltips), nil
 	}
-	all, err := enumerateAllSymbols(cg, repoPath)
+	all, err := src.Symbols()
 	if err != nil {
 		return "", err
 	}
 	matched := MatchRootSymbols(all, changed)
 	if len(matched) == 0 {
-		if err := handleEmptyRoots(p, DiffEmbedRefusalNoSymbols(repoPath, len(changed), p.EmbedFile), DiffNoSymbolsWarning(repoPath, len(changed)), DiffNothingToCheckNoSymbols(repoPath, len(changed), p.EmbedFile), stderr); err != nil {
+		if err := handleEmptyRoots(p, diffEmbedRefusalNoSymbols(w, repoPath, len(changed), p.EmbedFile), diffNoSymbolsWarning(w, repoPath, len(changed)), diffNothingToCheckNoSymbols(w, repoPath, len(changed), p.EmbedFile), stderr); err != nil {
 			return "", err
 		}
 		return BuildDiffDot(nil, nil, p.MaxRender, p.Tooltips), nil
@@ -221,11 +222,11 @@ func RunDiffMode(cg *codegraph.Client, repoPath string, p DiffParams, stderr io.
 	var edges []Edge
 	var unresolved, truncated []string
 	for _, root := range roots {
-		callers, err := cg.Edges("callers", repoPath, p.Limit, root.Name, false)
+		callers, err := src.Edges("callers", root.Name, p.Limit, false)
 		if err != nil {
 			return "", err
 		}
-		callees, err := cg.Edges("callees", repoPath, p.Limit, root.Name, false)
+		callees, err := src.Edges("callees", root.Name, p.Limit, false)
 		if err != nil {
 			return "", err
 		}
@@ -236,7 +237,8 @@ func RunDiffMode(cg *codegraph.Client, repoPath string, p DiffParams, stderr io.
 				unresolved = append(unresolved, root.Name)
 			}
 		}
-		callerList, calleeList := callers.List("callers"), callees.List("callees")
+		// Sorted, as in symbol mode: no source's listing order reaches the DOT.
+		callerList, calleeList := SortSymbolsForEnumeration(callers.List("callers")), SortSymbolsForEnumeration(callees.List("callees"))
 		for _, c := range callerList {
 			edges = append(edges, Edge{From: c, To: root})
 		}
@@ -275,7 +277,7 @@ func RunDiffMode(cg *codegraph.Client, repoPath string, p DiffParams, stderr io.
 			}
 		}
 	}
-	warn(stderr, DiffEmptyRootsWarning(len(roots)-len(withEdges), len(roots)))
+	warn(stderr, diffEmptyRootsWarning(w, len(roots)-len(withEdges), len(roots)))
 	return BuildDiffDot(roots, edges, p.MaxRender, p.Tooltips), nil
 }
 

@@ -72,10 +72,14 @@ var structuralKinds = []string{"contains", "extends", "implements", "decorates"}
 // drawnKindsList names the kinds that draw an edge on their own: every callee
 // kind but imports, which FileEdgesFromIndexRows counts only when the same
 // target is also reached by another kind (codegraph's own rule).
-func drawnKindsList(last string) string {
+func drawnKindsList(last string) string { return calleeKindsList(last, false) }
+
+// calleeKindsList is the sorted callee kinds as prose, "a, b<last>c", with
+// or without imports.
+func calleeKindsList(last string, imports bool) string {
 	var kinds []string
 	for _, k := range slices.Sorted(slices.Values(codegraph.CalleeEdgeKinds)) {
-		if k != "imports" {
+		if imports || k != "imports" {
 			kinds = append(kinds, k)
 		}
 	}
@@ -84,19 +88,14 @@ func drawnKindsList(last string) string {
 
 func upperFirst(s string) string { return strings.ToUpper(s[:1]) + s[1:] }
 
-// UndrawnEdgeKindsWarning names the snapshot's edge kinds that --architecture
-// neither draws nor knows to be structural, with counts. Another tool's kind
-// (code-graph-rag's "overrides", or any kind it passes through) would
-// otherwise drop out of the diagram, and out of --forbid, silently.
-func UndrawnEdgeKindsWarning(snap *snapshot.Snapshot) string {
+// undrawnKinds lists the snapshot's edge kinds that are neither callee
+// kinds nor known to be structural, with counts ("overrides (3)"), sorted.
+func undrawnKinds(snap *snapshot.Snapshot) string {
 	counts := map[string]int{}
 	for _, e := range snap.Edges {
 		if !slices.Contains(codegraph.CalleeEdgeKinds, e.Kind) && !slices.Contains(structuralKinds, e.Kind) {
 			counts[e.Kind]++
 		}
-	}
-	if len(counts) == 0 {
-		return ""
 	}
 	kinds := make([]string, 0, len(counts))
 	for k := range counts {
@@ -107,8 +106,32 @@ func UndrawnEdgeKindsWarning(snap *snapshot.Snapshot) string {
 	for i, k := range kinds {
 		parts[i] = fmt.Sprintf("%s (%d)", k, counts[k])
 	}
+	return strings.Join(parts, ", ")
+}
+
+// UndrawnEdgeKindsWarning names the snapshot's edge kinds that --architecture
+// neither draws nor knows to be structural, with counts. Another tool's kind
+// (code-graph-rag's "overrides", or any kind it passes through) would
+// otherwise drop out of the diagram, and out of --forbid, silently.
+func UndrawnEdgeKindsWarning(snap *snapshot.Snapshot) string {
+	kinds := undrawnKinds(snap)
+	if kinds == "" {
+		return ""
+	}
 	return fmt.Sprintf("codeshot: %s has edge kinds --architecture doesn't draw: %s. It draws %s edges (imports only alongside one of those), so dependencies carried only by these kinds are missing from the diagram and from --forbid.",
-		snapshotPhrase(snap), strings.Join(parts, ", "), drawnKindsList(" and "))
+		snapshotPhrase(snap), kinds, drawnKindsList(" and "))
+}
+
+// UnfollowedEdgeKindsWarning is the same check for symbol mode and --diff,
+// which follow every callee kind: a snapshot whose calls are "invokes"
+// would otherwise draw lone boxes with no word why.
+func UnfollowedEdgeKindsWarning(snap *snapshot.Snapshot) string {
+	kinds := undrawnKinds(snap)
+	if kinds == "" {
+		return ""
+	}
+	return fmt.Sprintf("codeshot: %s has edge kinds codeshot doesn't follow: %s. Callers and callees come from %s edges, so any reached only through these kinds are missing.",
+		snapshotPhrase(snap), kinds, calleeKindsList(" and ", true))
 }
 
 var unsafeToolNameRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
