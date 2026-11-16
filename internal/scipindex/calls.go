@@ -40,7 +40,7 @@ type Ref struct {
 
 // CallGraph is the definitions and references Calls derives. Unranged
 // counts the functions, methods and types with no enclosing range, whose
-// references are drawn from their file instead.
+// references are drawn from the ranged definition or file around them.
 type CallGraph struct {
 	Defs     []Def
 	Refs     []Ref
@@ -110,14 +110,14 @@ func (x *Index) Calls() *CallGraph {
 				g.Defs = append(g.Defs, def)
 				unranged = append(unranged, contains)
 			}
-			d := &g.Defs[i]
-			d.Line = min(d.Line, line)
+			m := &g.Defs[i] // the merged Def
+			m.Line = min(m.Line, line)
 			if !contains || !ranged {
-				d.End = max(d.End, line)
+				m.End = max(m.End, line)
 				continue
 			}
-			d.Container, unranged[i] = true, false
-			d.End = max(d.End, int(er.End.Line)+1)
+			m.Container, unranged[i] = true, false
+			m.End = max(m.End, int(er.End.Line)+1)
 			s := pos{er.Start.Line, er.Start.Character}
 			if name := (pos{r.Start.Line, r.Start.Character}); name.before(s) {
 				s = name
