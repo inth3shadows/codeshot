@@ -96,8 +96,8 @@ jobs:
       # 1.6.2 plus the fork's narrow patches. Committed diagrams must be
       # regenerated with this same build (see TECHNICAL.md, CI). Cloned into
       # $RUNNER_TEMP so `codegraph init .` doesn't index it. WASM-only
-      # (CODEGRAPH_KERNEL=0): the fork's native kernel carried a
-      # fabricated-edge bug.
+      # (CODEGRAPH_KERNEL=0), as the committed diagrams were drawn: the
+      # fork's native kernel has produced fabricated edges and is not re-checked.
       - name: Build codegraph fork (v1.6.2-em.44)
         env:
           FORK_SHA: d9d138de72c3875e5e9fe785dd6add86b68e1896
