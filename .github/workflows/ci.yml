@@ -20,7 +20,9 @@ jobs:
     name: Test, vet, lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -54,8 +56,9 @@ jobs:
         codegraph: ${{ github.event_name == 'schedule' && fromJSON('["latest"]') || fromJSON('["1.6.0"]') }}
     steps:
       # Full history: the --diff end-to-end test diffs real commits.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -68,8 +71,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y graphviz
       - name: Install codegraph ${{ matrix.codegraph }} from npm
         run: |
-          npm install -g "@colbymchenry/codegraph@${{ matrix.codegraph }}"
+          npm install -g "@colbymchenry/codegraph@${MATRIX_CODEGRAPH}"
           codegraph --version
+        env:
+          MATRIX_CODEGRAPH: ${{ matrix.codegraph }}
       - name: Build the codegraph index
         run: codegraph init .
       - run: go test ./...
@@ -78,7 +83,9 @@ jobs:
     name: Diagrams are current (codeshot --check)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
