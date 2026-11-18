@@ -1,0 +1,11 @@
+# zizmor config.
+rules:
+  adhoc-packages:
+    # ci.yml installs @colbymchenry/codegraph at each matrix version on purpose:
+    # that package is the system under test, not a build dependency.
+    ignore:
+      - ci.yml
+  self-repository:
+    # ci.yml runs `uses: ./` to test this repo's own action at the commit under test.
+    ignore:
+      - ci.yml
