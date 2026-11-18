@@ -179,27 +179,40 @@ codeshot --architecture --source codegraph,scip --out arch.svg --format svg
 
 Each source builds its file edges on its own (with its own `--max-symbols`
 budget), then the edges are merged. An edge every source found is drawn as
-usual. An edge only some sources found is dashed, and its label names them
-(`3 scip-go`). A snapshot's or SCIP index's paths are taken as relative to
-`--path`; when codegraph is in the list and its index sits above `--path`,
-they are rebased onto the index root, so a file both sources see is one box. The weight is the highest any one source gives the edge,
-because the sources count different things (codegraph calls, SCIP
-references), so adding them would mix units. In svg, each edge's tooltip
-shows every source's own weight (`codegraph 3, scip-go 5`). A line under the
-diagram names the sources.
+usual, labeled with its weight: the highest any one source gives it, because
+the sources count different things (codegraph calls, SCIP references), so
+adding them would mix units. An edge only some sources found is dashed, and
+its label gives each of those sources' own weight (`scip-go 3`). In svg,
+every edge's tooltip shows every source's own weight (`codegraph 3, scip-go
+5`). A line under the diagram names the sources.
+
+codegraph's paths are relative to its index, which can sit above `--path`.
+When codegraph is in the list and `--path` is below its index, codeshot looks
+each snapshot's or SCIP index's files up on disk: paths that resolve under
+`--path` are rebased onto the index root, and paths that already resolve
+from the index root (one repo-wide index) are left as they are, so a file
+both sources see is one box. Paths found in neither place are taken as
+relative to `--path`.
 
 `--forbid` checks the merged graph, so an edge any one source sees can fail
 the run, and the violation lists which sources saw it. With `--group-depth`,
 a group edge's weight is the highest per-source total of the file edges in
 it. It is drawn solid only when every source saw every file edge inside it;
-otherwise it is dashed and its label names the sources that did, or says
-`mixed` when none did. A source that finds no edges at all is named in a
+otherwise it is dashed and labeled with each source's own total. A source
+that finds no edges at all is named in a
 warning, and a source that fails (no codegraph index, an unreadable file)
 stops the run with its label on the error rather than being left out. The `--embed` marker and image
 name list every source in order (`codeshot-arch-codegraph-scip-go.svg`).
 
 Lists work only with `--architecture`; symbol mode and `--diff` read one
 source, because matching one symbol across sources is a separate problem.
+Two consequences of the shared paths: with `--path` below codegraph's index,
+codegraph still draws the whole index, so with a bare `--source scip` read
+from `--path`, edges outside `--path` show as codegraph's alone. And adding
+codegraph to a `--path <sub>` SCIP or snapshot run moves that source's paths
+onto the index root, so a `--forbid` rule written against the old paths
+(`handlers/->db/`) needs the `<sub>/` prefix; a rule that matches nothing
+gives no warning.
 Two entries with the same label (two scip-go indexes, say) are refused,
 since the label is how the diagram tells them apart, and so are an empty
 entry (`codegraph,`) and the same entry twice. A snapshot or SCIP file whose

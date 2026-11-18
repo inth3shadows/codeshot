@@ -77,6 +77,10 @@ func parseSourceList(v, repoPath string) ([]sourceSpec, error) {
 		}
 		s, ok := parseSourceSpec(part, repoPath)
 		if !ok {
+			if one, ok := parseSourceSpec(v, repoPath); ok && one.kind != "codegraph" {
+				// It could also have been one file with a comma (V6).
+				return nil, usageExit(fmt.Sprintf("codeshot: --source must be 'codegraph', 'snapshot:<file>' or 'scip[:<file>]' (or a comma list of them), got '%s' (and there is no file '%s')", part, one.file))
+			}
 			return nil, bad(part)
 		}
 		specs = append(specs, s)
@@ -158,14 +162,63 @@ func fileSourcePrefix(repoPath string) string {
 		return ""
 	}
 	rel, err := filepath.Rel(filepath.Dir(filepath.Dir(idx)), abs)
-	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return ""
 	}
 	return filepath.ToSlash(rel) + "/"
 }
 
+// maxRootProbes bounds the files pathsRelativeToPath looks up.
+const maxRootProbes = 200
+
+// pathsRelativeToPath tells whether a file source's paths start at --path
+// (so they need prefix to match codegraph's) or already at codegraph's index
+// root (one repo-wide index with --path below it, which a prefix would
+// double, V1). It looks the source's files up on disk under both: more found
+// under the index root means index-root-relative. A tie, including files
+// found nowhere (an index from another checkout), keeps the documented rule:
+// relative to --path.
+func pathsRelativeToPath(src ArchSource, repoPath, prefix string) bool {
+	abs, err := filepath.Abs(repoPath)
+	if err != nil {
+		return true
+	}
+	root := abs
+	for range strings.Split(strings.TrimSuffix(prefix, "/"), "/") {
+		root = filepath.Dir(root)
+	}
+	symbols, err := src.Symbols()
+	if err != nil {
+		return true // the run reports the error itself
+	}
+	isFile := func(p string) bool {
+		fi, err := os.Stat(p)
+		return err == nil && !fi.IsDir()
+	}
+	seen := map[string]bool{}
+	underPath, underRoot := 0, 0
+	for _, s := range symbols {
+		f := s.FilePath
+		if f == "" || seen[f] || filepath.IsAbs(f) {
+			continue
+		}
+		seen[f] = true
+		if isFile(filepath.Join(abs, filepath.FromSlash(f))) {
+			underPath++
+		}
+		if isFile(filepath.Join(root, filepath.FromSlash(f))) {
+			underRoot++
+		}
+		if len(seen) >= maxRootProbes {
+			break
+		}
+	}
+	return underPath >= underRoot
+}
+
 // prefixedSource rebases a file source's edges onto the codegraph index root
-// (fileSourcePrefix), so a file both sources see is one node (F1).
+// (fileSourcePrefix), so a file both sources see is one node (F1). Only for a
+// source whose paths are relative to --path (pathsRelativeToPath).
 type prefixedSource struct {
 	Src    ArchSource
 	Prefix string

@@ -141,7 +141,7 @@ func BuildArchitectureDot(fileEdges []FileEdge, opt ArchOptions) string {
 	lines := []string{"digraph architecture {", graphAttrs, nodeAttrs, edgeAttrs}
 	multi := len(opt.Sources) > 1
 	if multi {
-		lines = append(lines, fmt.Sprintf(`  label="Sources: %s. Dashed: not every source saw all of the edge; its label names the sources that did (mixed: none did)."; labelloc=b; fontname="Helvetica"; fontsize=10; fontcolor="#64748b";`, esc(strings.Join(opt.Sources, ", "))))
+		lines = append(lines, fmt.Sprintf(`  label="Sources: %s. Dashed: not every source saw all of the edge; its label gives each source's own weight."; labelloc=b; fontname="Helvetica"; fontsize=10; fontcolor="#64748b";`, esc(strings.Join(opt.Sources, ", "))))
 	}
 	for _, f := range files {
 		attrs := ""
@@ -158,11 +158,10 @@ func BuildArchitectureDot(fileEdges []FileEdge, opt ArchOptions) string {
 		label, extra := fmt.Sprintf("%d", e.Weight), ""
 		if multi {
 			if len(e.Full) < len(opt.Sources) {
-				by := "mixed"
-				if len(e.Full) > 0 {
-					by = strings.Join(e.Full, "+")
-				}
-				label += " " + by
+				// Each source's own weight (V2): a group edge's top weight can
+				// come from a source that didn't see all of it, so a bare
+				// number next to the names of those that did would misattribute it.
+				label = seenList(e.Seen, opt.Sources)
 				extra += `, style=dashed`
 			}
 			if opt.Tooltips {

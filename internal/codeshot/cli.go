@@ -564,8 +564,9 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		var dot string
 		var violations []Violation
 		if multi != nil {
-			// Codegraph's paths are relative to its index root; the file
-			// sources' are rebased onto it (F1).
+			// Codegraph's paths are relative to its index root; a file
+			// source's paths relative to --path are rebased onto it (F1),
+			// one already relative to the root is left alone (V1).
 			prefix := ""
 			if usesCodegraph {
 				prefix = fileSourcePrefix(repoPath)
@@ -576,7 +577,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 				switch {
 				case m.spec.kind == "codegraph":
 					srcs[i].Src = CodegraphSource{CG: cg, RepoPath: repoPath}
-				case prefix != "":
+				case prefix != "" && pathsRelativeToPath(m.src, repoPath, prefix):
 					srcs[i].Src = prefixedSource{Src: m.src, Prefix: prefix}
 				}
 			}

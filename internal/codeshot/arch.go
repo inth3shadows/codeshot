@@ -154,7 +154,9 @@ func UnionFileEdges(perSource [][]FileEdge, labels []string) []FileEdge {
 				out = append(out, FileEdge{From: e.From, To: e.To})
 			}
 			out[i].Seen = mergeSeen(out[i].Seen, []SourceWeight{{Source: labels[si], Weight: e.Weight}})
-			out[i].Full = append(out[i].Full, labels[si])
+			if !slices.Contains(out[i].Full, labels[si]) {
+				out[i].Full = append(out[i].Full, labels[si])
+			}
 			out[i].Weight = max(out[i].Weight, e.Weight)
 		}
 	}

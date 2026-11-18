@@ -46,13 +46,13 @@ func TestMultiSourceArchitectureDotDashesEdgesOnlySomeSourcesSaw(t *testing.T) {
 	}
 	dot := BuildArchitectureDot(edges, ArchOptions{MaxRender: Unlimited, Sources: []string{"cg", "scip"}})
 	wantMatch(t, `"a" -> "b" \[label="5"\];`, dot)
-	wantMatch(t, `"a" -> "c" \[label="2 scip", style=dashed\];`, dot)
-	wantMatch(t, `label="Sources: cg, scip\. Dashed: not every source saw all of the edge; its label names the sources that did \(mixed: none did\)\."`, dot)
+	wantMatch(t, `"a" -> "c" \[label="scip 2", style=dashed\];`, dot)
+	wantMatch(t, `label="Sources: cg, scip\. Dashed: not every source saw all of the edge; its label gives each source's own weight\."`, dot)
 	wantNoMatch(t, `tooltip`, dot)
 
 	svg := BuildArchitectureDot(edges, ArchOptions{MaxRender: Unlimited, Sources: []string{"cg", "scip"}, Tooltips: true})
 	wantMatch(t, `"a" -> "b" \[label="5", tooltip="cg 3, scip 5"\];`, svg)
-	wantMatch(t, `"a" -> "c" \[label="2 scip", style=dashed, tooltip="scip 2"\];`, svg)
+	wantMatch(t, `"a" -> "c" \[label="scip 2", style=dashed, tooltip="scip 2"\];`, svg)
 
 	// One source: no legend, no provenance, exactly as before lists existed.
 	single := BuildArchitectureDot([]FileEdge{{From: "a", To: "b", Weight: 5}}, ArchOptions{MaxRender: Unlimited, Tooltips: true})
@@ -116,7 +116,7 @@ func TestCLIArchitectureFromTwoSourcesUnionsThem(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantMatch(t, `"src/a\.go" -> "lib/b\.go"\s*\[label=1\]`, string(got))
-	wantMatch(t, `"src/a\.go" -> "lib/c\.go"[^;]*label="1 snapshot-u"[^;]*style=dashed`, string(got))
+	wantMatch(t, `"src/a\.go" -> "lib/c\.go"[^;]*label="snapshot-u 1"[^;]*style=dashed`, string(got))
 
 	dir := t.TempDir()
 	doc := filepath.Join(dir, "doc.md")
@@ -167,22 +167,23 @@ func TestCLIMultiSourceWarnsAboutASourceThatFoundNothing(t *testing.T) {
 	wantMatch(t, `codeshot: snapshot-f: --architecture found no cross-file call edges — the diagram is blank\. The f snapshot`, stderr)
 }
 
-// F5: a group edge is drawn solid only when some source saw every file edge
-// inside it; the label names the sources that did, or "mixed" when none did.
+// F5: a group edge is drawn solid only when every source saw every file edge
+// inside it. V2: a dashed edge's label gives each source's own weight, so a
+// number is never shown next to a source that didn't count it.
 func TestGroupEdgeIsDashedWhenTheSourcesAgreeOnNoneOfItsFileEdges(t *testing.T) {
 	union := UnionFileEdges([][]FileEdge{
 		{{From: "src/a", To: "lib/x", Weight: 1}},
 		{{From: "src/b", To: "lib/y", Weight: 1}},
 	}, []string{"cg", "scip"})
 	dot := BuildArchitectureDot(RollupFileEdges(union, 1), ArchOptions{MaxRender: Unlimited, Sources: []string{"cg", "scip"}})
-	wantMatch(t, `"src/" -> "lib/" \[label="1 mixed", style=dashed\];`, dot)
+	wantMatch(t, `"src/" -> "lib/" \[label="cg 1, scip 1", style=dashed\];`, dot)
 
 	union = UnionFileEdges([][]FileEdge{
 		{{From: "src/a", To: "lib/x", Weight: 1}, {From: "src/b", To: "lib/y", Weight: 1}},
 		{{From: "src/b", To: "lib/y", Weight: 1}},
 	}, []string{"cg", "scip"})
 	dot = BuildArchitectureDot(RollupFileEdges(union, 1), ArchOptions{MaxRender: Unlimited, Sources: []string{"cg", "scip"}})
-	wantMatch(t, `"src/" -> "lib/" \[label="2 cg", style=dashed\];`, dot)
+	wantMatch(t, `"src/" -> "lib/" \[label="cg 2, scip 1", style=dashed\];`, dot)
 
 	union = UnionFileEdges([][]FileEdge{
 		{{From: "src/a", To: "lib/x", Weight: 1}, {From: "src/b", To: "lib/y", Weight: 2}},
@@ -278,3 +279,98 @@ func (ScipSourceStub) FileEdges([]Node) ([]SymbolEdge, error) {
 	return []SymbolEdge{{"a.go", "b.go"}}, nil
 }
 func (ScipSourceStub) EmptyGraphWarning() string { return "" }
+
+// V2: the group edge from the skill's repro: cg 2 over both file edges, scip
+// 5 over one. The label must not read "5 cg".
+func TestDashedGroupLabelNeverPairsOneSourcesWeightWithAnothersName(t *testing.T) {
+	union := UnionFileEdges([][]FileEdge{
+		{{From: "src/a", To: "lib/x", Weight: 1}, {From: "src/b", To: "lib/y", Weight: 1}},
+		{{From: "src/a", To: "lib/x", Weight: 5}},
+	}, []string{"cg", "scip"})
+	dot := BuildArchitectureDot(RollupFileEdges(union, 1), ArchOptions{MaxRender: Unlimited, Sources: []string{"cg", "scip"}})
+	wantMatch(t, `"src/" -> "lib/" \[label="cg 2, scip 5", style=dashed\];`, dot)
+}
+
+// V4: a source listing one edge twice still counts once in Full.
+func TestUnionFullCountsASourceOnceEvenIfItRepeatsAnEdge(t *testing.T) {
+	got := UnionFileEdges([][]FileEdge{
+		{{From: "a", To: "b", Weight: 1}, {From: "a", To: "b", Weight: 2}},
+		{},
+	}, []string{"cg", "scip"})
+	if len(got) != 1 || !reflect.DeepEqual(got[0].Full, []string{"cg"}) {
+		t.Errorf("got %+v, want one edge with Full [cg]", got)
+	}
+}
+
+// V6: a comma value whose file is missing says so, besides naming the entry.
+func TestBadListThatCouldBeAMissingFileSaysTheFileIsMissing(t *testing.T) {
+	_, err := parseSourceList("scip:build/idx,v2.scip", "repo")
+	if err == nil {
+		t.Fatal("no error")
+	}
+	wantMatch(t, `got 'v2\.scip' \(and there is no file 'build/idx,v2\.scip'\)`, err.(*Exit).Stderr)
+}
+
+// D2: a --path directory named "..x" is inside the index root.
+func TestFileSourcePrefixKeepsADirectoryNamedDotDotSomething(t *testing.T) {
+	root := fakeIndexRoot(t)
+	weird := filepath.Join(root, "..weird")
+	if err := os.MkdirAll(weird, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := fileSourcePrefix(weird); got != "..weird/" {
+		t.Errorf("got %q, want %q", got, "..weird/")
+	}
+}
+
+// V1: a file source whose paths already start at the index root (one
+// repo-wide index, --path below it) is not rebased; one relative to --path is.
+func TestFileSourceIsRebasedOnlyWhenItsPathsAreRelativeToPath(t *testing.T) {
+	root := fakeIndexRoot(t)
+	for _, f := range []string{"pkg/sub/a.go", "pkg/sub/b.go", "other.go"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, f)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, f), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sub := filepath.Join(root, "pkg", "sub")
+	rootRelative := filesSource{"pkg/sub/a.go", "pkg/sub/b.go", "other.go"}
+	pathRelative := filesSource{"a.go", "b.go"}
+	if pathsRelativeToPath(rootRelative, sub, "pkg/sub/") {
+		t.Error("root-relative paths judged relative to --path (would double the prefix)")
+	}
+	if !pathsRelativeToPath(pathRelative, sub, "pkg/sub/") {
+		t.Error("--path-relative paths not judged relative to --path")
+	}
+	// Neither on disk (an index from another checkout): the documented default, --path.
+	if !pathsRelativeToPath(filesSource{"gone.go"}, sub, "pkg/sub/") {
+		t.Error("paths found nowhere should default to relative to --path")
+	}
+}
+
+func fakeIndexRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".codegraph"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".codegraph", "codegraph.db"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// filesSource is a file source whose Symbols name the given files.
+type filesSource []string
+
+func (f filesSource) Symbols() ([]Node, error) {
+	var out []Node
+	for _, p := range f {
+		out = append(out, Node{Name: "x", FilePath: p})
+	}
+	return out, nil
+}
+func (filesSource) FileEdges([]Node) ([]SymbolEdge, error) { return nil, nil }
+func (filesSource) EmptyGraphWarning() string              { return "" }
