@@ -324,3 +324,13 @@ func seenList(seen []SourceWeight, order []string) string {
 	}
 	return strings.Join(parts, ", ")
 }
+
+// RootGuessWarning: none of a file source's files are on disk, so whether its
+// paths start at --path or at codegraph's index root was read off the paths.
+func RootGuessWarning(relativeToPath bool, prefix string) string {
+	how := "start at codegraph's index root (some already begin with '" + prefix + "')"
+	if relativeToPath {
+		how = "start at --path, so they were given the '" + prefix + "' prefix"
+	}
+	return fmt.Sprintf("codeshot: none of its files are on disk under --path or codegraph's index root, so its paths were taken to %s; if the same file shows up twice, it guessed wrong.", how)
+}

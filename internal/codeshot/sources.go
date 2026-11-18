@@ -168,20 +168,19 @@ func fileSourcePrefix(repoPath string) string {
 	return filepath.ToSlash(rel) + "/"
 }
 
-// maxRootProbes bounds the files pathsRelativeToPath looks up.
-const maxRootProbes = 200
-
 // pathsRelativeToPath tells whether a file source's paths start at --path
 // (so they need prefix to match codegraph's) or already at codegraph's index
 // root (one repo-wide index with --path below it, which a prefix would
-// double, V1). It looks the source's files up on disk under both: more found
-// under the index root means index-root-relative. A tie, including files
-// found nowhere (an index from another checkout), keeps the documented rule:
-// relative to --path.
-func pathsRelativeToPath(src ArchSource, repoPath, prefix string) bool {
+// double, V1). It looks every one of the source's files up on disk under
+// both: more found under the index root means index-root-relative, and a tie
+// between found files keeps the documented rule, relative to --path. With no
+// file on disk at all (an index from another checkout), the paths decide: any
+// path already under the prefix means index-root-relative (W1). found is
+// false then, so the caller can say the choice was a guess.
+func pathsRelativeToPath(src ArchSource, repoPath, prefix string) (rel, found bool) {
 	abs, err := filepath.Abs(repoPath)
 	if err != nil {
-		return true
+		return true, false
 	}
 	root := abs
 	for range strings.Split(strings.TrimSuffix(prefix, "/"), "/") {
@@ -189,17 +188,17 @@ func pathsRelativeToPath(src ArchSource, repoPath, prefix string) bool {
 	}
 	symbols, err := src.Symbols()
 	if err != nil {
-		return true // the run reports the error itself
+		return true, false // the run reports the error itself
 	}
 	isFile := func(p string) bool {
 		fi, err := os.Stat(p)
 		return err == nil && !fi.IsDir()
 	}
 	seen := map[string]bool{}
-	underPath, underRoot := 0, 0
+	underPath, underRoot, underPrefix := 0, 0, false
 	for _, s := range symbols {
 		f := s.FilePath
-		if f == "" || seen[f] || filepath.IsAbs(f) {
+		if f == "" || seen[f] || path.IsAbs(f) || filepath.IsAbs(f) {
 			continue
 		}
 		seen[f] = true
@@ -209,16 +208,20 @@ func pathsRelativeToPath(src ArchSource, repoPath, prefix string) bool {
 		if isFile(filepath.Join(root, filepath.FromSlash(f))) {
 			underRoot++
 		}
-		if len(seen) >= maxRootProbes {
-			break
-		}
+		underPrefix = underPrefix || strings.HasPrefix(path.Clean(f), prefix)
 	}
-	return underPath >= underRoot
+	if underPath == 0 && underRoot == 0 {
+		return !underPrefix, false
+	}
+	return underPath >= underRoot, true
 }
 
-// prefixedSource rebases a file source's edges onto the codegraph index root
-// (fileSourcePrefix), so a file both sources see is one node (F1). Only for a
-// source whose paths are relative to --path (pathsRelativeToPath).
+// prefixedSource cleans a file source's edge paths (so "./a.go" and "a.go"
+// are one node, W3) and, with a Prefix, rebases them onto the codegraph index
+// root (fileSourcePrefix), so a file both sources see is one node (F1). Every
+// file source in a list goes through it; the prefix is set only for one whose
+// paths are relative to --path (pathsRelativeToPath). An absolute path is
+// cleaned but never prefixed (W2).
 type prefixedSource struct {
 	Src    ArchSource
 	Prefix string
@@ -247,8 +250,11 @@ func (p prefixedSource) FileEdges(symbols []Node) ([]SymbolEdge, error) {
 }
 
 func (p prefixedSource) rebase(f string) string {
-	if f == "" {
+	switch {
+	case f == "":
 		return ""
+	case path.IsAbs(f) || filepath.IsAbs(f):
+		return path.Clean(f)
 	}
 	return path.Join(p.Prefix, f)
 }

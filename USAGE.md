@@ -191,8 +191,12 @@ When codegraph is in the list and `--path` is below its index, codeshot looks
 each snapshot's or SCIP index's files up on disk: paths that resolve under
 `--path` are rebased onto the index root, and paths that already resolve
 from the index root (one repo-wide index) are left as they are, so a file
-both sources see is one box. Paths found in neither place are taken as
-relative to `--path`.
+both sources see is one box. When none of a source's files are on disk (an
+index from another checkout), the paths decide: if any already begins with
+`--path`'s directory, they are taken to start at the index root, otherwise at
+`--path`, and a warning says which. In a list, every snapshot and SCIP path
+is also cleaned (`./src/a.go` and `src/a.go` are one box), and an absolute
+path is never prefixed.
 
 `--forbid` checks the merged graph, so an edge any one source sees can fail
 the run, and the violation lists which sources saw it. With `--group-depth`,

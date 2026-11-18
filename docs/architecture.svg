@@ -117,7 +117,7 @@
 <title>internal/codeshot/cli.go&#45;&gt;internal/codeshot/warnings.go</title>
 <path fill="none" stroke="#94a3b8" d="M403.35,-1136.54C440.75,-1235.31 614.85,-1695 614.85,-1695 614.85,-1695 878.4,-1905 878.4,-1905 878.4,-1905 1284,-1972 1284,-1972 1284,-1972 1595.55,-1972 1595.55,-1972 1595.55,-1972 1959.6,-1949 1959.6,-1949 1959.6,-1949 1977.6,-1949 1977.6,-1949 1977.6,-1949 2230.65,-1962 2230.65,-1962 2230.65,-1962 2302.65,-1995 2302.65,-1995 2302.65,-1995 2503.95,-2050 2503.95,-2050 2503.95,-2050 2619.86,-2133.67 2677.38,-2175.19"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="2676.1,-2176.86 2682.2,-2178.67 2678.56,-2173.45 2676.1,-2176.86"/>
-<text xml:space="preserve" text-anchor="middle" x="1631.55" y="-1974.2" font-family="Times,serif" font-size="14.00">3</text>
+<text xml:space="preserve" text-anchor="middle" x="1631.55" y="-1974.2" font-family="Times,serif" font-size="14.00">4</text>
 </g>
 <!-- internal/codeshot/diff.go -->
 <g id="node17" class="node">
@@ -328,7 +328,7 @@
 <title>internal/codeshot/arch.go&#45;&gt;internal/codeshot/sources_test.go</title>
 <path fill="none" stroke="#94a3b8" d="M1193.36,-1854.28C1244.52,-1900.44 1378.82,-2021.61 1435.48,-2072.72"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="1434.05,-2074.26 1439.91,-2076.72 1436.86,-2071.15 1434.05,-2074.26"/>
-<text xml:space="preserve" text-anchor="middle" x="1293" y="-1954.38" font-family="Times,serif" font-size="14.00">9</text>
+<text xml:space="preserve" text-anchor="middle" x="1293" y="-1954.38" font-family="Times,serif" font-size="14.00">12</text>
 </g>
 <!-- internal/codeshot/arch.go&#45;&gt;internal/codeshot/warnings.go -->
 <g id="edge13" class="edge">
@@ -510,7 +510,7 @@
 <title>internal/codeshot/sources_test.go&#45;&gt;internal/codeshot/arch.go</title>
 <path fill="none" stroke="#94a3b8" d="M1434.35,-2077.47C1384.76,-2043.34 1284,-1974 1284,-1974 1284,-1974 1224.04,-1899.38 1192.29,-1859.89"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="1194.17,-1858.87 1188.77,-1855.51 1190.9,-1861.5 1194.17,-1858.87"/>
-<text xml:space="preserve" text-anchor="middle" x="1293" y="-1988.39" font-family="Times,serif" font-size="14.00">12</text>
+<text xml:space="preserve" text-anchor="middle" x="1293" y="-1988.39" font-family="Times,serif" font-size="14.00">14</text>
 </g>
 <!-- internal/codeshot/sources_test.go&#45;&gt;internal/codeshot/dot.go -->
 <g id="edge132" class="edge">
@@ -524,21 +524,21 @@
 <title>internal/codeshot/sources_test.go&#45;&gt;internal/codeshot/graph.go</title>
 <path fill="none" stroke="#94a3b8" d="M1561.14,-2114.5C1580.8,-2118.21 1595.55,-2121 1595.55,-2121 1595.55,-2121 1932.6,-2193 1932.6,-2193 1932.6,-2193 2530.95,-2396 2530.95,-2396 2530.95,-2396 3010.13,-2406.4 3218.83,-2410.93"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="3218.58,-2413.03 3224.63,-2411.06 3218.68,-2408.83 3218.58,-2413.03"/>
-<text xml:space="preserve" text-anchor="middle" x="2403.3" y="-2390.27" font-family="Times,serif" font-size="14.00">6</text>
+<text xml:space="preserve" text-anchor="middle" x="2403.3" y="-2390.27" font-family="Times,serif" font-size="14.00">8</text>
 </g>
 <!-- internal/codeshot/sources_test.go&#45;&gt;internal/codeshot/sources.go -->
 <g id="edge130" class="edge">
 <title>internal/codeshot/sources_test.go&#45;&gt;internal/codeshot/sources.go</title>
 <path fill="none" stroke="#94a3b8" d="M1480.84,-2077.54C1516.82,-2039.73 1595.55,-1957 1595.55,-1957 1595.55,-1957 1667.55,-1539 1667.55,-1539 1667.55,-1539 1759.49,-1293.63 1789.63,-1213.2"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="1791.52,-1214.15 1791.66,-1207.79 1787.59,-1212.68 1791.52,-1214.15"/>
-<text xml:space="preserve" text-anchor="middle" x="1631.55" y="-1801.68" font-family="Times,serif" font-size="14.00">8</text>
+<text xml:space="preserve" text-anchor="middle" x="1631.55" y="-1801.68" font-family="Times,serif" font-size="14.00">11</text>
 </g>
 <!-- internal/codeshot/sources_test.go&#45;&gt;internal/codeshot/warnings.go -->
 <g id="edge133" class="edge">
 <title>internal/codeshot/sources_test.go&#45;&gt;internal/codeshot/warnings.go</title>
 <path fill="none" stroke="#94a3b8" d="M1565.41,-2077.5C1616.48,-2068.25 1667.55,-2059 1667.55,-2059 1667.55,-2059 1932.6,-2059 1932.6,-2059 1932.6,-2059 2004.6,-2103 2004.6,-2103 2004.6,-2103 2302.65,-2154 2302.65,-2154 2302.65,-2154 2484.4,-2173.68 2604.79,-2186.72"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="2604.21,-2188.77 2610.4,-2187.33 2604.66,-2184.59 2604.21,-2188.77"/>
-<text xml:space="preserve" text-anchor="middle" x="2117.63" y="-2145.39" font-family="Times,serif" font-size="14.00">1</text>
+<text xml:space="preserve" text-anchor="middle" x="2117.63" y="-2145.39" font-family="Times,serif" font-size="14.00">2</text>
 </g>
 <!-- internal/codeshot/helpers_test.go -->
 <g id="node16" class="node">
@@ -551,7 +551,7 @@
 <title>internal/codeshot/sources_test.go&#45;&gt;internal/codeshot/helpers_test.go</title>
 <path fill="none" stroke="#94a3b8" d="M1474.84,-2114.12C1518.06,-2181.82 1667.55,-2416 1667.55,-2416 1667.55,-2416 1932.6,-2529.75 1932.6,-2529.75 1932.6,-2529.75 1959.6,-2700 1959.6,-2700 1959.6,-2700 2066.46,-2906.89 2103.87,-2979.32"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="2101.96,-2980.18 2106.58,-2984.55 2105.69,-2978.25 2101.96,-2980.18"/>
-<text xml:space="preserve" text-anchor="middle" x="1800.08" y="-2533.7" font-family="Times,serif" font-size="14.00">17</text>
+<text xml:space="preserve" text-anchor="middle" x="1800.08" y="-2533.7" font-family="Times,serif" font-size="14.00">22</text>
 </g>
 <!-- internal/codeshot/source_snapshot_test.go -->
 <g id="node35" class="node">
@@ -564,7 +564,7 @@
 <title>internal/codeshot/sources_test.go&#45;&gt;internal/codeshot/source_snapshot_test.go</title>
 <path fill="none" stroke="#94a3b8" d="M1570.45,-2093.77C1598.88,-2093.17 1630,-2092.52 1659.86,-2091.9"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="1659.55,-2094.01 1665.51,-2091.78 1659.46,-2089.81 1659.55,-2094.01"/>
-<text xml:space="preserve" text-anchor="middle" x="1631.55" y="-2096.45" font-family="Times,serif" font-size="14.00">3</text>
+<text xml:space="preserve" text-anchor="middle" x="1631.55" y="-2096.45" font-family="Times,serif" font-size="14.00">4</text>
 </g>
 <!-- internal/codeshot/warnings.go&#45;&gt;internal/codegraph/codegraph.go -->
 <g id="edge142" class="edge">

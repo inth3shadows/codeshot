@@ -1,6 +1,7 @@
 package codeshot
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -338,14 +339,14 @@ func TestFileSourceIsRebasedOnlyWhenItsPathsAreRelativeToPath(t *testing.T) {
 	sub := filepath.Join(root, "pkg", "sub")
 	rootRelative := filesSource{"pkg/sub/a.go", "pkg/sub/b.go", "other.go"}
 	pathRelative := filesSource{"a.go", "b.go"}
-	if pathsRelativeToPath(rootRelative, sub, "pkg/sub/") {
+	if rel, _ := pathsRelativeToPath(rootRelative, sub, "pkg/sub/"); rel {
 		t.Error("root-relative paths judged relative to --path (would double the prefix)")
 	}
-	if !pathsRelativeToPath(pathRelative, sub, "pkg/sub/") {
+	if rel, _ := pathsRelativeToPath(pathRelative, sub, "pkg/sub/"); !rel {
 		t.Error("--path-relative paths not judged relative to --path")
 	}
-	// Neither on disk (an index from another checkout): the documented default, --path.
-	if !pathsRelativeToPath(filesSource{"gone.go"}, sub, "pkg/sub/") {
+	// Neither on disk and no path under the prefix: relative to --path.
+	if rel, found := pathsRelativeToPath(filesSource{"gone.go"}, sub, "pkg/sub/"); !rel || found {
 		t.Error("paths found nowhere should default to relative to --path")
 	}
 }
@@ -374,3 +375,73 @@ func (f filesSource) Symbols() ([]Node, error) {
 }
 func (filesSource) FileEdges([]Node) ([]SymbolEdge, error) { return nil, nil }
 func (filesSource) EmptyGraphWarning() string              { return "" }
+
+// W1: absent files ahead of the real ones (generated code the checkout
+// lacks) must not turn a repo-root-relative index into a tie. And with no
+// file on disk at all, the paths themselves decide: one already under the
+// --path prefix means index-root-relative.
+func TestRootVoteIsNotSwampedByAbsentFilesAndFallsBackToThePaths(t *testing.T) {
+	root := fakeIndexRoot(t)
+	for _, f := range []string{"pkg/sub/a.go", "pkg/sub/b.go"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, f)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, f), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sub := filepath.Join(root, "pkg", "sub")
+	var gen filesSource
+	for i := range 250 {
+		gen = append(gen, fmt.Sprintf("api/gen/g%03d.go", i))
+	}
+	if rel, found := pathsRelativeToPath(append(gen, "pkg/sub/a.go", "pkg/sub/b.go"), sub, "pkg/sub/"); rel || !found {
+		t.Error("250 absent files ahead of two root-relative ones: judged relative to --path (doubles the prefix)")
+	}
+	if rel, found := pathsRelativeToPath(filesSource{"pkg/sub/gone.go", "other/gone.go"}, sub, "pkg/sub/"); rel || found {
+		t.Error("nothing on disk, paths under the prefix: judged relative to --path")
+	}
+	if rel, _ := pathsRelativeToPath(filesSource{"gone.go"}, sub, "pkg/sub/"); !rel {
+		t.Error("nothing on disk, no path under the prefix: not judged relative to --path")
+	}
+}
+
+// W2/W3: in a list, file-source paths are cleaned whether or not they are
+// rebased, and an absolute path never gets the prefix.
+func TestPrefixedSourceCleansAndLeavesAbsolutePathsAlone(t *testing.T) {
+	src := edgesSource{{"./pkg/x.go", "pkg//y.go"}, {"/abs/x.go", "a.go"}, {"", "a.go"}}
+	got, _ := prefixedSource{Src: src, Prefix: ""}.FileEdges(nil)
+	if want := []SymbolEdge{{"pkg/x.go", "pkg/y.go"}, {"/abs/x.go", "a.go"}, {"", "a.go"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("no prefix: got %+v, want %+v", got, want)
+	}
+	got, _ = prefixedSource{Src: src, Prefix: "sub/"}.FileEdges(nil)
+	if want := []SymbolEdge{{"sub/pkg/x.go", "sub/pkg/y.go"}, {"/abs/x.go", "sub/a.go"}, {"", "sub/a.go"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("prefix: got %+v, want %+v", got, want)
+	}
+}
+
+type edgesSource []SymbolEdge
+
+func (edgesSource) Symbols() ([]Node, error)                 { return nil, nil }
+func (e edgesSource) FileEdges([]Node) ([]SymbolEdge, error) { return e, nil }
+func (edgesSource) EmptyGraphWarning() string                { return "" }
+
+// W3: two file sources spelling one path differently ("./src/a.go") draw one
+// edge, solid, with no codegraph in the list.
+func TestCLITwoFileSourcesSpellingAPathDifferentlyDrawOneEdge(t *testing.T) {
+	requireBins(t, "dot")
+	dotted := strings.Replace(strings.Replace(cliSnapshotU, `"src/a.go"`, `"./src/a.go"`, 1), `"lib/b.go"`, `"lib//b.go"`, 1)
+	src := "snapshot:" + writeSnapshotFile(t, cliSnapshot) + ",snapshot:" + writeSnapshotFile(t, dotted)
+	out := filepath.Join(t.TempDir(), "arch.gv")
+	if code, _, stderr := runCLI("--architecture", "--source", src, "--format", "canon", "--out", out); code != 0 {
+		t.Fatalf("exit %d; stderr: %s", code, stderr)
+	}
+	got, _ := os.ReadFile(out)
+	wantMatch(t, `"src/a\.go" -> "lib/b\.go"\s*\[label=1\]`, string(got))
+	wantNoMatch(t, `"\./src/a\.go"|lib//b`, string(got))
+}
+
+func TestRootGuessWarningSaysWhichWayItGuessed(t *testing.T) {
+	wantMatch(t, `given the 'pkg/sub/' prefix`, RootGuessWarning(true, "pkg/sub/"))
+	wantMatch(t, `start at codegraph's index root`, RootGuessWarning(false, "pkg/sub/"))
+}

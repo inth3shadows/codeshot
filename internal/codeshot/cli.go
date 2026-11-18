@@ -574,12 +574,21 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 			srcs := make([]LabeledSource, len(multi))
 			for i, m := range multi {
 				srcs[i] = LabeledSource{Label: m.label, Src: m.src}
-				switch {
-				case m.spec.kind == "codegraph":
+				if m.spec.kind == "codegraph" {
 					srcs[i].Src = CodegraphSource{CG: cg, RepoPath: repoPath}
-				case prefix != "" && pathsRelativeToPath(m.src, repoPath, prefix):
-					srcs[i].Src = prefixedSource{Src: m.src, Prefix: prefix}
+					continue
 				}
+				p := ""
+				if prefix != "" {
+					rel, found := pathsRelativeToPath(m.src, repoPath, prefix)
+					if rel {
+						p = prefix
+					}
+					if !found {
+						warn(stderr, labelWarning(m.label, RootGuessWarning(rel, prefix)))
+					}
+				}
+				srcs[i].Src = prefixedSource{Src: m.src, Prefix: p}
 			}
 			dot, violations, err = RunMultiArchitectureMode(srcs, ap, stderr)
 		} else {
