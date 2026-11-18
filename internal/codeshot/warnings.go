@@ -298,6 +298,9 @@ func labelWarning(label, msg string) string {
 // SourceFoundNoEdgesWarning: one source of a multi-source run contributed
 // nothing, so the diagram is the other sources' alone.
 func SourceFoundNoEdgesWarning(label string) string {
+	if label == "codegraph" {
+		return "codeshot: codegraph found no cross-file edges, so every edge drawn comes from the other sources; check its index: run 'codegraph init <path>' to build it, then 'codegraph status' to confirm."
+	}
 	return fmt.Sprintf("codeshot: %s found no cross-file edges, so every edge drawn comes from the other sources; check that it covers this repo (right file, indexer run over the whole project).", label)
 }
 

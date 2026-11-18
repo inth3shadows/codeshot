@@ -1,10 +1,15 @@
 package codeshot
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/inth3shadows/codeshot/internal/codegraph"
 
 	"github.com/inth3shadows/codeshot/internal/scipindex"
 	"github.com/inth3shadows/codeshot/internal/snapshot"
@@ -41,9 +46,10 @@ func parseSourceSpec(v, repoPath string) (sourceSpec, bool) {
 }
 
 // parseSourceList parses --source: one entry, or a comma list of two or more.
-// A value that isn't a valid list but is a valid single entry is that entry,
-// so a snapshot or SCIP file whose name has a comma still reads as it did
-// before lists existed. The same entry twice is refused.
+// A value that, read as one snapshot or SCIP entry, names an existing file is
+// that entry, so a file whose name has a comma still reads as it did before
+// lists existed. An empty or invalid entry is reported as itself, and the
+// same entry twice is refused.
 func parseSourceList(v, repoPath string) ([]sourceSpec, error) {
 	bad := func(got string) error {
 		return usageExit(fmt.Sprintf("codeshot: --source must be 'codegraph', 'snapshot:<file>' or 'scip[:<file>]' (or a comma list of them), got '%s'", got))
@@ -56,21 +62,24 @@ func parseSourceList(v, repoPath string) ([]sourceSpec, error) {
 		}
 		return []sourceSpec{s}, nil
 	}
-	var specs []sourceSpec
-	badPart, invalid := "", false
-	for _, part := range parts {
-		s, ok := parseSourceSpec(strings.TrimSpace(part), repoPath)
-		if !ok {
-			badPart, invalid = part, true
-			break
-		}
-		specs = append(specs, s)
-	}
-	if invalid {
-		if s, ok := parseSourceSpec(v, repoPath); ok {
+	// A whole value naming a file that exists is that one file, so a name
+	// with a comma reads as it did before lists existed (F3).
+	if s, ok := parseSourceSpec(v, repoPath); ok && s.kind != "codegraph" {
+		if fi, err := os.Stat(s.file); err == nil && !fi.IsDir() {
 			return []sourceSpec{s}, nil
 		}
-		return nil, bad(badPart)
+	}
+	var specs []sourceSpec
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, usageExit(fmt.Sprintf("codeshot: --source '%s' has an empty entry", v))
+		}
+		s, ok := parseSourceSpec(part, repoPath)
+		if !ok {
+			return nil, bad(part)
+		}
+		specs = append(specs, s)
 	}
 	seen := map[string]bool{}
 	for _, s := range specs {
@@ -131,4 +140,78 @@ func joinAnd(phrases []string) string {
 		return strings.Join(phrases, "")
 	}
 	return strings.Join(phrases[:len(phrases)-1], ", ") + " and " + phrases[len(phrases)-1]
+}
+
+// fileSourcePrefix is what a file source's paths need in front to match
+// codegraph's in one diagram: codegraph's paths are relative to its index
+// root, which FindIndex may find above --path, while a snapshot's or SCIP
+// index's are taken as relative to --path (as everywhere else). "" when the
+// index root is --path itself, or there is no index (codegraph then fails
+// on its own).
+func fileSourcePrefix(repoPath string) string {
+	idx, err := codegraph.FindIndex(repoPath)
+	if err != nil {
+		return ""
+	}
+	abs, err := filepath.Abs(repoPath)
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(filepath.Dir(filepath.Dir(idx)), abs)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return ""
+	}
+	return filepath.ToSlash(rel) + "/"
+}
+
+// prefixedSource rebases a file source's edges onto the codegraph index root
+// (fileSourcePrefix), so a file both sources see is one node (F1).
+type prefixedSource struct {
+	Src    ArchSource
+	Prefix string
+}
+
+func (p prefixedSource) Symbols() ([]Node, error)  { return p.Src.Symbols() }
+func (p prefixedSource) EmptyGraphWarning() string { return p.Src.EmptyGraphWarning() }
+
+func (p prefixedSource) BudgetWarning(budget int) string {
+	if bw, ok := p.Src.(budgetWarner); ok {
+		return bw.BudgetWarning(budget)
+	}
+	return SymbolBudgetWarning(budget)
+}
+
+func (p prefixedSource) FileEdges(symbols []Node) ([]SymbolEdge, error) {
+	edges, err := p.Src.FileEdges(symbols)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SymbolEdge, len(edges))
+	for i, e := range edges {
+		out[i] = SymbolEdge{FromFile: p.rebase(e.FromFile), ToFile: p.rebase(e.ToFile)}
+	}
+	return out, nil
+}
+
+func (p prefixedSource) rebase(f string) string {
+	if f == "" {
+		return ""
+	}
+	return path.Join(p.Prefix, f)
+}
+
+// labelError attributes a source's error to it in a multi-source run.
+func labelError(label string, err error) error {
+	var fatal *codegraph.FatalError
+	var ex *Exit
+	switch {
+	case errors.As(err, &fatal):
+		return &codegraph.FatalError{Msg: labelWarning(label, fatal.Msg)}
+	case errors.As(err, &ex):
+		c := *ex
+		c.Stderr = labelWarning(label, ex.Stderr)
+		return &c
+	default:
+		return fmt.Errorf("%s: %w", label, err)
+	}
 }

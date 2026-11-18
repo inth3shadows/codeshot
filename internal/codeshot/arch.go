@@ -73,7 +73,9 @@ func RollupFileEdges(fileEdges []FileEdge, depth int) []FileEdge {
 		if !ok {
 			i = len(out)
 			idx[k] = i
-			out = append(out, FileEdge{From: from, To: to})
+			out = append(out, FileEdge{From: from, To: to, Full: slices.Clone(e.Full)})
+		} else {
+			out[i].Full = intersect(out[i].Full, e.Full)
 		}
 		out[i].Weight += e.Weight
 		out[i].Seen = mergeSeen(out[i].Seen, e.Seen)
@@ -114,6 +116,17 @@ func mergeSeen(a, b []SourceWeight) []SourceWeight {
 	return a
 }
 
+// intersect keeps a's entries that are also in b, in a's order.
+func intersect(a, b []string) []string {
+	var out []string
+	for _, x := range a {
+		if slices.Contains(b, x) {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
 func maxSeen(seen []SourceWeight) int {
 	m := 0
 	for _, w := range seen {
@@ -126,7 +139,8 @@ func maxSeen(seen []SourceWeight) int {
 // each already aggregated) into one graph: first-seen order across sources in
 // --source order, weight = the highest any source gives the edge (the units
 // differ — calls for codegraph, references for SCIP — so a sum would mix
-// them), and Seen = every source's own weight, in source order.
+// them), Seen = every source's own weight, and Full = the sources that saw
+// it, both in source order.
 func UnionFileEdges(perSource [][]FileEdge, labels []string) []FileEdge {
 	idx := map[string]int{}
 	var out []FileEdge
@@ -140,6 +154,7 @@ func UnionFileEdges(perSource [][]FileEdge, labels []string) []FileEdge {
 				out = append(out, FileEdge{From: e.From, To: e.To})
 			}
 			out[i].Seen = mergeSeen(out[i].Seen, []SourceWeight{{Source: labels[si], Weight: e.Weight}})
+			out[i].Full = append(out[i].Full, labels[si])
 			out[i].Weight = max(out[i].Weight, e.Weight)
 		}
 	}
@@ -495,7 +510,7 @@ func RunMultiArchitectureMode(srcs []LabeledSource, p ArchParams, stderr io.Writ
 		labels[i] = s.Label
 		edges, err := sourceFileEdges(s.Src, p.MaxSymbols, s.Label, stderr)
 		if err != nil {
-			return "", nil, err
+			return "", nil, labelError(s.Label, err)
 		}
 		perSource[i] = edges
 	}

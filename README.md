@@ -146,7 +146,8 @@ so the scan takes about a second. Flags specific to this mode:
   diagram from all of them. Edges only some sources found are dashed and
   labeled with those sources' names; the weight is the highest any one source
   gives the edge (svg tooltips show each source's own), and `--forbid` checks
-  the merged graph. `--architecture` only. See
+  the merged graph. A snapshot's or SCIP index's paths are rebased onto
+  codegraph's index root when it sits above `--path`. `--architecture` only. See
   [USAGE.md](USAGE.md#several-sources-in-one-architecture-diagram).
 - `--depth` and `--max-depth-nodes` have no effect here and are rejected if set
   to anything but their defaults — there's no multi-hop file-traversal concept

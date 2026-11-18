@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/inth3shadows/codeshot/internal/codegraph"
 )
 
 func TestUnionFileEdgesKeepsSourceOrderTheHighestWeightAndEverySourcesOwn(t *testing.T) {
@@ -15,9 +17,9 @@ func TestUnionFileEdgesKeepsSourceOrderTheHighestWeightAndEverySourcesOwn(t *tes
 		{{From: "a", To: "d", Weight: 2}, {From: "a", To: "b", Weight: 5}},
 	}, []string{"cg", "scip"})
 	want := []FileEdge{
-		{From: "a", To: "b", Weight: 5, Seen: []SourceWeight{{"cg", 3}, {"scip", 5}}},
-		{From: "a", To: "c", Weight: 1, Seen: []SourceWeight{{"cg", 1}}},
-		{From: "a", To: "d", Weight: 2, Seen: []SourceWeight{{"scip", 2}}},
+		{From: "a", To: "b", Weight: 5, Seen: []SourceWeight{{"cg", 3}, {"scip", 5}}, Full: []string{"cg", "scip"}},
+		{From: "a", To: "c", Weight: 1, Seen: []SourceWeight{{"cg", 1}}, Full: []string{"cg"}},
+		{From: "a", To: "d", Weight: 2, Seen: []SourceWeight{{"scip", 2}}, Full: []string{"scip"}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v\nwant %+v", got, want)
@@ -39,13 +41,13 @@ func TestRollupOfAMultiSourceGraphWeighsAGroupEdgeByItsHighestSource(t *testing.
 
 func TestMultiSourceArchitectureDotDashesEdgesOnlySomeSourcesSaw(t *testing.T) {
 	edges := []FileEdge{
-		{From: "a", To: "b", Weight: 5, Seen: []SourceWeight{{"cg", 3}, {"scip", 5}}},
-		{From: "a", To: "c", Weight: 2, Seen: []SourceWeight{{"scip", 2}}},
+		{From: "a", To: "b", Weight: 5, Seen: []SourceWeight{{"cg", 3}, {"scip", 5}}, Full: []string{"cg", "scip"}},
+		{From: "a", To: "c", Weight: 2, Seen: []SourceWeight{{"scip", 2}}, Full: []string{"scip"}},
 	}
 	dot := BuildArchitectureDot(edges, ArchOptions{MaxRender: Unlimited, Sources: []string{"cg", "scip"}})
 	wantMatch(t, `"a" -> "b" \[label="5"\];`, dot)
 	wantMatch(t, `"a" -> "c" \[label="2 scip", style=dashed\];`, dot)
-	wantMatch(t, `label="Sources: cg, scip\. Dashed edges: seen by only the sources named on them\."`, dot)
+	wantMatch(t, `label="Sources: cg, scip\. Dashed: not every source saw all of the edge; its label names the sources that did \(mixed: none did\)\."`, dot)
 	wantNoMatch(t, `tooltip`, dot)
 
 	svg := BuildArchitectureDot(edges, ArchOptions{MaxRender: Unlimited, Sources: []string{"cg", "scip"}, Tooltips: true})
@@ -69,13 +71,9 @@ func TestParseSourceList(t *testing.T) {
 	if specs, _ := parseSourceList("codegraph,scip", "repo"); len(specs) != 2 || !specs[1].underPath || specs[1].file != filepath.Join("repo", "index.scip") {
 		t.Errorf("bare scip in a list: got %+v", specs)
 	}
-	// Not a valid list, but a valid single source: a file name with a comma.
-	if specs, err := parseSourceList("snapshot:a,b.json", "repo"); err != nil || len(specs) != 1 || specs[0].file != "a,b.json" {
-		t.Errorf("comma in a file name: got %+v, %v", specs, err)
-	}
 	for v, pattern := range map[string]string{
 		"codegraph,bogus":         `got 'bogus'`,
-		"codegraph,":              `got ''`,
+		"codegraph,":              `--source 'codegraph,' has an empty entry`,
 		"codegraph,codegraph":     `lists 'codegraph' twice`,
 		"scip:x.scip,scip:x.scip": `lists 'scip:x\.scip' twice`,
 	} {
@@ -168,3 +166,115 @@ func TestCLIMultiSourceWarnsAboutASourceThatFoundNothing(t *testing.T) {
 	wantMatch(t, `codeshot: snapshot-e: --architecture found no cross-file call edges — the diagram is blank\. The e snapshot`, stderr)
 	wantMatch(t, `codeshot: snapshot-f: --architecture found no cross-file call edges — the diagram is blank\. The f snapshot`, stderr)
 }
+
+// F5: a group edge is drawn solid only when some source saw every file edge
+// inside it; the label names the sources that did, or "mixed" when none did.
+func TestGroupEdgeIsDashedWhenTheSourcesAgreeOnNoneOfItsFileEdges(t *testing.T) {
+	union := UnionFileEdges([][]FileEdge{
+		{{From: "src/a", To: "lib/x", Weight: 1}},
+		{{From: "src/b", To: "lib/y", Weight: 1}},
+	}, []string{"cg", "scip"})
+	dot := BuildArchitectureDot(RollupFileEdges(union, 1), ArchOptions{MaxRender: Unlimited, Sources: []string{"cg", "scip"}})
+	wantMatch(t, `"src/" -> "lib/" \[label="1 mixed", style=dashed\];`, dot)
+
+	union = UnionFileEdges([][]FileEdge{
+		{{From: "src/a", To: "lib/x", Weight: 1}, {From: "src/b", To: "lib/y", Weight: 1}},
+		{{From: "src/b", To: "lib/y", Weight: 1}},
+	}, []string{"cg", "scip"})
+	dot = BuildArchitectureDot(RollupFileEdges(union, 1), ArchOptions{MaxRender: Unlimited, Sources: []string{"cg", "scip"}})
+	wantMatch(t, `"src/" -> "lib/" \[label="2 cg", style=dashed\];`, dot)
+
+	union = UnionFileEdges([][]FileEdge{
+		{{From: "src/a", To: "lib/x", Weight: 1}, {From: "src/b", To: "lib/y", Weight: 2}},
+		{{From: "src/a", To: "lib/x", Weight: 3}, {From: "src/b", To: "lib/y", Weight: 1}},
+	}, []string{"cg", "scip"})
+	dot = BuildArchitectureDot(RollupFileEdges(union, 1), ArchOptions{MaxRender: Unlimited, Sources: []string{"cg", "scip"}})
+	wantMatch(t, `"src/" -> "lib/" \[label="4"\];`, dot)
+}
+
+// F2/F3: a bad list entry is reported as itself, not swallowed into one file
+// name; a whole value that names an existing file is that one file, even when
+// its comma-separated parts happen to be valid entries.
+func TestParseSourceListReportsTheBadEntryAndPrefersAnExistingCommaFile(t *testing.T) {
+	_, err := parseSourceList("snapshot:a.json,scip-go:x.scip", "repo")
+	if err == nil {
+		t.Fatal("no error")
+	}
+	wantMatch(t, `got 'scip-go:x\.scip'`, err.(*Exit).Stderr)
+	_, err = parseSourceList("codegraph,", "repo")
+	if err == nil {
+		t.Fatal("no error")
+	}
+	wantMatch(t, `--source 'codegraph,' has an empty entry`, err.(*Exit).Stderr)
+
+	dir := t.TempDir()
+	comma := filepath.Join(dir, "idx,scip")
+	if err := os.WriteFile(comma, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	specs, err := parseSourceList("scip:"+comma, "repo")
+	if err != nil || len(specs) != 1 || specs[0].file != comma {
+		t.Errorf("existing comma file: got %+v, %v", specs, err)
+	}
+	specs, err = parseSourceList("snapshot:"+filepath.Join(dir, "a,b.json"), "repo")
+	if err == nil {
+		t.Errorf("missing comma file and an invalid list: got %+v, want the bad entry reported", specs)
+	}
+}
+
+// F7: codegraph has no file or indexer to check; its advice is init/status.
+func TestSourceFoundNoEdgesWarningGivesCodegraphItsOwnAdvice(t *testing.T) {
+	wantMatch(t, `codegraph found no cross-file edges.*'codegraph init <path>'.*'codegraph status'`, SourceFoundNoEdgesWarning("codegraph"))
+	wantNoMatch(t, `indexer run`, SourceFoundNoEdgesWarning("codegraph"))
+	wantMatch(t, `right file, indexer run over the whole project`, SourceFoundNoEdgesWarning("scip-go"))
+}
+
+// F6: in a list, a source's fatal error names the source.
+func TestMultiSourceFatalErrorNamesTheSource(t *testing.T) {
+	_, _, err := RunMultiArchitectureMode([]LabeledSource{{Label: "codegraph", Src: failingSource{}}}, ArchParams{MaxSymbols: 10, MaxRender: Unlimited}, &strings.Builder{})
+	if err == nil || !strings.HasPrefix(err.Error(), "codeshot: codegraph: ") {
+		t.Errorf("got %v, want the error prefixed with the source label", err)
+	}
+}
+
+type failingSource struct{}
+
+func (failingSource) Symbols() ([]Node, error) {
+	return nil, &codegraph.FatalError{Msg: "codeshot: codegraph has no index"}
+}
+func (failingSource) FileEdges([]Node) ([]SymbolEdge, error) { return nil, nil }
+func (failingSource) EmptyGraphWarning() string              { return "" }
+
+// F1: a file source's paths are relative to --path; codegraph's are relative
+// to its index root, which can sit above --path. In a list, file sources are
+// rebased onto the index root so the same file is one node.
+func TestFileSourcePrefixRebasesOntoTheCodegraphIndexRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".codegraph"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".codegraph", "codegraph.db"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(root, "pkg", "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{root: "", sub: "pkg/sub/"} {
+		if got := fileSourcePrefix(path); got != want {
+			t.Errorf("fileSourcePrefix(%q) = %q, want %q", path, got, want)
+		}
+	}
+	edges, _ := prefixedSource{Src: ScipSourceStub{}, Prefix: "pkg/sub/"}.FileEdges(nil)
+	if want := []SymbolEdge{{"pkg/sub/a.go", "pkg/sub/b.go"}}; !reflect.DeepEqual(edges, want) {
+		t.Errorf("got %+v, want %+v", edges, want)
+	}
+}
+
+type ScipSourceStub struct{}
+
+func (ScipSourceStub) Symbols() ([]Node, error) { return nil, nil }
+func (ScipSourceStub) FileEdges([]Node) ([]SymbolEdge, error) {
+	return []SymbolEdge{{"a.go", "b.go"}}, nil
+}
+func (ScipSourceStub) EmptyGraphWarning() string { return "" }

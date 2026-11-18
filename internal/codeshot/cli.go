@@ -512,7 +512,11 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 	cg := codegraph.NewClient()
 	if usesCodegraph {
-		warn(stderr, IndexHealthWarning(cg, repoPath))
+		w := IndexHealthWarning(cg, repoPath)
+		if multi != nil {
+			w = labelWarning("codegraph", w)
+		}
+		warn(stderr, w)
 	}
 	var calls CallSource = CodegraphCalls{CG: cg, RepoPath: repoPath}
 	switch {
@@ -560,11 +564,20 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		var dot string
 		var violations []Violation
 		if multi != nil {
+			// Codegraph's paths are relative to its index root; the file
+			// sources' are rebased onto it (F1).
+			prefix := ""
+			if usesCodegraph {
+				prefix = fileSourcePrefix(repoPath)
+			}
 			srcs := make([]LabeledSource, len(multi))
 			for i, m := range multi {
 				srcs[i] = LabeledSource{Label: m.label, Src: m.src}
-				if m.spec.kind == "codegraph" {
+				switch {
+				case m.spec.kind == "codegraph":
 					srcs[i].Src = CodegraphSource{CG: cg, RepoPath: repoPath}
+				case prefix != "":
+					srcs[i].Src = prefixedSource{Src: m.src, Prefix: prefix}
 				}
 			}
 			dot, violations, err = RunMultiArchitectureMode(srcs, ap, stderr)

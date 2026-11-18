@@ -96,12 +96,15 @@ func BuildDot(symbol string, callers, callees []Node, opt DotOptions) string {
 	return strings.Join(lines, "\n")
 }
 
-// FileEdge is a weighted edge between two files (or groups). Seen is set
-// only in a multi-source graph: each source's own weight for the edge.
+// FileEdge is a weighted edge between two files (or groups). Seen and Full
+// are set only in a multi-source graph: Seen is each source's own weight for
+// the edge, Full the sources that saw all of it (for a group edge, every file
+// edge inside it), in source order.
 type FileEdge struct {
 	From, To string
 	Weight   int
 	Seen     []SourceWeight
+	Full     []string
 }
 
 // ArchOptions are BuildArchitectureDot's view options.
@@ -138,7 +141,7 @@ func BuildArchitectureDot(fileEdges []FileEdge, opt ArchOptions) string {
 	lines := []string{"digraph architecture {", graphAttrs, nodeAttrs, edgeAttrs}
 	multi := len(opt.Sources) > 1
 	if multi {
-		lines = append(lines, fmt.Sprintf(`  label="Sources: %s. Dashed edges: seen by only the sources named on them."; labelloc=b; fontname="Helvetica"; fontsize=10; fontcolor="#64748b";`, esc(strings.Join(opt.Sources, ", "))))
+		lines = append(lines, fmt.Sprintf(`  label="Sources: %s. Dashed: not every source saw all of the edge; its label names the sources that did (mixed: none did)."; labelloc=b; fontname="Helvetica"; fontsize=10; fontcolor="#64748b";`, esc(strings.Join(opt.Sources, ", "))))
 	}
 	for _, f := range files {
 		attrs := ""
@@ -154,16 +157,12 @@ func BuildArchitectureDot(fileEdges []FileEdge, opt ArchOptions) string {
 		}
 		label, extra := fmt.Sprintf("%d", e.Weight), ""
 		if multi {
-			if len(e.Seen) < len(opt.Sources) {
-				var by []string
-				for _, l := range opt.Sources {
-					for _, w := range e.Seen {
-						if w.Source == l {
-							by = append(by, l)
-						}
-					}
+			if len(e.Full) < len(opt.Sources) {
+				by := "mixed"
+				if len(e.Full) > 0 {
+					by = strings.Join(e.Full, "+")
 				}
-				label += " " + strings.Join(by, "+")
+				label += " " + by
 				extra += `, style=dashed`
 			}
 			if opt.Tooltips {
