@@ -40,7 +40,7 @@ const (
 )
 
 const usage = `Usage: codeshot <symbol> [--source codegraph|snapshot:<file>|scip[:<file>]] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]
-   or: codeshot --architecture [--source codegraph|snapshot:<file>|scip[:<file>]] [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--format <fmt>] [--embed <file.md> [--check]]
+   or: codeshot --architecture [--source codegraph|snapshot:<file>|scip[:<file>][,...]] [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--format <fmt>] [--embed <file.md> [--check]]
    or: codeshot --diff [--diff-ref <range>] [--source codegraph|snapshot:<file>|scip[:<file>]] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]`
 
 type optSpec struct {
@@ -270,18 +270,26 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	// snapshot v1, so any tool graph-assay has an adapter for can feed it.
 	// scip[:<file>] reads a SCIP index, <--path>/index.scip by default.
 	// The file itself is read only after every cheap flag check (F7).
+	// A comma list (codegraph,scip) unions several sources; --architecture only.
 	snapFile, scipFile, scipUnderPath := "", "", false
+	var multiSpecs []sourceSpec
 	if v, ok := p.str["source"]; ok {
-		switch {
-		case v == "codegraph":
-		case v == "scip":
-			scipFile, scipUnderPath = filepath.Join(repoPath, "index.scip"), true
-		case strings.HasPrefix(v, "scip:") && v != "scip:":
-			scipFile = strings.TrimPrefix(v, "scip:")
-		case strings.HasPrefix(v, "snapshot:") && v != "snapshot:":
-			snapFile = strings.TrimPrefix(v, "snapshot:")
-		default:
-			return 0, usageExit(fmt.Sprintf("codeshot: --source must be 'codegraph', 'snapshot:<file>' or 'scip[:<file>]', got '%s'", v))
+		specs, err := parseSourceList(v, repoPath)
+		if err != nil {
+			return 0, err
+		}
+		if len(specs) == 1 {
+			switch specs[0].kind {
+			case "scip":
+				scipFile, scipUnderPath = specs[0].file, specs[0].underPath
+			case "snapshot":
+				snapFile = specs[0].file
+			}
+		} else {
+			if !arch {
+				return 0, usageExit("codeshot: a --source list (e.g. 'codegraph,scip') only applies with --architecture; symbol mode and --diff read one source")
+			}
+			multiSpecs = specs
 		}
 	}
 	outFile, hasOut := p.str["out"]
@@ -303,6 +311,8 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		// here, and they still get the same diagram.
 		from := "every callee is read from codegraph's index"
 		switch {
+		case multiSpecs != nil:
+			from = "every edge is read from the listed sources"
 		case snapFile != "":
 			from = "every edge is read from the snapshot"
 		case scipFile != "":
@@ -412,8 +422,22 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 			return 0, &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: could not read SCIP index '%s': %v", scipFile, err)}
 		}
 	}
+	multi, err := loadSources(multiSpecs, stderr)
+	if err != nil {
+		return 0, err
+	}
 	// external: the graph comes from a file, not a codegraph index.
 	external := snap != nil || scipIdx != nil
+	// usesCodegraph: codegraph (and its index under --path) is read.
+	// readsPath: the graph comes from --path, so --path names the diagram.
+	usesCodegraph, readsPath := !external, !external || scipUnderPath
+	if multi != nil {
+		usesCodegraph, readsPath = false, false
+		for _, m := range multi {
+			usesCodegraph = usesCodegraph || m.spec.kind == "codegraph"
+			readsPath = readsPath || m.spec.kind == "codegraph" || m.spec.underPath
+		}
+	}
 	archMarkerID := "arch"
 	if groupDepth != 0 {
 		archMarkerID = fmt.Sprintf("arch-d%d", groupDepth)
@@ -431,6 +455,9 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		diffMarkerID += "-" + scipLabel(scipIdx)
 		symbolMarkerID += "-" + scipLabel(scipIdx)
 	}
+	for _, m := range multi {
+		archMarkerID += "-" + m.label
+	}
 	if !hasOut {
 		var base string
 		// #51: no checkout-directory name in an embedded image's default
@@ -442,7 +469,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		// --path, so --path doesn't name an architecture diagram from one.
 		// Bare `--source scip` reads <--path>/index.scip, so it does (F2),
 		// and --diff always does: git finds the changes under --path.
-		if embedFile != "" && ((arch && (!external || scipUnderPath)) || diffMode) {
+		if embedFile != "" && ((arch && readsPath) || diffMode) {
 			if s := EmbedPathSuffix(repoPath); s != "" {
 				sub = "-" + s
 			}
@@ -470,7 +497,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		warn(stderr, FormatMismatchWarning(outFile, format))
 	}
 
-	if !external {
+	if usesCodegraph {
 		if err := requireOnPath("codegraph", "Install: https://github.com/colbymchenry/codegraph"); err != nil {
 			return 0, err
 		}
@@ -484,8 +511,12 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 	}
 	cg := codegraph.NewClient()
-	if !external {
-		warn(stderr, IndexHealthWarning(cg, repoPath))
+	if usesCodegraph {
+		w := IndexHealthWarning(cg, repoPath)
+		if multi != nil {
+			w = labelWarning("codegraph", w)
+		}
+		warn(stderr, w)
 	}
 	var calls CallSource = CodegraphCalls{CG: cg, RepoPath: repoPath}
 	switch {
@@ -529,7 +560,40 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		case scipIdx != nil:
 			src = ScipSource{Index: scipIdx}
 		}
-		dot, violations, err := RunArchitectureMode(src, ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules}, stderr)
+		ap := ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules, Tooltips: tooltips}
+		var dot string
+		var violations []Violation
+		if multi != nil {
+			// Codegraph's paths are relative to its index root; a file
+			// source's paths relative to --path are rebased onto it (F1),
+			// one already relative to the root is left alone (V1).
+			prefix := ""
+			if usesCodegraph {
+				prefix = fileSourcePrefix(repoPath)
+			}
+			srcs := make([]LabeledSource, len(multi))
+			for i, m := range multi {
+				srcs[i] = LabeledSource{Label: m.label, Src: m.src}
+				if m.spec.kind == "codegraph" {
+					srcs[i].Src = CodegraphSource{CG: cg, RepoPath: repoPath}
+					continue
+				}
+				p := ""
+				if prefix != "" {
+					rel, found := pathsRelativeToPath(m.src, repoPath, prefix)
+					if rel {
+						p = prefix
+					}
+					if !found {
+						warn(stderr, labelWarning(m.label, RootGuessWarning(rel, prefix)))
+					}
+				}
+				srcs[i].Src = prefixedSource{Src: m.src, Prefix: p}
+			}
+			dot, violations, err = RunMultiArchitectureMode(srcs, ap, stderr)
+		} else {
+			dot, violations, err = RunArchitectureMode(src, ap, stderr)
+		}
 		if err != nil {
 			return 0, err
 		}
@@ -543,6 +607,13 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		if scipIdx != nil {
 			notes = append(notes, "from "+scipPhrase(scipIdx))
+		}
+		if multi != nil {
+			phrases := make([]string, len(multi))
+			for i, m := range multi {
+				phrases[i] = m.phrase
+			}
+			notes = append(notes, "from "+joinAnd(phrases))
 		}
 		out.Alt = "Architecture — generated by codeshot"
 		if len(notes) > 0 {

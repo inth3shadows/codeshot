@@ -73,9 +73,92 @@ func RollupFileEdges(fileEdges []FileEdge, depth int) []FileEdge {
 		if !ok {
 			i = len(out)
 			idx[k] = i
-			out = append(out, FileEdge{From: from, To: to})
+			out = append(out, FileEdge{From: from, To: to, Full: slices.Clone(e.Full)})
+		} else {
+			out[i].Full = intersect(out[i].Full, e.Full)
 		}
 		out[i].Weight += e.Weight
+		out[i].Seen = mergeSeen(out[i].Seen, e.Seen)
+	}
+	// Multi-source: a group edge's weight is, like a file edge's, the highest
+	// any one source gives it (that source's member edges summed), not the
+	// sum of per-file maxima, which no source would report.
+	for i := range out {
+		if len(out[i].Seen) > 0 {
+			out[i].Weight = maxSeen(out[i].Seen)
+		}
+	}
+	return out
+}
+
+// SourceWeight is one source's weight for a file edge in a multi-source graph.
+type SourceWeight struct {
+	Source string
+	Weight int
+}
+
+// mergeSeen adds b's per-source weights into a, keeping a's order and
+// appending sources a lacks.
+func mergeSeen(a, b []SourceWeight) []SourceWeight {
+	for _, w := range b {
+		found := false
+		for j := range a {
+			if a[j].Source == w.Source {
+				a[j].Weight += w.Weight
+				found = true
+				break
+			}
+		}
+		if !found {
+			a = append(a, w)
+		}
+	}
+	return a
+}
+
+// intersect keeps a's entries that are also in b, in a's order.
+func intersect(a, b []string) []string {
+	var out []string
+	for _, x := range a {
+		if slices.Contains(b, x) {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+func maxSeen(seen []SourceWeight) int {
+	m := 0
+	for _, w := range seen {
+		m = max(m, w.Weight)
+	}
+	return m
+}
+
+// UnionFileEdges merges per-source file edges (perSource[i] from labels[i],
+// each already aggregated) into one graph: first-seen order across sources in
+// --source order, weight = the highest any source gives the edge (the units
+// differ — calls for codegraph, references for SCIP — so a sum would mix
+// them), Seen = every source's own weight, and Full = the sources that saw
+// it, both in source order.
+func UnionFileEdges(perSource [][]FileEdge, labels []string) []FileEdge {
+	idx := map[string]int{}
+	var out []FileEdge
+	for si, edges := range perSource {
+		for _, e := range edges {
+			k := drawnEdgeKey(e.From, e.To)
+			i, ok := idx[k]
+			if !ok {
+				i = len(out)
+				idx[k] = i
+				out = append(out, FileEdge{From: e.From, To: e.To})
+			}
+			out[i].Seen = mergeSeen(out[i].Seen, []SourceWeight{{Source: labels[si], Weight: e.Weight}})
+			if !slices.Contains(out[i].Full, labels[si]) {
+				out[i].Full = append(out[i].Full, labels[si])
+			}
+			out[i].Weight = max(out[i].Weight, e.Weight)
+		}
 	}
 	return out
 }
@@ -123,6 +206,7 @@ type ForbidRule struct{ From, To, Raw string }
 type Violation struct {
 	Rule, From, To string
 	Weight         int
+	SeenBy         string // multi-source: "codegraph 3, scip-go 5"
 }
 
 // ParseForbidRule parses FROM->TO; ok=false when malformed.
@@ -153,7 +237,7 @@ func ForbiddenEdges(fileEdges []FileEdge, rules []ForbidRule) []Violation {
 	for _, r := range rules {
 		for _, e := range fileEdges {
 			if pathMatchesRuleSide(r.From, e.From) && pathMatchesRuleSide(r.To, e.To) {
-				hits = append(hits, Violation{Rule: r.Raw, From: e.From, To: e.To, Weight: e.Weight})
+				hits = append(hits, Violation{Rule: r.Raw, From: e.From, To: e.To, Weight: e.Weight, SeenBy: seenList(e.Seen, nil)})
 			}
 		}
 	}
@@ -368,6 +452,7 @@ func collectFileEdges(symbols []Node, repoPath string) ([]SymbolEdge, error) {
 type ArchParams struct {
 	MaxSymbols, MaxRender, GroupDepth int
 	Forbid                            []ForbidRule
+	Tooltips                          bool // svg: per-source edge weights (multi-source only)
 }
 
 // ArchSource is where --architecture's graph comes from: every symbol in
@@ -402,24 +487,78 @@ func (s CodegraphSource) EmptyGraphWarning() string { return EmptyArchitectureWa
 
 // RunArchitectureMode builds the file-level graph and checks --forbid rules.
 func RunArchitectureMode(src ArchSource, p ArchParams, stderr io.Writer) (string, []Violation, error) {
-	all, err := src.Symbols()
+	rawFileEdges, err := sourceFileEdges(src, p.MaxSymbols, "", stderr)
 	if err != nil {
 		return "", nil, err
 	}
-	symbols := all
-	if len(symbols) > p.MaxSymbols {
-		symbols = symbols[:p.MaxSymbols]
-		msg := SymbolBudgetWarning(p.MaxSymbols)
-		if bw, ok := src.(budgetWarner); ok {
-			msg = bw.BudgetWarning(p.MaxSymbols)
+	return finishArchitecture(rawFileEdges, p, nil, func() { warn(stderr, src.EmptyGraphWarning()) }, stderr)
+}
+
+// LabeledSource is one entry of a multi-source --source list: the source and
+// the short label its edges are attributed to in the diagram.
+type LabeledSource struct {
+	Label string
+	Src   ArchSource
+}
+
+// RunMultiArchitectureMode builds one file-level graph from several sources
+// (--source A,B,...): each runs the single-source pipeline up to its file
+// edges, with its own --max-symbols budget, then UnionFileEdges merges them.
+// --forbid checks the union, so an edge any one source sees can fail the run.
+func RunMultiArchitectureMode(srcs []LabeledSource, p ArchParams, stderr io.Writer) (string, []Violation, error) {
+	labels := make([]string, len(srcs))
+	perSource := make([][]FileEdge, len(srcs))
+	for i, s := range srcs {
+		labels[i] = s.Label
+		edges, err := sourceFileEdges(s.Src, p.MaxSymbols, s.Label, stderr)
+		if err != nil {
+			return "", nil, labelError(s.Label, err)
 		}
-		warn(stderr, msg)
+		perSource[i] = edges
+	}
+	union := UnionFileEdges(perSource, labels)
+	if len(union) > 0 {
+		for i, s := range srcs {
+			if len(perSource[i]) == 0 {
+				warn(stderr, SourceFoundNoEdgesWarning(s.Label))
+			}
+		}
+	}
+	emptyGraph := func() {
+		for _, s := range srcs {
+			warn(stderr, labelWarning(s.Label, s.Src.EmptyGraphWarning()))
+		}
+	}
+	return finishArchitecture(union, p, labels, emptyGraph, stderr)
+}
+
+// sourceFileEdges enumerates one source's symbols, applies --max-symbols and
+// aggregates its callee edges into file edges. A non-empty label prefixes the
+// budget warning (multi-source runs).
+func sourceFileEdges(src ArchSource, maxSymbols int, label string, stderr io.Writer) ([]FileEdge, error) {
+	symbols, err := src.Symbols()
+	if err != nil {
+		return nil, err
+	}
+	if len(symbols) > maxSymbols {
+		symbols = symbols[:maxSymbols]
+		msg := SymbolBudgetWarning(maxSymbols)
+		if bw, ok := src.(budgetWarner); ok {
+			msg = bw.BudgetWarning(maxSymbols)
+		}
+		warn(stderr, labelWarning(label, msg))
 	}
 	symbolEdges, err := src.FileEdges(symbols)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
-	rawFileEdges := AggregateFileEdges(symbolEdges)
+	return AggregateFileEdges(symbolEdges), nil
+}
+
+// finishArchitecture is everything after the file edges, shared by single-
+// and multi-source runs: --forbid, --group-depth rollup, warnings and DOT.
+// sources is nil for a single source; emptyGraph warns about a blank diagram.
+func finishArchitecture(rawFileEdges []FileEdge, p ArchParams, sources []string, emptyGraph func(), stderr io.Writer) (string, []Violation, error) {
 	violations := ForbiddenEdges(rawFileEdges, p.Forbid)
 	warn(stderr, ForbidViolationReport(violations))
 
@@ -438,7 +577,7 @@ func RunArchitectureMode(src ArchSource, p ArchParams, stderr io.Writer) (string
 	collapse := GroupCollapseWarning(len(rawFileEdges), len(fileEdges), p.GroupDepth, groupCount)
 	warn(stderr, collapse)
 	if collapse == "" && len(fileEdges) == 0 {
-		warn(stderr, src.EmptyGraphWarning())
+		emptyGraph()
 	}
 
 	files := map[string]bool{}
@@ -453,7 +592,7 @@ func RunArchitectureMode(src ArchSource, p ArchParams, stderr io.Writer) (string
 
 	violating := ViolatingDrawnKeys(violations, p.GroupDepth)
 	warn(stderr, HiddenViolationNote(fileEdges, violating, p.MaxRender))
-	return BuildArchitectureDot(fileEdges, ArchOptions{MaxRender: p.MaxRender, Violating: violating}), violations, nil
+	return BuildArchitectureDot(fileEdges, ArchOptions{MaxRender: p.MaxRender, Violating: violating, Sources: sources, Tooltips: p.Tooltips}), violations, nil
 }
 
 // warn prints a non-empty message as one stderr line.
