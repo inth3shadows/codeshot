@@ -142,6 +142,12 @@ so the scan takes about a second. Flags specific to this mode:
   `--embed` marker and image name get `-scip-<indexer>`
   (`codeshot-arch-scip-go.svg`), plus the `--path` subdirectory when bare
   `--source scip` reads the index from there.
+- `--source codegraph,scip` — a comma list of any of the above draws one
+  diagram from all of them. Edges only some sources found are dashed and
+  labeled with those sources' names; the weight is the highest any one source
+  gives the edge (svg tooltips show each source's own), and `--forbid` checks
+  the merged graph. `--architecture` only. See
+  [USAGE.md](USAGE.md#several-sources-in-one-architecture-diagram).
 - `--depth` and `--max-depth-nodes` have no effect here and are rejected if set
   to anything but their defaults — there's no multi-hop file-traversal concept
   to apply them to.

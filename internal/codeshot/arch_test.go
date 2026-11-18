@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -244,7 +245,7 @@ func TestRollupFileEdgesSumsTheWeightsOfEveryFilePairCollapsingIntoOneGroupPair(
 		{From: "src/a.js", To: "lib/x.js", Weight: 2},
 		{From: "src/b.js", To: "lib/y.js", Weight: 3},
 	}, 1)
-	if want := []FileEdge{{From: "src/", To: "lib/", Weight: 5}}; !slices.Equal(rolled, want) {
+	if want := []FileEdge{{From: "src/", To: "lib/", Weight: 5}}; !reflect.DeepEqual(rolled, want) {
 		t.Errorf("got %+v, want %+v", rolled, want)
 	}
 }
@@ -254,14 +255,14 @@ func TestRollupFileEdgesDropsEdgesThatBecomeSelfGroup(t *testing.T) {
 		{From: "src/a.js", To: "src/b.js", Weight: 4},
 		{From: "src/a.js", To: "lib/x.js", Weight: 1},
 	}, 1)
-	if want := []FileEdge{{From: "src/", To: "lib/", Weight: 1}}; !slices.Equal(rolled, want) {
+	if want := []FileEdge{{From: "src/", To: "lib/", Weight: 1}}; !reflect.DeepEqual(rolled, want) {
 		t.Errorf("got %+v, want %+v", rolled, want)
 	}
 }
 
 func TestRollupFileEdgesIsANoOpWhenNoGroupDepthWasGiven(t *testing.T) {
 	edges := []FileEdge{{From: "src/a.js", To: "src/b.js", Weight: 1}}
-	if got := RollupFileEdges(edges, 0); !slices.Equal(got, edges) {
+	if got := RollupFileEdges(edges, 0); !reflect.DeepEqual(got, edges) {
 		t.Errorf("got %+v, want the input unchanged", got)
 	}
 }

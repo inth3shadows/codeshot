@@ -114,6 +114,9 @@ func ForbidViolationReport(vs []Violation) string {
 	lines := make([]string, len(vs))
 	for i, v := range vs {
 		lines[i] = fmt.Sprintf("  %s -> %s (weight %d) breaks --forbid '%s'", v.From, v.To, v.Weight, v.Rule)
+		if v.SeenBy != "" {
+			lines[i] += " — seen by " + v.SeenBy
+		}
 	}
 	return fmt.Sprintf("codeshot: %d file edge(s) break a --forbid rule:\n%s", len(vs), strings.Join(lines, "\n"))
 }
@@ -281,4 +284,40 @@ func depthSkipWarning(w Wording, nodes []Node) string {
 	}
 	return fmt.Sprintf("codeshot: --depth got no answer from %s for %d symbol(s) (%s%s) — the graph past them is missing, not empty.",
 		w.Graph, len(skipped), strings.Join(shown, ", "), more)
+}
+
+// labelWarning attributes a "codeshot: ..." message to one source of a
+// multi-source run ("codeshot: scip-go: ..."); an empty label leaves it as is.
+func labelWarning(label, msg string) string {
+	if label == "" || msg == "" {
+		return msg
+	}
+	return "codeshot: " + label + ": " + strings.TrimPrefix(msg, "codeshot: ")
+}
+
+// SourceFoundNoEdgesWarning: one source of a multi-source run contributed
+// nothing, so the diagram is the other sources' alone.
+func SourceFoundNoEdgesWarning(label string) string {
+	return fmt.Sprintf("codeshot: %s found no cross-file edges, so every edge drawn comes from the other sources; check that it covers this repo (right file, indexer run over the whole project).", label)
+}
+
+// seenList is "codegraph 3, scip-go 5": each source's weight for an edge, in
+// order's order when given (sources missing from order follow, as seen).
+func seenList(seen []SourceWeight, order []string) string {
+	var parts []string
+	done := map[string]bool{}
+	for _, l := range order {
+		for _, w := range seen {
+			if w.Source == l {
+				parts = append(parts, fmt.Sprintf("%s %d", w.Source, w.Weight))
+				done[l] = true
+			}
+		}
+	}
+	for _, w := range seen {
+		if !done[w.Source] {
+			parts = append(parts, fmt.Sprintf("%s %d", w.Source, w.Weight))
+		}
+	}
+	return strings.Join(parts, ", ")
 }

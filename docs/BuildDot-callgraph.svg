@@ -15,185 +15,185 @@
 <path fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5" d="M609.6,-737C609.6,-737 552.3,-737 552.3,-737 546.3,-737 540.3,-731 540.3,-725 540.3,-725 540.3,-713 540.3,-713 540.3,-707 546.3,-701 552.3,-701 552.3,-701 609.6,-701 609.6,-701 615.6,-701 621.6,-707 621.6,-713 621.6,-713 621.6,-725 621.6,-725 621.6,-731 615.6,-737 609.6,-737"/>
 <text xml:space="preserve" text-anchor="middle" x="580.95" y="-715.3" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#0f172a">BuildDot</text>
 </g>
-<!-- Node -->
-<g id="node26" class="node">
-<title>Node</title>
-<g id="a_node26"><a xlink:title="internal/codegraph/codegraph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M768.77,-1195C768.77,-1195 735.48,-1195 735.48,-1195 729.48,-1195 723.48,-1189 723.48,-1183 723.48,-1183 723.48,-1171 723.48,-1171 723.48,-1165 729.48,-1159 735.48,-1159 735.48,-1159 768.77,-1159 768.77,-1159 774.77,-1159 780.77,-1165 780.77,-1171 780.77,-1171 780.77,-1183 780.77,-1183 780.77,-1189 774.77,-1195 768.77,-1195"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1173.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">Node</text>
-</a>
-</g>
-</g>
-<!-- BuildDot&#45;&gt;Node -->
-<g id="edge25" class="edge">
-<title>BuildDot&#45;&gt;Node</title>
-<path fill="none" stroke="#94a3b8" d="M586.08,-737.67C604.3,-820.04 676.6,-1147 676.6,-1147 676.6,-1147 696.8,-1155.13 716.17,-1162.93"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="715.2,-1164.8 721.55,-1165.09 716.76,-1160.9 715.2,-1164.8"/>
-</g>
 <!-- DotOptions -->
-<g id="node27" class="node">
+<g id="node26" class="node">
 <title>DotOptions</title>
-<g id="a_node27"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M785.65,-1134C785.65,-1134 718.6,-1134 718.6,-1134 712.6,-1134 706.6,-1128 706.6,-1122 706.6,-1122 706.6,-1110 706.6,-1110 706.6,-1104 712.6,-1098 718.6,-1098 718.6,-1098 785.65,-1098 785.65,-1098 791.65,-1098 797.65,-1104 797.65,-1110 797.65,-1110 797.65,-1122 797.65,-1122 797.65,-1128 791.65,-1134 785.65,-1134"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1112.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DotOptions</text>
+<g id="a_node26"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M785.65,-1195C785.65,-1195 718.6,-1195 718.6,-1195 712.6,-1195 706.6,-1189 706.6,-1183 706.6,-1183 706.6,-1171 706.6,-1171 706.6,-1165 712.6,-1159 718.6,-1159 718.6,-1159 785.65,-1159 785.65,-1159 791.65,-1159 797.65,-1165 797.65,-1171 797.65,-1171 797.65,-1183 797.65,-1183 797.65,-1189 791.65,-1195 785.65,-1195"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1173.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DotOptions</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;DotOptions -->
-<g id="edge26" class="edge">
+<g id="edge25" class="edge">
 <title>BuildDot&#45;&gt;DotOptions</title>
-<path fill="none" stroke="#94a3b8" d="M586.77,-737.7C606.06,-812.49 676.6,-1086 676.6,-1086 676.6,-1086 686.58,-1090.02 699.23,-1095.11"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="698.3,-1097 704.65,-1097.29 699.87,-1093.1 698.3,-1097"/>
+<path fill="none" stroke="#94a3b8" d="M586.08,-737.67C604.3,-820.04 676.6,-1147 676.6,-1147 676.6,-1147 686.58,-1151.02 699.23,-1156.11"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="698.3,-1158 704.65,-1158.29 699.87,-1154.1 698.3,-1158"/>
 </g>
 <!-- edgeAttrs -->
-<g id="node28" class="node">
+<g id="node27" class="node">
 <title>edgeAttrs</title>
-<g id="a_node28"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M781.52,-1073C781.52,-1073 722.73,-1073 722.73,-1073 716.73,-1073 710.73,-1067 710.73,-1061 710.73,-1061 710.73,-1049 710.73,-1049 710.73,-1043 716.73,-1037 722.73,-1037 722.73,-1037 781.52,-1037 781.52,-1037 787.52,-1037 793.52,-1043 793.52,-1049 793.52,-1049 793.52,-1061 793.52,-1061 793.52,-1067 787.52,-1073 781.52,-1073"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1051.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">edgeAttrs</text>
+<g id="a_node27"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M781.52,-1134C781.52,-1134 722.73,-1134 722.73,-1134 716.73,-1134 710.73,-1128 710.73,-1122 710.73,-1122 710.73,-1110 710.73,-1110 710.73,-1104 716.73,-1098 722.73,-1098 722.73,-1098 781.52,-1098 781.52,-1098 787.52,-1098 793.52,-1104 793.52,-1110 793.52,-1110 793.52,-1122 793.52,-1122 793.52,-1128 787.52,-1134 781.52,-1134"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1112.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">edgeAttrs</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;edgeAttrs -->
-<g id="edge27" class="edge">
+<g id="edge26" class="edge">
 <title>BuildDot&#45;&gt;edgeAttrs</title>
-<path fill="none" stroke="#94a3b8" d="M587.73,-737.68C608.28,-804.12 676.6,-1025 676.6,-1025 676.6,-1025 688.91,-1029.96 703.53,-1035.84"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="702.62,-1037.74 708.97,-1038.03 704.19,-1033.84 702.62,-1037.74"/>
+<path fill="none" stroke="#94a3b8" d="M586.77,-737.7C606.06,-812.49 676.6,-1086 676.6,-1086 676.6,-1086 688.91,-1090.96 703.53,-1096.84"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="702.62,-1098.74 708.97,-1099.03 704.19,-1094.84 702.62,-1098.74"/>
 </g>
 <!-- graphAttrs -->
-<g id="node29" class="node">
+<g id="node28" class="node">
 <title>graphAttrs</title>
-<g id="a_node29"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M783.77,-1012C783.77,-1012 720.48,-1012 720.48,-1012 714.48,-1012 708.48,-1006 708.48,-1000 708.48,-1000 708.48,-988 708.48,-988 708.48,-982 714.48,-976 720.48,-976 720.48,-976 783.77,-976 783.77,-976 789.77,-976 795.77,-982 795.77,-988 795.77,-988 795.77,-1000 795.77,-1000 795.77,-1006 789.77,-1012 783.77,-1012"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-990.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">graphAttrs</text>
+<g id="a_node28"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M783.77,-1073C783.77,-1073 720.48,-1073 720.48,-1073 714.48,-1073 708.48,-1067 708.48,-1061 708.48,-1061 708.48,-1049 708.48,-1049 708.48,-1043 714.48,-1037 720.48,-1037 720.48,-1037 783.77,-1037 783.77,-1037 789.77,-1037 795.77,-1043 795.77,-1049 795.77,-1049 795.77,-1061 795.77,-1061 795.77,-1067 789.77,-1073 783.77,-1073"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-1051.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">graphAttrs</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;graphAttrs -->
-<g id="edge28" class="edge">
+<g id="edge27" class="edge">
 <title>BuildDot&#45;&gt;graphAttrs</title>
-<path fill="none" stroke="#94a3b8" d="M589.06,-737.41C611.08,-794.39 676.6,-964 676.6,-964 676.6,-964 687.71,-968.47 701.34,-973.96"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="700.45,-975.86 706.8,-976.16 702.02,-971.97 700.45,-975.86"/>
+<path fill="none" stroke="#94a3b8" d="M587.73,-737.68C608.28,-804.12 676.6,-1025 676.6,-1025 676.6,-1025 687.71,-1029.47 701.34,-1034.96"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="700.45,-1036.86 706.8,-1037.16 702.02,-1032.97 700.45,-1036.86"/>
 </g>
 <!-- nodeAttrs -->
-<g id="node30" class="node">
+<g id="node29" class="node">
 <title>nodeAttrs</title>
-<g id="a_node30"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M781.52,-951C781.52,-951 722.73,-951 722.73,-951 716.73,-951 710.73,-945 710.73,-939 710.73,-939 710.73,-927 710.73,-927 710.73,-921 716.73,-915 722.73,-915 722.73,-915 781.52,-915 781.52,-915 787.52,-915 793.52,-921 793.52,-927 793.52,-927 793.52,-939 793.52,-939 793.52,-945 787.52,-951 781.52,-951"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-929.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">nodeAttrs</text>
+<g id="a_node29"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M781.52,-1012C781.52,-1012 722.73,-1012 722.73,-1012 716.73,-1012 710.73,-1006 710.73,-1000 710.73,-1000 710.73,-988 710.73,-988 710.73,-982 716.73,-976 722.73,-976 722.73,-976 781.52,-976 781.52,-976 787.52,-976 793.52,-982 793.52,-988 793.52,-988 793.52,-1000 793.52,-1000 793.52,-1006 787.52,-1012 781.52,-1012"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-990.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">nodeAttrs</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;nodeAttrs -->
-<g id="edge29" class="edge">
+<g id="edge28" class="edge">
 <title>BuildDot&#45;&gt;nodeAttrs</title>
-<path fill="none" stroke="#94a3b8" d="M591.55,-737.66C615.61,-784.43 676.6,-903 676.6,-903 676.6,-903 688.91,-907.96 703.53,-913.84"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="702.62,-915.74 708.97,-916.03 704.19,-911.84 702.62,-915.74"/>
+<path fill="none" stroke="#94a3b8" d="M589.06,-737.41C611.08,-794.39 676.6,-964 676.6,-964 676.6,-964 688.91,-968.96 703.53,-974.84"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="702.62,-976.74 708.97,-977.03 704.19,-972.84 702.62,-976.74"/>
 </g>
 <!-- nodeDecl -->
-<g id="node31" class="node">
+<g id="node30" class="node">
 <title>nodeDecl</title>
-<g id="a_node31"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M780.02,-890C780.02,-890 724.23,-890 724.23,-890 718.23,-890 712.23,-884 712.23,-878 712.23,-878 712.23,-866 712.23,-866 712.23,-860 718.23,-854 724.23,-854 724.23,-854 780.02,-854 780.02,-854 786.02,-854 792.02,-860 792.02,-866 792.02,-866 792.02,-878 792.02,-878 792.02,-884 786.02,-890 780.02,-890"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-868.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">nodeDecl</text>
+<g id="a_node30"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M780.02,-951C780.02,-951 724.23,-951 724.23,-951 718.23,-951 712.23,-945 712.23,-939 712.23,-939 712.23,-927 712.23,-927 712.23,-921 718.23,-915 724.23,-915 724.23,-915 780.02,-915 780.02,-915 786.02,-915 792.02,-921 792.02,-927 792.02,-927 792.02,-939 792.02,-939 792.02,-945 786.02,-951 780.02,-951"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-929.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">nodeDecl</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;nodeDecl -->
-<g id="edge30" class="edge">
+<g id="edge29" class="edge">
 <title>BuildDot&#45;&gt;nodeDecl</title>
-<path fill="none" stroke="#94a3b8" d="M596.33,-737.68C622.8,-772.09 676.6,-842 676.6,-842 676.6,-842 689.77,-847.3 705.04,-853.45"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="703.93,-855.26 710.28,-855.56 705.49,-851.37 703.93,-855.26"/>
+<path fill="none" stroke="#94a3b8" d="M591.55,-737.66C615.61,-784.43 676.6,-903 676.6,-903 676.6,-903 689.77,-908.3 705.04,-914.45"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="703.93,-916.26 710.28,-916.56 705.49,-912.37 703.93,-916.26"/>
 </g>
 <!-- rootStyle -->
-<g id="node32" class="node">
+<g id="node31" class="node">
 <title>rootStyle</title>
-<g id="a_node32"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M779.65,-829C779.65,-829 724.6,-829 724.6,-829 718.6,-829 712.6,-823 712.6,-817 712.6,-817 712.6,-805 712.6,-805 712.6,-799 718.6,-793 724.6,-793 724.6,-793 779.65,-793 779.65,-793 785.65,-793 791.65,-799 791.65,-805 791.65,-805 791.65,-817 791.65,-817 791.65,-823 785.65,-829 779.65,-829"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-807.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">rootStyle</text>
+<g id="a_node31"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M779.65,-890C779.65,-890 724.6,-890 724.6,-890 718.6,-890 712.6,-884 712.6,-878 712.6,-878 712.6,-866 712.6,-866 712.6,-860 718.6,-854 724.6,-854 724.6,-854 779.65,-854 779.65,-854 785.65,-854 791.65,-860 791.65,-866 791.65,-866 791.65,-878 791.65,-878 791.65,-884 785.65,-890 779.65,-890"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-868.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">rootStyle</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;rootStyle -->
-<g id="edge31" class="edge">
+<g id="edge30" class="edge">
 <title>BuildDot&#45;&gt;rootStyle</title>
-<path fill="none" stroke="#94a3b8" d="M610.35,-737.6C638.23,-755.86 676.6,-781 676.6,-781 676.6,-781 689.99,-786.39 705.41,-792.6"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="704.36,-794.44 710.71,-794.73 705.93,-790.54 704.36,-794.44"/>
+<path fill="none" stroke="#94a3b8" d="M596.33,-737.68C622.8,-772.09 676.6,-842 676.6,-842 676.6,-842 689.99,-847.39 705.41,-853.6"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="704.36,-855.44 710.71,-855.73 705.93,-851.54 704.36,-855.44"/>
 </g>
 <!-- styleSuffix -->
-<g id="node33" class="node">
+<g id="node32" class="node">
 <title>styleSuffix</title>
-<g id="a_node33"><a xlink:title="internal/codeshot/dot.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M783.4,-768C783.4,-768 720.85,-768 720.85,-768 714.85,-768 708.85,-762 708.85,-756 708.85,-756 708.85,-744 708.85,-744 708.85,-738 714.85,-732 720.85,-732 720.85,-732 783.4,-732 783.4,-732 789.4,-732 795.4,-738 795.4,-744 795.4,-744 795.4,-756 795.4,-756 795.4,-762 789.4,-768 783.4,-768"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-746.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">styleSuffix</text>
+<g id="a_node32"><a xlink:title="internal/codeshot/dot.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M783.4,-829C783.4,-829 720.85,-829 720.85,-829 714.85,-829 708.85,-823 708.85,-817 708.85,-817 708.85,-805 708.85,-805 708.85,-799 714.85,-793 720.85,-793 720.85,-793 783.4,-793 783.4,-793 789.4,-793 795.4,-799 795.4,-805 795.4,-805 795.4,-817 795.4,-817 795.4,-823 789.4,-829 783.4,-829"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-807.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">styleSuffix</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;styleSuffix -->
-<g id="edge32" class="edge">
+<g id="edge31" class="edge">
 <title>BuildDot&#45;&gt;styleSuffix</title>
-<path fill="none" stroke="#94a3b8" d="M622.04,-726.35C645.7,-730.68 675.84,-736.21 701.05,-740.82"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="700.59,-742.88 706.87,-741.89 701.35,-738.74 700.59,-742.88"/>
+<path fill="none" stroke="#94a3b8" d="M610.35,-737.6C638.23,-755.86 676.6,-781 676.6,-781 676.6,-781 687.9,-785.55 701.7,-791.1"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="700.88,-793.04 707.23,-793.33 702.45,-789.14 700.88,-793.04"/>
 </g>
 <!-- AllocateRenderBudget -->
-<g id="node34" class="node">
+<g id="node33" class="node">
 <title>AllocateRenderBudget</title>
-<g id="a_node34"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M815.65,-707C815.65,-707 688.6,-707 688.6,-707 682.6,-707 676.6,-701 676.6,-695 676.6,-695 676.6,-683 676.6,-683 676.6,-677 682.6,-671 688.6,-671 688.6,-671 815.65,-671 815.65,-671 821.65,-671 827.65,-677 827.65,-683 827.65,-683 827.65,-695 827.65,-695 827.65,-701 821.65,-707 815.65,-707"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-685.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">AllocateRenderBudget</text>
+<g id="a_node33"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M815.65,-768C815.65,-768 688.6,-768 688.6,-768 682.6,-768 676.6,-762 676.6,-756 676.6,-756 676.6,-744 676.6,-744 676.6,-738 682.6,-732 688.6,-732 688.6,-732 815.65,-732 815.65,-732 821.65,-732 827.65,-738 827.65,-744 827.65,-744 827.65,-756 827.65,-756 827.65,-762 821.65,-768 815.65,-768"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-746.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">AllocateRenderBudget</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;AllocateRenderBudget -->
-<g id="edge33" class="edge">
+<g id="edge32" class="edge">
 <title>BuildDot&#45;&gt;AllocateRenderBudget</title>
-<path fill="none" stroke="#94a3b8" d="M622.04,-711.89C636.23,-709.37 652.76,-706.44 669.16,-703.53"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="669.14,-705.67 674.68,-702.56 668.41,-701.54 669.14,-705.67"/>
+<path fill="none" stroke="#94a3b8" d="M622.04,-726.35C636.23,-728.95 652.76,-731.98 669.16,-734.98"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="668.4,-736.98 674.68,-735.99 669.16,-732.85 668.4,-736.98"/>
 </g>
 <!-- DedupeEdges -->
-<g id="node35" class="node">
+<g id="node34" class="node">
 <title>DedupeEdges</title>
-<g id="a_node35"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M792.02,-646C792.02,-646 712.23,-646 712.23,-646 706.23,-646 700.23,-640 700.23,-634 700.23,-634 700.23,-622 700.23,-622 700.23,-616 706.23,-610 712.23,-610 712.23,-610 792.02,-610 792.02,-610 798.02,-610 804.02,-616 804.02,-622 804.02,-622 804.02,-634 804.02,-634 804.02,-640 798.02,-646 792.02,-646"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-624.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DedupeEdges</text>
+<g id="a_node34"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M792.02,-707C792.02,-707 712.23,-707 712.23,-707 706.23,-707 700.23,-701 700.23,-695 700.23,-695 700.23,-683 700.23,-683 700.23,-677 706.23,-671 712.23,-671 712.23,-671 792.02,-671 792.02,-671 798.02,-671 804.02,-677 804.02,-683 804.02,-683 804.02,-695 804.02,-695 804.02,-701 798.02,-707 792.02,-707"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-685.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DedupeEdges</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;DedupeEdges -->
-<g id="edge34" class="edge">
+<g id="edge33" class="edge">
 <title>BuildDot&#45;&gt;DedupeEdges</title>
-<path fill="none" stroke="#94a3b8" d="M611.38,-700.34C639.16,-682.73 676.6,-659 676.6,-659 676.6,-659 687.13,-654.62 700.28,-649.15"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-651.22 705.51,-646.97 699.17,-647.34 700.78,-651.22"/>
+<path fill="none" stroke="#94a3b8" d="M622.04,-711.89C643.12,-708.15 669.34,-703.5 692.64,-699.37"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="692.74,-701.49 698.28,-698.37 692,-697.35 692.74,-701.49"/>
 </g>
 <!-- DedupeNodes -->
-<g id="node36" class="node">
+<g id="node35" class="node">
 <title>DedupeNodes</title>
-<g id="a_node36"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M792.77,-585C792.77,-585 711.48,-585 711.48,-585 705.48,-585 699.48,-579 699.48,-573 699.48,-573 699.48,-561 699.48,-561 699.48,-555 705.48,-549 711.48,-549 711.48,-549 792.77,-549 792.77,-549 798.77,-549 804.77,-555 804.77,-561 804.77,-561 804.77,-573 804.77,-573 804.77,-579 798.77,-585 792.77,-585"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-563.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DedupeNodes</text>
+<g id="a_node35"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M792.77,-646C792.77,-646 711.48,-646 711.48,-646 705.48,-646 699.48,-640 699.48,-634 699.48,-634 699.48,-622 699.48,-622 699.48,-616 705.48,-610 711.48,-610 711.48,-610 792.77,-610 792.77,-610 798.77,-610 804.77,-616 804.77,-622 804.77,-622 804.77,-634 804.77,-634 804.77,-640 798.77,-646 792.77,-646"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-624.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DedupeNodes</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;DedupeNodes -->
-<g id="edge35" class="edge">
+<g id="edge34" class="edge">
 <title>BuildDot&#45;&gt;DedupeNodes</title>
-<path fill="none" stroke="#94a3b8" d="M596.53,-700.36C623.08,-666.42 676.6,-598 676.6,-598 676.6,-598 687.13,-593.62 700.28,-588.15"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-590.22 705.51,-585.97 699.17,-586.34 700.78,-590.22"/>
+<path fill="none" stroke="#94a3b8" d="M611.38,-700.34C639.16,-682.73 676.6,-659 676.6,-659 676.6,-659 687.13,-654.62 700.28,-649.15"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-651.22 705.51,-646.97 699.17,-647.34 700.78,-651.22"/>
 </g>
 <!-- DepthColor -->
-<g id="node37" class="node">
+<g id="node36" class="node">
 <title>DepthColor</title>
-<g id="a_node37"><a xlink:title="internal/codeshot/graph.go">
-<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M785.27,-524C785.27,-524 718.98,-524 718.98,-524 712.98,-524 706.98,-518 706.98,-512 706.98,-512 706.98,-500 706.98,-500 706.98,-494 712.98,-488 718.98,-488 718.98,-488 785.27,-488 785.27,-488 791.27,-488 797.27,-494 797.27,-500 797.27,-500 797.27,-512 797.27,-512 797.27,-518 791.27,-524 785.27,-524"/>
-<text xml:space="preserve" text-anchor="middle" x="752.12" y="-502.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DepthColor</text>
+<g id="a_node36"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M785.27,-585C785.27,-585 718.98,-585 718.98,-585 712.98,-585 706.98,-579 706.98,-573 706.98,-573 706.98,-561 706.98,-561 706.98,-555 712.98,-549 718.98,-549 718.98,-549 785.27,-549 785.27,-549 791.27,-549 797.27,-555 797.27,-561 797.27,-561 797.27,-573 797.27,-573 797.27,-579 791.27,-585 785.27,-585"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-563.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">DepthColor</text>
 </a>
 </g>
 </g>
 <!-- BuildDot&#45;&gt;DepthColor -->
-<g id="edge36" class="edge">
+<g id="edge35" class="edge">
 <title>BuildDot&#45;&gt;DepthColor</title>
-<path fill="none" stroke="#94a3b8" d="M591.55,-700.55C615.61,-654.28 676.6,-537 676.6,-537 676.6,-537 687.13,-532.62 700.28,-527.15"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-529.22 705.51,-524.97 699.17,-525.34 700.78,-529.22"/>
+<path fill="none" stroke="#94a3b8" d="M596.53,-700.36C623.08,-666.42 676.6,-598 676.6,-598 676.6,-598 687.13,-593.62 700.28,-588.15"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="700.78,-590.22 705.51,-585.97 699.17,-586.34 700.78,-590.22"/>
+</g>
+<!-- Node -->
+<g id="node37" class="node">
+<title>Node</title>
+<g id="a_node37"><a xlink:title="internal/codeshot/graph.go">
+<path fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1" d="M768.77,-524C768.77,-524 735.48,-524 735.48,-524 729.48,-524 723.48,-518 723.48,-512 723.48,-512 723.48,-500 723.48,-500 723.48,-494 729.48,-488 735.48,-488 735.48,-488 768.77,-488 768.77,-488 774.77,-488 780.77,-494 780.77,-500 780.77,-500 780.77,-512 780.77,-512 780.77,-518 774.77,-524 768.77,-524"/>
+<text xml:space="preserve" text-anchor="middle" x="752.12" y="-502.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#334155">Node</text>
+</a>
+</g>
+</g>
+<!-- BuildDot&#45;&gt;Node -->
+<g id="edge36" class="edge">
+<title>BuildDot&#45;&gt;Node</title>
+<path fill="none" stroke="#94a3b8" d="M591.55,-700.55C615.61,-654.28 676.6,-537 676.6,-537 676.6,-537 696.8,-528.6 716.17,-520.54"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" points="716.82,-522.54 721.55,-518.3 715.21,-518.67 716.82,-522.54"/>
 </g>
 <!-- edgeStyleAttrs -->
 <g id="node38" class="node">

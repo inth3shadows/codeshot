@@ -169,6 +169,37 @@ old-style JavaScript property functions (`req.accepts = function () {}`) get
 no range and no node from scip-typescript, so they aren't drawn at all. With
 `--embed`, the marker and image name end in `-scip-<indexer>`.
 
+### Several sources in one architecture diagram
+
+A comma list draws one `--architecture` diagram from every source in it:
+
+```bash
+codeshot --architecture --source codegraph,scip --out arch.svg --format svg
+```
+
+Each source builds its file edges on its own (with its own `--max-symbols`
+budget), then the edges are merged. An edge every source found is drawn as
+usual. An edge only some sources found is dashed, and its label names them
+(`3 scip-go`). The weight is the highest any one source gives the edge,
+because the sources count different things (codegraph calls, SCIP
+references), so adding them would mix units. In svg, each edge's tooltip
+shows every source's own weight (`codegraph 3, scip-go 5`). A line under the
+diagram names the sources.
+
+`--forbid` checks the merged graph, so an edge any one source sees can fail
+the run, and the violation lists which sources saw it. With `--group-depth`,
+a group edge's weight is the highest per-source total of the file edges in
+it, and it counts as seen by a source when any of those file edges is, so two
+sources can reach one group edge through different files. A source that
+finds no edges at all is named in a warning. The `--embed` marker and image
+name list every source in order (`codeshot-arch-codegraph-scip-go.svg`).
+
+Lists work only with `--architecture`; symbol mode and `--diff` read one
+source, because matching one symbol across sources is a separate problem.
+Two entries with the same label (two scip-go indexes, say) are refused,
+since the label is how the diagram tells them apart. A snapshot or SCIP file
+whose name contains a comma still works on its own.
+
 ## Diagramming just what a diff touched
 
 A third question, narrower than either of the above: "what does *this

@@ -96,16 +96,20 @@ func BuildDot(symbol string, callers, callees []Node, opt DotOptions) string {
 	return strings.Join(lines, "\n")
 }
 
-// FileEdge is a weighted edge between two files (or groups).
+// FileEdge is a weighted edge between two files (or groups). Seen is set
+// only in a multi-source graph: each source's own weight for the edge.
 type FileEdge struct {
 	From, To string
 	Weight   int
+	Seen     []SourceWeight
 }
 
 // ArchOptions are BuildArchitectureDot's view options.
 type ArchOptions struct {
 	MaxRender int             // Unlimited when unset
 	Violating map[string]bool // drawnEdgeKey set of --forbid violations
+	Sources   []string        // multi-source labels in --source order; nil for one source
+	Tooltips  bool            // svg: per-source weights as edge tooltips (multi-source only)
 }
 
 // BuildArchitectureDot draws the file-level dependency graph, keeping only the
@@ -132,6 +136,10 @@ func BuildArchitectureDot(fileEdges []FileEdge, opt ArchOptions) string {
 		}
 	}
 	lines := []string{"digraph architecture {", graphAttrs, nodeAttrs, edgeAttrs}
+	multi := len(opt.Sources) > 1
+	if multi {
+		lines = append(lines, fmt.Sprintf(`  label="Sources: %s. Dashed edges: seen by only the sources named on them."; labelloc=b; fontname="Helvetica"; fontsize=10; fontcolor="#64748b";`, esc(strings.Join(opt.Sources, ", "))))
+	}
 	for _, f := range files {
 		attrs := ""
 		if IsTestRef("", f) {
@@ -144,7 +152,25 @@ func BuildArchitectureDot(fileEdges []FileEdge, opt ArchOptions) string {
 		if opt.Violating[drawnEdgeKey(e.From, e.To)] {
 			alarm = `, color="#dc2626", fontcolor="#dc2626", penwidth=1.8`
 		}
-		lines = append(lines, fmt.Sprintf(`  "%s" -> "%s" [label="%d"%s];`, esc(e.From), esc(e.To), e.Weight, alarm))
+		label, extra := fmt.Sprintf("%d", e.Weight), ""
+		if multi {
+			if len(e.Seen) < len(opt.Sources) {
+				var by []string
+				for _, l := range opt.Sources {
+					for _, w := range e.Seen {
+						if w.Source == l {
+							by = append(by, l)
+						}
+					}
+				}
+				label += " " + strings.Join(by, "+")
+				extra += `, style=dashed`
+			}
+			if opt.Tooltips {
+				extra += fmt.Sprintf(`, tooltip="%s"`, esc(seenList(e.Seen, opt.Sources)))
+			}
+		}
+		lines = append(lines, fmt.Sprintf(`  "%s" -> "%s" [label="%s"%s%s];`, esc(e.From), esc(e.To), esc(label), extra, alarm))
 	}
 	lines = append(lines, "}")
 	return strings.Join(lines, "\n")
