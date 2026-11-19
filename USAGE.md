@@ -328,6 +328,32 @@ name contains a comma still works on its own when the file exists. Listing
 the sources in another order changes the edge order, the labels and the
 `--embed` marker, so it is a different diagram.
 
+### Drawing with Mermaid instead of graphviz
+
+`--format mermaid` writes the architecture diagram as a
+[Mermaid](https://mermaid.js.org/) flowchart, which GitHub, GitLab and many
+docs sites render straight from markdown:
+
+```bash
+codeshot --architecture --path . --group-depth 2 --format mermaid --embed README.md
+```
+
+With `--embed`, the diagram goes into the doc as a ```` ```mermaid ```` block
+between the markers, so there is no image file to commit and graphviz isn't
+needed at all; `--out` also writes the text to a `.mmd` file. `--embed
+--check` compares the block (and the `--out` file, if named) byte for byte. It
+is the same graph the image shows: the same files and edges, `--group-depth`,
+`--max-render`, test files dashed, `--forbid` and `--rules` violations red, and
+with several sources, edges only some found dashed with each source's weight
+and a title naming the sources. The alt text becomes the diagram's accessible
+title.
+
+GitHub won't render a Mermaid diagram with more than 500 edges or 50,000
+characters, and codeshot warns when one does: narrow it with `--max-render` or
+`--group-depth` (a per-file graph of a large repo is past that; a grouped one
+usually isn't). Mermaid is `--architecture` only for now; symbol mode and
+`--diff` draw with graphviz.
+
 ## Diagramming just what a diff touched
 
 A third question, narrower than either of the above: "what does *this

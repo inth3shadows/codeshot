@@ -507,6 +507,7 @@ type ArchParams struct {
 	Rules                             *Rules // --rules; nil when not given
 	Tooltips                          bool   // svg: per-source edge weights (multi-source only)
 	SiteLines                         bool   // --sarif: look up each violation's first call-site line
+	Mermaid                           bool   // --format mermaid: a Mermaid flowchart instead of DOT
 }
 
 // ArchSource is where --architecture's graph comes from: every symbol in
@@ -666,7 +667,13 @@ func finishArchitecture(rawFileEdges []FileEdge, p ArchParams, sources []string,
 		what = "an architecture rule"
 	}
 	warn(stderr, HiddenRuleViolationNote(fileEdges, violating, p.MaxRender, what))
-	return BuildArchitectureDot(fileEdges, ArchOptions{MaxRender: p.MaxRender, Violating: violating, Sources: sources, Tooltips: p.Tooltips}), violations, nil
+	opt := ArchOptions{MaxRender: p.MaxRender, Violating: violating, Sources: sources, Tooltips: p.Tooltips}
+	if p.Mermaid {
+		text := BuildArchitectureMermaid(fileEdges, opt)
+		warn(stderr, MermaidLimitWarning(text))
+		return text, violations, nil
+	}
+	return BuildArchitectureDot(fileEdges, opt), violations, nil
 }
 
 // warn prints a non-empty message as one stderr line.

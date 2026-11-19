@@ -129,6 +129,10 @@ func EmbedRelLink(embedFile, imagePath string) string {
 type OutputParams struct {
 	Format, OutFile, EmbedFile, MarkerID, Alt string
 	Check                                     bool
+	// Mermaid: the diagram is Mermaid text, written as is (no graphviz);
+	// with --embed it goes in the doc as a mermaid block, and the file is
+	// written only when --out named one (WriteOut).
+	Mermaid, WriteOut bool
 }
 
 func missingEmbed(embedFile string) *Exit {
@@ -138,6 +142,9 @@ func missingEmbed(embedFile string) *Exit {
 // FinishOutput renders the image; with --embed also refreshes the doc block;
 // with --embed --check regenerates in memory and verifies both, writing nothing.
 func FinishOutput(dot string, p OutputParams, stdout, stderr io.Writer) error {
+	if p.Mermaid {
+		return finishMermaid(mermaidWithTitle(dot, p.Alt)+"\n", p, stdout, stderr)
+	}
 	if p.EmbedFile == "" {
 		if _, err := renderDot(dot, p.Format, p.OutFile); err != nil {
 			return err
@@ -205,5 +212,65 @@ func FinishOutput(dot string, p OutputParams, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stderr, "codeshot: updated the codeshot:%s block in %s\n", p.MarkerID, p.EmbedFile)
 	}
 	fmt.Fprintln(stdout, p.OutFile)
+	return nil
+}
+
+// finishMermaid writes a Mermaid diagram: to --out, and/or as a mermaid block
+// in the --embed doc. --check compares both byte for byte (Mermaid text is
+// deterministic, so no structural comparison is needed) and writes nothing.
+func finishMermaid(text string, p OutputParams, stdout, stderr io.Writer) error {
+	writeOut := p.WriteOut || p.EmbedFile == ""
+	if p.EmbedFile == "" {
+		if err := os.WriteFile(p.OutFile, []byte(text), 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintln(stdout, p.OutFile)
+		return nil
+	}
+	raw, err := os.ReadFile(p.EmbedFile)
+	if err != nil {
+		return missingEmbed(p.EmbedFile)
+	}
+	doc := string(raw)
+	expected, err := ApplyEmbed(doc, p.MarkerID, "```mermaid\n"+text+"```")
+	if err != nil {
+		return &Exit{Code: 1, Stderr: "codeshot: " + err.Error()}
+	}
+	if refusal := BlankEmbedRefusal(text, p.EmbedFile, p.Check); refusal != "" {
+		return &Exit{Code: 1, Stderr: refusal}
+	}
+	if p.Check {
+		var msgs []string
+		if writeOut {
+			committed, readErr := os.ReadFile(p.OutFile)
+			if readErr != nil || string(committed) != text {
+				why := "differs from a fresh render"
+				if readErr != nil {
+					why = "missing"
+				}
+				msgs = append(msgs, fmt.Sprintf("codeshot: --check: diagram '%s' is out of date (%s) — rerun 'codeshot ... --embed %s' and commit the result.", p.OutFile, why, p.EmbedFile))
+			}
+		}
+		if doc != expected {
+			msgs = append(msgs, fmt.Sprintf("codeshot: --check: the codeshot:%s block in '%s' is out of date or missing — rerun 'codeshot ... --embed %s' and commit the result.", p.MarkerID, p.EmbedFile, p.EmbedFile))
+		}
+		if len(msgs) > 0 {
+			return &Exit{Code: 1, Stderr: strings.Join(msgs, "\n")}
+		}
+		fmt.Fprintf(stdout, "codeshot: up to date — the codeshot:%s block in '%s' matches a fresh render.\n", p.MarkerID, p.EmbedFile)
+		return nil
+	}
+	if writeOut {
+		if err := os.WriteFile(p.OutFile, []byte(text), 0o644); err != nil {
+			return err
+		}
+	}
+	if expected != doc {
+		if err := os.WriteFile(p.EmbedFile, []byte(expected), 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(stderr, "codeshot: updated the codeshot:%s block in %s\n", p.MarkerID, p.EmbedFile)
+	}
+	fmt.Fprintln(stdout, p.EmbedFile)
 	return nil
 }
