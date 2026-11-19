@@ -198,7 +198,8 @@ func TestParseSkipsOutOfRootPathsBeforeTheCleanCheck(t *testing.T) {
 // from one document to a symbol another defines.
 func TestRefLinesTakeTheFirstReferencePerFilePair(t *testing.T) {
 	at := func(sym string, roles scip.SymbolRole, line int32) *scip.Occurrence {
-		return &scip.Occurrence{Symbol: sym, SymbolRoles: int32(roles), Range: []int32{line, 0, 4}}
+		// Older indexers write the deprecated packed range; this case covers them.
+		return &scip.Occurrence{Symbol: sym, SymbolRoles: int32(roles), Range: []int32{line, 0, 4}} //nolint:staticcheck // SA1019, on purpose
 	}
 	x, err := Parse(encode(t, &scip.Index{
 		Metadata: &scip.Metadata{ToolInfo: &scip.ToolInfo{Name: "scip-go"}},
