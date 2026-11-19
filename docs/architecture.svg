@@ -1231,21 +1231,21 @@
 <title>internal/codeshot/mermaid_test.go&#45;&gt;internal/codeshot/warnings.go</title>
 <path fill="none" stroke="#94a3b8" d="M408.39,-472.57C454.2,-402.55 614.85,-157 614.85,-157 614.85,-157 1422.75,-87 1422.75,-87 1422.75,-87 1716.3,-66.75 1716.3,-66.75 1716.3,-66.75 1734.3,-66.75 1734.3,-66.75 1734.3,-66.75 2045.85,-71 2045.85,-71 2045.85,-71 2963.25,-460 2963.25,-460 2963.25,-460 2999.25,-1002 2999.25,-1002 2999.25,-1002 3026.25,-2082 3026.25,-2082 3026.25,-2082 3034.2,-2083.62 3045.98,-2086.01"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="3045.55,-2088.07 3051.84,-2087.2 3046.38,-2083.95 3045.55,-2088.07"/>
-<text xml:space="preserve" text-anchor="middle" x="1725.3" y="-70.7" font-family="Times,serif" font-size="14.00">1</text>
+<text xml:space="preserve" text-anchor="middle" x="1725.3" y="-70.7" font-family="Times,serif" font-size="14.00">2</text>
 </g>
 <!-- internal/codeshot/mermaid_test.go&#45;&gt;internal/codeshot/mermaid.go -->
 <g id="edge80" class="edge">
 <title>internal/codeshot/mermaid_test.go&#45;&gt;internal/codeshot/mermaid.go</title>
 <path fill="none" stroke="#94a3b8" d="M506.49,-509.4C641.17,-531.89 851.4,-567 851.4,-567 851.4,-567 1114.76,-721.31 1214.66,-779.85"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="1213.46,-781.57 1219.7,-782.79 1215.58,-777.95 1213.46,-781.57"/>
-<text xml:space="preserve" text-anchor="middle" x="887.4" y="-597.15" font-family="Times,serif" font-size="14.00">6</text>
+<text xml:space="preserve" text-anchor="middle" x="887.4" y="-597.15" font-family="Times,serif" font-size="14.00">8</text>
 </g>
 <!-- internal/codeshot/mermaid_test.go&#45;&gt;internal/codeshot/helpers_test.go -->
 <g id="edge81" class="edge">
 <title>internal/codeshot/mermaid_test.go&#45;&gt;internal/codeshot/helpers_test.go</title>
 <path fill="none" stroke="#94a3b8" d="M506.62,-475.9C648.92,-456.42 878.4,-425 878.4,-425 878.4,-425 896.4,-425 896.4,-425 896.4,-425 1689.3,-529 1689.3,-529 1689.3,-529 2000.85,-614 2000.85,-614 2000.85,-614 2072.85,-775 2072.85,-775 2072.85,-775 2337.9,-853 2337.9,-853 2337.9,-853 2382.9,-930 2382.9,-930 2382.9,-930 2409.9,-1000 2409.9,-1000 2409.9,-1000 2469.9,-1090.87 2499.47,-1135.65"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="2497.54,-1136.53 2502.6,-1140.38 2501.04,-1134.22 2497.54,-1136.53"/>
-<text xml:space="preserve" text-anchor="middle" x="1386.75" y="-494.27" font-family="Times,serif" font-size="14.00">11</text>
+<text xml:space="preserve" text-anchor="middle" x="1386.75" y="-494.27" font-family="Times,serif" font-size="14.00">16</text>
 </g>
 <!-- internal/codeshot/mermaid_test.go&#45;&gt;internal/codeshot/output.go -->
 <g id="edge84" class="edge">
@@ -1259,7 +1259,7 @@
 <title>internal/codeshot/mermaid_test.go&#45;&gt;internal/codeshot/source_snapshot_test.go</title>
 <path fill="none" stroke="#94a3b8" d="M415.18,-509.53C454.75,-548.42 542.85,-635 542.85,-635 542.85,-635 614.85,-1002 614.85,-1002 614.85,-1002 923.4,-1303 923.4,-1303 923.4,-1303 1120.2,-1378 1120.2,-1378 1120.2,-1378 2000.85,-1551 2000.85,-1551 2000.85,-1551 2125.83,-1671.36 2179.91,-1723.44"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" points="2178.36,-1724.86 2184.14,-1727.51 2181.27,-1721.84 2178.36,-1724.86"/>
-<text xml:space="preserve" text-anchor="middle" x="1253.48" y="-1426.49" font-family="Times,serif" font-size="14.00">2</text>
+<text xml:space="preserve" text-anchor="middle" x="1253.48" y="-1426.49" font-family="Times,serif" font-size="14.00">3</text>
 </g>
 <!-- internal/codeshot/source_snapshot_test.go&#45;&gt;internal/codeshot/arch.go -->
 <g id="edge154" class="edge">

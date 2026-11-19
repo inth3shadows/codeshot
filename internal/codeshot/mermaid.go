@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 )
 
 // GitHub renders Mermaid with its defaults, which refuse larger diagrams.
@@ -18,10 +19,11 @@ const (
 // is a line break), a backtick (a leading one opens a markdown string), '%'
 // (%%{...}%% directives), '$' ($$ math), ':' (fa: icons). A line break is a
 // space.
-func mermaidLabel(s string) string {
-	return strings.NewReplacer("#", "#35;", `"`, "#34;", "<", "#60;", ">", "#62;", "&", "#38;",
-		`\`, "#92;", "`", "#96;", "%", "#37;", "$", "#36;", ":", "#58;", "\n", " ", "\r", " ").Replace(s)
-}
+func mermaidLabel(s string) string { return mermaidEscape.Replace(s) }
+
+// mermaidEscape is mermaidLabel's fixed mapping, built once (V10).
+var mermaidEscape = strings.NewReplacer("#", "#35;", `"`, "#34;", "<", "#60;", ">", "#62;", "&", "#38;",
+	`\`, "#92;", "`", "#96;", "%", "#37;", "$", "#36;", ":", "#58;", "\n", " ", "\r", " ")
 
 // BuildArchitectureMermaid draws the same graph as BuildArchitectureDot as a
 // Mermaid flowchart: the same files and edges (archDrawn), test files dashed,
@@ -70,14 +72,24 @@ func mermaidWithTitle(text, title string) string {
 	if title == "" {
 		return text
 	}
-	return strings.Replace(text, "flowchart LR\n", "flowchart LR\n  accTitle: "+strings.ReplaceAll(title, "\n", " ")+"\n", 1)
+	title = strings.NewReplacer("\r", " ", "\n", " ").Replace(title) // V3
+	return strings.Replace(text, "flowchart LR\n", "flowchart LR\n  accTitle: "+title+"\n", 1)
 }
 
 // MermaidLimitWarning: GitHub won't render a Mermaid diagram past its limits.
+// The size is counted as Mermaid counts it (V6): UTF-16 units, after the
+// frontmatter is stripped.
 func MermaidLimitWarning(text string) string {
 	edges := strings.Count(text, "-->|") + strings.Count(text, "-.->|")
-	if edges <= mermaidMaxEdges && len(text) <= mermaidMaxText {
+	body := text
+	if strings.HasPrefix(body, "---\n") {
+		if i := strings.Index(body[4:], "\n---\n"); i >= 0 {
+			body = body[4+i+5:]
+		}
+	}
+	size := len(utf16.Encode([]rune(body)))
+	if edges <= mermaidMaxEdges && size <= mermaidMaxText {
 		return ""
 	}
-	return fmt.Sprintf("codeshot: the Mermaid diagram has %d edges and %d characters; GitHub renders at most %d edges and %d characters, so it will show an error there. Narrow it with --max-render or --group-depth.", edges, len(text), mermaidMaxEdges, mermaidMaxText)
+	return fmt.Sprintf("codeshot: the Mermaid diagram has %d edges and %d characters; GitHub renders at most %d edges and %d characters, so it will show an error there. Narrow it with --max-render or --group-depth.", edges, size, mermaidMaxEdges, mermaidMaxText)
 }

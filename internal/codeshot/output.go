@@ -259,7 +259,11 @@ func finishMermaid(text string, p OutputParams, stdout, stderr io.Writer) error 
 		if len(msgs) > 0 {
 			return &Exit{Code: 1, Stderr: strings.Join(msgs, "\n")}
 		}
-		fmt.Fprintf(stdout, "codeshot: up to date — the codeshot:%s block in '%s' matches a fresh render.\n", p.MarkerID, p.EmbedFile)
+		if writeOut {
+			fmt.Fprintf(stdout, "codeshot: up to date — '%s' and the codeshot:%s block in '%s' match a fresh render.\n", p.OutFile, p.MarkerID, p.EmbedFile)
+		} else {
+			fmt.Fprintf(stdout, "codeshot: up to date — the codeshot:%s block in '%s' matches a fresh render.\n", p.MarkerID, p.EmbedFile)
+		}
 		return nil
 	}
 	if writeOut {
@@ -273,6 +277,11 @@ func finishMermaid(text string, p OutputParams, stdout, stderr io.Writer) error 
 		}
 		fmt.Fprintf(stderr, "codeshot: updated the codeshot:%s block in %s\n", p.MarkerID, p.EmbedFile)
 	}
-	fmt.Fprintln(stdout, p.EmbedFile)
+	// V5: the --out file when there is one, as the graphviz path prints.
+	if writeOut {
+		fmt.Fprintln(stdout, p.OutFile)
+	} else {
+		fmt.Fprintln(stdout, p.EmbedFile)
+	}
 	return nil
 }

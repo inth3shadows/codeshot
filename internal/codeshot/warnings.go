@@ -2,6 +2,7 @@ package codeshot
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/inth3shadows/codeshot/internal/codegraph"
@@ -74,9 +75,13 @@ func FormatMismatchWarning(outFile, format string) string {
 	parts := strings.Split(outFile, ".")
 	ext := strings.ToLower(parts[len(parts)-1])
 	// F4: .mmd is Mermaid's extension, and Mermaid isn't a graphviz format.
+	// V1: only a dot in the file's own name makes an extension, and a text
+	// name (.md, .txt) is a fine home for Mermaid text.
 	if mermaid := strings.EqualFold(format, "mermaid"); mermaid || ext == "mmd" {
+		base := filepath.Base(outFile)
+		hasExt := strings.Contains(strings.TrimPrefix(base, "."), ".") && !strings.HasSuffix(base, ".")
 		switch {
-		case mermaid && ext == "mmd", !mermaid && !strings.Contains(outFile, "."):
+		case !hasExt, mermaid && (ext == "mmd" || ext == "md" || ext == "txt"):
 			return ""
 		case mermaid:
 			return fmt.Sprintf("codeshot: --out ends in '.%s' but --format is 'mermaid' — the file will contain Mermaid text despite its name; rename --out to end in '.mmd'.", ext)

@@ -215,3 +215,56 @@ func TestCLIMermaidMarkerOutFileBlankAndMultiSource(t *testing.T) {
 	wantMatch(t, `(?s)^---\ntitle: "Sources: snapshot-t, snapshot-u\.`, string(data))
 	wantMatch(t, `-\.->\|"snapshot-u 1"\|`, string(data))
 }
+
+// V1: only a real extension (a dot in the file's own name) is compared, and
+// a text name (.md, .txt) is a fine home for Mermaid text.
+func TestFormatMismatchMermaidIgnoresNonExtensions(t *testing.T) {
+	for _, out := range []string{"arch", "out.d/arch", "/tmp/a.b/x", "./mmd", "arch.", "a.md", "a.txt", "a.mmd"} {
+		if w := FormatMismatchWarning(out, "mermaid"); w != "" {
+			t.Errorf("%q: %s", out, w)
+		}
+	}
+	wantMatch(t, `ends in '\.svg' but --format is 'mermaid'`, FormatMismatchWarning("a.svg", "mermaid"))
+}
+
+// V3: a carriage return can't end the accTitle line early.
+func TestMermaidTitleHasNoLineBreaks(t *testing.T) {
+	got := mermaidWithTitle("flowchart LR\n  n0(\"a\")", "one\rtwo\nthree")
+	wantMatch(t, "accTitle: one two three\n", got)
+}
+
+// V6: the limit counts characters as Mermaid does (UTF-16 units) and leaves
+// out the frontmatter, which Mermaid strips first.
+func TestMermaidLimitCountsCharactersWithoutFrontmatter(t *testing.T) {
+	front := "---\ntitle: \"" + strings.Repeat("t", 200) + "\"\n---\n"
+	if w := MermaidLimitWarning(front + "flowchart LR\n" + strings.Repeat("x", mermaidMaxText-20)); w != "" {
+		t.Errorf("frontmatter counted: %s", w)
+	}
+	if w := MermaidLimitWarning("flowchart LR\n" + strings.Repeat("日", 30000)); w != "" {
+		t.Errorf("bytes counted, not characters: %s", w)
+	}
+	wantMatch(t, `50001 characters`, MermaidLimitWarning(strings.Repeat("x", 50001)))
+}
+
+// V5: with --embed and --out, stdout names the .mmd file, and --check says
+// it compared it too.
+func TestCLIMermaidEmbedWithOutNamesTheFile(t *testing.T) {
+	dir := t.TempDir()
+	snap := "snapshot:" + writeSnapshotFile(t, cliSnapshot)
+	doc, out := filepath.Join(dir, "doc.md"), filepath.Join(dir, "arch.mmd")
+	if err := os.WriteFile(doc, []byte("# Doc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runCLI("--architecture", "--source", snap, "--format", "mermaid", "--embed", doc, "--out", out)
+	if code != 0 {
+		t.Fatalf("exit %d; stderr: %s", code, stderr)
+	}
+	if strings.TrimSpace(stdout) != out {
+		t.Errorf("stdout %q, want the --out file %q", stdout, out)
+	}
+	code, stdout, _ = runCLI("--architecture", "--source", snap, "--format", "mermaid", "--embed", doc, "--out", out, "--check")
+	if code != 0 {
+		t.Fatalf("--check: exit %d", code)
+	}
+	wantMatch(t, `up to date — '.*arch\.mmd' and the codeshot:arch-snapshot-t-mermaid block`, stdout)
+}
