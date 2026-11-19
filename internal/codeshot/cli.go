@@ -330,6 +330,11 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	if format == "" {
 		return 0, &Exit{Code: 1, Stderr: "codeshot: --format must not be empty"}
 	}
+	// --format mermaid: a Mermaid flowchart (text), not a graphviz render.
+	mermaid := strings.EqualFold(format, "mermaid")
+	if mermaid && !arch {
+		return 0, &Exit{Code: 1, Stderr: "codeshot: --format mermaid only applies with --architecture for now; symbol mode and --diff draw with graphviz"}
+	}
 	depthRaw := get("depth", "1")
 	depth, err := positiveInt("depth", depthRaw)
 	if err != nil {
@@ -492,6 +497,13 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	for _, m := range multi {
 		archMarkerID += "-" + m.label
 	}
+	ext := format
+	if mermaid {
+		// F5: a Mermaid block has its own marker, so it can sit beside the
+		// graphviz image of the same graph instead of overwriting it.
+		archMarkerID += "-mermaid"
+		ext = "mmd"
+	}
 	if !hasOut {
 		var base string
 		// #51: no checkout-directory name in an embedded image's default
@@ -523,9 +535,9 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		if embedFile != "" {
 			// Stable, next to the doc: the link resolves and re-runs overwrite it.
 			dir, _ := filepath.Abs(filepath.Dir(embedFile))
-			outFile = filepath.Join(dir, fmt.Sprintf("codeshot-%s.%s", base, format))
+			outFile = filepath.Join(dir, fmt.Sprintf("codeshot-%s.%s", base, ext))
 		} else {
-			outFile = filepath.Join(os.TempDir(), fmt.Sprintf("%s-%d.%s", base, time.Now().UnixMilli(), format))
+			outFile = filepath.Join(os.TempDir(), fmt.Sprintf("%s-%d.%s", base, time.Now().UnixMilli(), ext))
 		}
 	} else {
 		warn(stderr, FormatMismatchWarning(outFile, format))
@@ -536,8 +548,10 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 			return 0, err
 		}
 	}
-	if err := requireOnPath("dot", "Install graphviz (e.g. `brew install graphviz` or `apt install graphviz`)."); err != nil {
-		return 0, err
+	if !mermaid {
+		if err := requireOnPath("dot", "Install graphviz (e.g. `brew install graphviz` or `apt install graphviz`)."); err != nil {
+			return 0, err
+		}
 	}
 	if diffMode {
 		if err := requireOnPath("git", "Install git (e.g. `apt install git`) — --diff shells out to `git diff` to find changed files."); err != nil {
@@ -562,7 +576,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		calls = sc
 	}
 	tooltips := strings.EqualFold(format, "svg") || strings.EqualFold(format, "svgz")
-	out := OutputParams{Format: format, OutFile: outFile, EmbedFile: embedFile, Check: check}
+	out := OutputParams{Format: format, OutFile: outFile, EmbedFile: embedFile, Check: check, Mermaid: mermaid, WriteOut: hasOut}
 
 	switch {
 	case diffMode:
@@ -594,7 +608,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		case scipIdx != nil:
 			src = ScipSource{Index: scipIdx}
 		}
-		ap := ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules, Rules: rulesFile, Tooltips: tooltips, SiteLines: hasSARIF}
+		ap := ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules, Rules: rulesFile, Tooltips: tooltips, SiteLines: hasSARIF, Mermaid: mermaid}
 		var dot string
 		var violations []Violation
 		if multi != nil {

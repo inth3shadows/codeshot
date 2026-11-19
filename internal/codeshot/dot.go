@@ -118,26 +118,7 @@ type ArchOptions struct {
 // BuildArchitectureDot draws the file-level dependency graph, keeping only the
 // top --max-render files by edge weight, with --forbid violations in red.
 func BuildArchitectureDot(fileEdges []FileEdge, opt ArchOptions) string {
-	keep := TopFilesByWeight(fileEdges, opt.MaxRender)
-	kept := fileEdges
-	if keep != nil {
-		kept = nil
-		for _, e := range fileEdges {
-			if keep[e.From] && keep[e.To] {
-				kept = append(kept, e)
-			}
-		}
-	}
-	var files []string
-	seen := map[string]bool{}
-	for _, e := range kept {
-		for _, f := range []string{e.From, e.To} {
-			if !seen[f] {
-				seen[f] = true
-				files = append(files, f)
-			}
-		}
-	}
+	kept, files := archDrawn(fileEdges, opt.MaxRender)
 	lines := []string{"digraph architecture {", graphAttrs, nodeAttrs, edgeAttrs}
 	multi := len(opt.Sources) > 1
 	if multi {
@@ -172,6 +153,32 @@ func BuildArchitectureDot(fileEdges []FileEdge, opt ArchOptions) string {
 	}
 	lines = append(lines, "}")
 	return strings.Join(lines, "\n")
+}
+
+// archDrawn is what an architecture diagram draws, in DOT and Mermaid alike:
+// the edges between the top --max-render files, in order, and their files
+// in first-seen order.
+func archDrawn(fileEdges []FileEdge, maxRender int) (kept []FileEdge, files []string) {
+	keep := TopFilesByWeight(fileEdges, maxRender)
+	kept = fileEdges
+	if keep != nil {
+		kept = nil
+		for _, e := range fileEdges {
+			if keep[e.From] && keep[e.To] {
+				kept = append(kept, e)
+			}
+		}
+	}
+	seen := map[string]bool{}
+	for _, e := range kept {
+		for _, f := range []string{e.From, e.To} {
+			if !seen[f] {
+				seen[f] = true
+				files = append(files, f)
+			}
+		}
+	}
+	return kept, files
 }
 
 // BuildDiffDot draws every root (a symbol in a changed file) bold, with its
@@ -241,8 +248,8 @@ func BuildDiffDot(roots []Node, edges []Edge, maxRender int, tooltips bool) stri
 	return strings.Join(lines, "\n")
 }
 
-var blankDotRe = regexp.MustCompile(`(?m)^\s*"`)
+var blankDotRe = regexp.MustCompile(`(?m)^\s*("|n[0-9]+\()`)
 
-// IsBlankDot reports a DOT that declares no node: every builder starts a node
-// statement with its quoted id.
+// IsBlankDot reports a diagram that declares no node: every DOT builder starts
+// a node statement with its quoted id, and the Mermaid one with "nN(".
 func IsBlankDot(dot string) bool { return !blankDotRe.MatchString(dot) }
