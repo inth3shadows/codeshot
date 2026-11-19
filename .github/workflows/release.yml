@@ -8,7 +8,8 @@ name: Release
 # The tag is the single source of the version: it is stamped into the binary
 # with -ldflags, so `codeshot --version` can never disagree with the release.
 # Verify a download: `gh attestation verify <archive> --repo inth3shadows/codeshot
-#   --signer-workflow inth3shadows/codeshot/.github/workflows/release.yml`.
+#   --signer-workflow inth3shadows/codeshot/.github/workflows/release.yml
+#   --source-ref refs/tags/<tag>`.
 on:
   push:
     tags:
@@ -19,7 +20,7 @@ permissions: {}
 jobs:
   # Runs the tests, the build and the SBOM tool, so it gets no signing
   # permission: code here can't mint the OIDC token the attestations are
-  # signed with (F1). It hands the release files to the publish job.
+  # signed with. It hands the release files to the publish job.
   build:
     name: Test, build + SBOM
     runs-on: ubuntu-latest
@@ -43,9 +44,12 @@ jobs:
         id: build
         run: |
           version="${GITHUB_REF_NAME#v}"
-          # A release tag is v<semver>: anything else would name the archives
-          # one way and give the SBOM a pseudo-version (F6).
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          # A release tag is v<semver> (no leading zeros, optional pre-release):
+          # anything else would name the archives one way and give the SBOM a
+          # pseudo-version.
+          num='(0|[1-9][0-9]*)'
+          pre='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          if ! [[ "$version" =~ ^$num\.$num\.$num(-$pre(\.$pre)*)?$ ]]; then
             echo "::error::tag ${GITHUB_REF_NAME} is not v<major>.<minor>.<patch>[-<pre>]"
             exit 1
           fi
@@ -69,7 +73,7 @@ jobs:
           # One SBOM for the module (all six builds share its dependencies),
           # pinned through the Go checksum database. The tag checkout gives it
           # the version.
-          # -std lists the Go standard library compiled into every binary (F2).
+          # -std lists the Go standard library compiled into every binary.
           go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0 \
             mod -licenses -std -json -output "dist/codeshot_${version}.cdx.json"
           (cd dist && sha256sum *.tar.gz *.zip *.cdx.json > checksums.txt)
@@ -84,7 +88,7 @@ jobs:
             dist/*.cdx.json
             dist/checksums.txt
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7 # long enough to re-run publish on its own
 
   # Signs and publishes; runs no build, test or third-party build code.
   publish:
@@ -100,18 +104,37 @@ jobs:
         with:
           name: release-files
           path: dist
-      - name: Check the files arrived intact
-        run: cd dist && sha256sum -c checksums.txt
+      # The build job could add or swap files; only the expected release files,
+      # listed in checksums.txt and nothing else, get attested and published.
+      - name: Check the release files are exactly the expected ones
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          cd dist
+          expected=$(
+            for t in linux_amd64 linux_arm64 darwin_amd64 darwin_arm64; do echo "codeshot_${VERSION}_${t}.tar.gz"; done
+            for t in windows_amd64 windows_arm64; do echo "codeshot_${VERSION}_${t}.zip"; done
+            echo "codeshot_${VERSION}.cdx.json"
+          )
+          expected=$(echo "$expected" | LC_ALL=C sort)
+          listed=$(awk '{ sub(/^\*/, "", $2); print $2 }' checksums.txt | LC_ALL=C sort)
+          present=$(ls -1A | grep -vx 'checksums.txt' | LC_ALL=C sort)
+          if [ "$listed" != "$expected" ] || [ "$present" != "$expected" ]; then
+            echo "::error::the release files are not exactly the expected seven"
+            diff <(echo "$expected") <(echo "$listed") || true
+            diff <(echo "$expected") <(echo "$present") || true
+            exit 1
+          fi
+          sha256sum -c checksums.txt
 
       # Provenance for every archive and the SBOM, in one attestation over the
       # checksums file; then the SBOM, attested for the archives it describes.
       # actions/attest directly: attest-build-provenance and attest-sbom are
-      # wrappers around it, and attest-sbom is deprecated (F5).
+      # wrappers around it, and attest-sbom is deprecated.
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
-          create-storage-record: false
       - name: Attest the SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
@@ -119,7 +142,6 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
           sbom-path: dist/codeshot_${{ needs.build.outputs.version }}.cdx.json
-          create-storage-record: false
 
       - name: Publish GitHub Release
         env:

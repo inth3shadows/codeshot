@@ -67,7 +67,7 @@ go install github.com/inth3shadows/codeshot/cmd/codeshot@latest
 From v0.5.0 on, every release archive comes with a signed record of the workflow run that built it ([build provenance](https://slsa.dev/provenance/), keyless through Sigstore) and a [CycloneDX](https://cyclonedx.org/) SBOM, `codeshot_<version>.cdx.json`, attested for the same archives. To check a download with the [GitHub CLI](https://cli.github.com/):
 
 ```bash
-sha256sum -c checksums.txt --ignore-missing   # Linux; on macOS: shasum -a 256 -c checksums.txt --ignore-missing
+sha256sum -c checksums.txt --ignore-missing   # download intact (Linux; macOS: shasum -a 256 -c ...)
 gh attestation verify codeshot_0.5.0_linux_amd64.tar.gz --repo inth3shadows/codeshot \
   --signer-workflow inth3shadows/codeshot/.github/workflows/release.yml --source-ref refs/tags/v0.5.0
 gh attestation verify codeshot_0.5.0_linux_amd64.tar.gz --repo inth3shadows/codeshot \
@@ -75,9 +75,12 @@ gh attestation verify codeshot_0.5.0_linux_amd64.tar.gz --repo inth3shadows/code
   --predicate-type https://cyclonedx.org/bom    # the SBOM attestation
 ```
 
-`--signer-workflow` and `--source-ref` accept only an attestation made by the
-release workflow for that tag, not one any other workflow in the repo could
-make.
+The checksum line only shows the download is intact: `checksums.txt` comes from
+the same release and isn't signed itself. The attestation is the proof of
+origin. `--signer-workflow` and `--source-ref` require it to come from
+`release.yml` running for that tag, not from any other workflow in the repo;
+they trust whatever `release.yml` was at the tagged commit, so they are as
+strong as the protection on `v*` tags.
 
 Codeshot is a single static binary; it needs no Node of its own. `codeshot --version` prints the release version for release binaries and `go install ...@vX.Y.Z`, and `dev` for any other build.
 
