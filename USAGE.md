@@ -339,7 +339,8 @@ codeshot --architecture --path . --group-depth 2 --format mermaid --embed README
 ```
 
 With `--embed`, the diagram goes into the doc as a ```` ```mermaid ```` block
-between the markers, so there is no image file to commit and graphviz isn't
+between its own markers (`codeshot:arch-mermaid`, `arch-d2-mermaid`, ..., so it
+can sit beside the graphviz image of the same graph), so there is no image file to commit and graphviz isn't
 needed at all; `--out` also writes the text to a `.mmd` file. `--embed
 --check` compares the block (and the `--out` file, if named) byte for byte. It
 is the same graph the image shows: the same files and edges, `--group-depth`,

@@ -2,6 +2,7 @@ package codeshot
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -11,10 +12,15 @@ const (
 	mermaidMaxText  = 50000
 )
 
-// mermaidLabel escapes text for a quoted Mermaid label: '#' first, since the
-// others become "#N;" entities.
+// mermaidLabel escapes text for a quoted Mermaid label as "#N;" entities
+// (one pass, so the '#' they start with is never re-escaped): the quote and
+// HTML characters, and what Mermaid interprets inside a label (F1): '\' ("\n"
+// is a line break), a backtick (a leading one opens a markdown string), '%'
+// (%%{...}%% directives), '$' ($$ math), ':' (fa: icons). A line break is a
+// space.
 func mermaidLabel(s string) string {
-	return strings.NewReplacer("#", "#35;", `"`, "#34;", "<", "#60;", ">", "#62;", "&", "#38;", "\n", " ").Replace(s)
+	return strings.NewReplacer("#", "#35;", `"`, "#34;", "<", "#60;", ">", "#62;", "&", "#38;",
+		`\`, "#92;", "`", "#96;", "%", "#37;", "$", "#36;", ":", "#58;", "\n", " ", "\r", " ").Replace(s)
 }
 
 // BuildArchitectureMermaid draws the same graph as BuildArchitectureDot as a
@@ -27,7 +33,7 @@ func BuildArchitectureMermaid(fileEdges []FileEdge, opt ArchOptions) string {
 	multi := len(opt.Sources) > 1
 	if multi {
 		title := fmt.Sprintf("Sources: %s. Dashed: not every source saw all of the edge; its label gives each source's own weight.", strings.Join(opt.Sources, ", "))
-		lines = append(lines, "---", "title: "+strings.ReplaceAll(fmt.Sprintf("%q", title), `\'`, "'"), "---")
+		lines = append(lines, "---", "title: "+strconv.Quote(title), "---")
 	}
 	lines = append(lines, "flowchart LR",
 		"  classDef default fill:#f8fafc,stroke:#cbd5e1,color:#334155",

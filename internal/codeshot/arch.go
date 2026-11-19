@@ -669,9 +669,7 @@ func finishArchitecture(rawFileEdges []FileEdge, p ArchParams, sources []string,
 	warn(stderr, HiddenRuleViolationNote(fileEdges, violating, p.MaxRender, what))
 	opt := ArchOptions{MaxRender: p.MaxRender, Violating: violating, Sources: sources, Tooltips: p.Tooltips}
 	if p.Mermaid {
-		text := BuildArchitectureMermaid(fileEdges, opt)
-		warn(stderr, MermaidLimitWarning(text))
-		return text, violations, nil
+		return BuildArchitectureMermaid(fileEdges, opt), violations, nil
 	}
 	return BuildArchitectureDot(fileEdges, opt), violations, nil
 }

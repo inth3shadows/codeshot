@@ -73,6 +73,17 @@ func FormatMismatchWarning(outFile, format string) string {
 	}
 	parts := strings.Split(outFile, ".")
 	ext := strings.ToLower(parts[len(parts)-1])
+	// F4: .mmd is Mermaid's extension, and Mermaid isn't a graphviz format.
+	if mermaid := strings.EqualFold(format, "mermaid"); mermaid || ext == "mmd" {
+		switch {
+		case mermaid && ext == "mmd", !mermaid && !strings.Contains(outFile, "."):
+			return ""
+		case mermaid:
+			return fmt.Sprintf("codeshot: --out ends in '.%s' but --format is 'mermaid' — the file will contain Mermaid text despite its name; rename --out to end in '.mmd'.", ext)
+		default:
+			return fmt.Sprintf("codeshot: --out ends in '.mmd' but --format is '%s' — the file will contain %s data despite its name; pass --format mermaid to match, or rename --out.", format, format)
+		}
+	}
 	if !knownDotFormats[ext] || ext == strings.ToLower(format) {
 		return ""
 	}

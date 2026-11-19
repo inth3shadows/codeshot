@@ -497,6 +497,11 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	for _, m := range multi {
 		archMarkerID += "-" + m.label
 	}
+	// F5: a Mermaid block has its own marker, so it can sit beside the
+	// graphviz image of the same graph instead of overwriting it.
+	if mermaid {
+		archMarkerID += "-mermaid"
+	}
 	ext := format
 	if mermaid {
 		ext = "mmd"

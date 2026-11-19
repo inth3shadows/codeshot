@@ -219,6 +219,8 @@ func FinishOutput(dot string, p OutputParams, stdout, stderr io.Writer) error {
 // in the --embed doc. --check compares both byte for byte (Mermaid text is
 // deterministic, so no structural comparison is needed) and writes nothing.
 func finishMermaid(text string, p OutputParams, stdout, stderr io.Writer) error {
+	// F2: measured on what is written, title and newline included.
+	warn(stderr, MermaidLimitWarning(text))
 	writeOut := p.WriteOut || p.EmbedFile == ""
 	if p.EmbedFile == "" {
 		if err := os.WriteFile(p.OutFile, []byte(text), 0o644); err != nil {

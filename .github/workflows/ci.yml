@@ -127,13 +127,21 @@ jobs:
       - name: Build codeshot
         run: go build -o "$RUNNER_TEMP/bin/codeshot" ./cmd/codeshot
 
-      # Blocking gate: fail the PR if either committed diagram no longer matches
+      # Blocking gate: fail the PR if a committed diagram no longer matches
       # what the current code produces, or the code breaks .codeshot.yaml.
-      - name: Check committed diagrams are current
+      # One step per diagram, so a PR that stales several learns of all of
+      # them in one run.
+      - name: Check docs/architecture.svg is current
         run: |
           codeshot --architecture --path . --max-symbols 5000 --rules .codeshot.yaml --format svg \
             --out docs/architecture.svg --embed TECHNICAL.md --check
+      - name: Check docs/BuildDot-callgraph.svg is current
+        if: ${{ !cancelled() }}
+        run: |
           codeshot BuildDot --path . --format svg \
             --out docs/BuildDot-callgraph.svg --embed TECHNICAL.md --check
+      - name: Check README's Mermaid diagram is current
+        if: ${{ !cancelled() }}
+        run: |
           codeshot --architecture --path . --max-symbols 5000 --group-depth 2 --rules .codeshot.yaml \
             --format mermaid --embed README.md --check

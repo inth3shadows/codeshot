@@ -102,14 +102,14 @@ func TestCLIMermaidNeedsNoGraphvizAndEmbedsABlock(t *testing.T) {
 		t.Fatalf("--embed: exit %d; stderr: %s", code, stderr)
 	}
 	md, _ := os.ReadFile(doc)
-	wantMatch(t, "(?s)<!-- codeshot:arch-snapshot-t:start -->\n```mermaid\nflowchart LR\n.*\n```\n<!-- codeshot:arch-snapshot-t:end -->", string(md))
+	wantMatch(t, "(?s)<!-- codeshot:arch-snapshot-t-mermaid:start -->\n```mermaid\nflowchart LR\n.*\n```\n<!-- codeshot:arch-snapshot-t-mermaid:end -->", string(md))
 	if matches, _ := filepath.Glob(filepath.Join(dir, "codeshot-*")); len(matches) != 0 {
 		t.Errorf("--embed wrote an image file: %v", matches)
 	}
 	if code, stdout, stderr := runCLI("--architecture", "--source", snap, "--format", "mermaid", "--embed", doc, "--check"); code != 0 {
 		t.Fatalf("--check current: exit %d; stderr: %s", code, stderr)
 	} else {
-		wantMatch(t, `up to date — the codeshot:arch-snapshot-t block`, stdout)
+		wantMatch(t, `up to date — the codeshot:arch-snapshot-t-mermaid block`, stdout)
 	}
 	if err := os.WriteFile(doc, []byte(strings.Replace(string(md), `-->|"1"|`, `-->|"2"|`, 1)), 0o644); err != nil {
 		t.Fatal(err)
@@ -117,8 +117,101 @@ func TestCLIMermaidNeedsNoGraphvizAndEmbedsABlock(t *testing.T) {
 	if code, _, stderr := runCLI("--architecture", "--source", snap, "--format", "mermaid", "--embed", doc, "--check"); code != 1 {
 		t.Errorf("--check stale: exit %d, want 1", code)
 	} else {
-		wantMatch(t, `the codeshot:arch-snapshot-t block in .* is out of date`, stderr)
+		wantMatch(t, `the codeshot:arch-snapshot-t-mermaid block in .* is out of date`, stderr)
 	}
 	wantRejected(t, `--format mermaid only applies with --architecture`, "Foo", "--format", "mermaid")
 	wantRejected(t, `--format mermaid only applies with --architecture`, "--diff", "--format", "mermaid")
+}
+
+// F1: characters Mermaid interprets inside a quoted label are entities too:
+// '\' ("\n" is a line break), a backtick (a leading one opens a markdown
+// string and the diagram fails to parse), '%' (%%{...}%% directives), '$'
+// ($$ math), ':' (fa: icons); a CR is a space like LF.
+func TestMermaidLabelEscapesWhatMermaidWouldInterpret(t *testing.T) {
+	for in, want := range map[string]string{
+		`src\new\node.go`: "src#92;new#92;node.go",
+		"`tick`.go":       "#96;tick#96;.go",
+		"a%%{init}%%b.go": "a#37;#37;{init}#37;#37;b.go",
+		"fa:fa-car/x.go":  "fa#58;fa-car/x.go",
+		"$$x$$.go":        "#36;#36;x#36;#36;.go",
+		"a\rb\nc.go":      "a b c.go",
+		`a "q" #1 <x> &`:  "a #34;q#34; #35;1 #60;x#62; #38;",
+	} {
+		if got := mermaidLabel(in); got != want {
+			t.Errorf("mermaidLabel(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// F2: the limit is checked on what is written, title and newline included.
+func TestMermaidLimitIsCheckedOnTheWrittenText(t *testing.T) {
+	text := "flowchart LR\n" + strings.Repeat("x", mermaidMaxText-20)
+	var stderr strings.Builder
+	out := filepath.Join(t.TempDir(), "a.mmd")
+	if err := FinishOutput(text, OutputParams{Mermaid: true, OutFile: out, Alt: strings.Repeat("A", 40)}, &strings.Builder{}, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	wantMatch(t, `GitHub renders at most 500 edges and 50000 characters`, stderr.String())
+}
+
+// F4: an .mmd --out with another --format, and a graphviz extension with
+// --format mermaid, are both called out.
+func TestFormatMismatchKnowsMermaid(t *testing.T) {
+	wantMatch(t, `--out ends in '\.mmd' but --format is 'png'`, FormatMismatchWarning("arch.mmd", "png"))
+	wantMatch(t, `--format is 'mermaid'.*rename --out to end in '\.mmd'`, FormatMismatchWarning("arch.svg", "mermaid"))
+	if w := FormatMismatchWarning("arch.mmd", "mermaid"); w != "" {
+		t.Errorf("matching .mmd warned: %s", w)
+	}
+}
+
+// F5 + T: a Mermaid embed has its own marker (beside a graphviz one in the
+// same doc), --embed with --out writes both, --check fails on a missing
+// --out file, a blank graph is refused, and two sources draw dashed edges.
+func TestCLIMermaidMarkerOutFileBlankAndMultiSource(t *testing.T) {
+	requireBins(t, "dot")
+	dir := t.TempDir()
+	snap := "snapshot:" + writeSnapshotFile(t, cliSnapshot)
+	doc := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(doc, []byte("# Doc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := runCLI("--architecture", "--source", snap, "--format", "svg", "--embed", doc); code != 0 {
+		t.Fatalf("svg embed: exit %d; stderr: %s", code, stderr)
+	}
+	out := filepath.Join(dir, "arch.mmd")
+	if code, _, stderr := runCLI("--architecture", "--source", snap, "--format", "mermaid", "--embed", doc, "--out", out); code != 0 {
+		t.Fatalf("mermaid embed: exit %d; stderr: %s", code, stderr)
+	}
+	md, _ := os.ReadFile(doc)
+	wantMatch(t, `<!-- codeshot:arch-snapshot-t:start -->\n!\[`, string(md))
+	wantMatch(t, "<!-- codeshot:arch-snapshot-t-mermaid:start -->\n```mermaid\n", string(md))
+	if _, err := os.Stat(out); err != nil {
+		t.Errorf("--out not written with --embed: %v", err)
+	}
+	// Both blocks stay current side by side.
+	for _, f := range []string{"svg", "mermaid"} {
+		args := []string{"--architecture", "--source", snap, "--format", f, "--embed", doc, "--check"}
+		if f == "mermaid" {
+			args = append(args, "--out", out)
+		}
+		if code, _, stderr := runCLI(args...); code != 0 {
+			t.Errorf("%s --check: exit %d; stderr: %s", f, code, stderr)
+		}
+	}
+	if code, _, stderr := runCLI("--architecture", "--source", snap, "--format", "mermaid", "--embed", doc, "--check", "--out", filepath.Join(dir, "gone.mmd")); code != 1 {
+		t.Errorf("--check with a missing --out: exit %d, want 1", code)
+	} else {
+		wantMatch(t, `gone\.mmd' is out of date \(missing\)`, stderr)
+	}
+	empty := strings.Replace(cliSnapshot, `"edges":[{"kind":"calls","src":"1","dst":"2"}]`, `"edges":[]`, 1)
+	wantRejected(t, `the graph is blank`, "--architecture", "--source", "snapshot:"+writeSnapshotFile(t, empty), "--format", "mermaid", "--embed", doc)
+
+	two := "snapshot:" + writeSnapshotFile(t, cliSnapshot) + ",snapshot:" + writeSnapshotFile(t, cliSnapshotU)
+	mmd := filepath.Join(dir, "two.mmd")
+	if code, _, stderr := runCLI("--architecture", "--source", two, "--format", "mermaid", "--out", mmd); code != 0 {
+		t.Fatalf("two sources: exit %d; stderr: %s", code, stderr)
+	}
+	data, _ := os.ReadFile(mmd)
+	wantMatch(t, `(?s)^---\ntitle: "Sources: snapshot-t, snapshot-u\.`, string(data))
+	wantMatch(t, `-\.->\|"snapshot-u 1"\|`, string(data))
 }
