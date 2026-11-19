@@ -128,10 +128,10 @@ jobs:
         run: go build -o "$RUNNER_TEMP/bin/codeshot" ./cmd/codeshot
 
       # Blocking gate: fail the PR if either committed diagram no longer matches
-      # what the current code produces.
+      # what the current code produces, or the code breaks .codeshot.yaml.
       - name: Check committed diagrams are current
         run: |
-          codeshot --architecture --path . --max-symbols 5000 --format svg \
+          codeshot --architecture --path . --max-symbols 5000 --rules .codeshot.yaml --format svg \
             --out docs/architecture.svg --embed TECHNICAL.md --check
           codeshot BuildDot --path . --format svg \
             --out docs/BuildDot-callgraph.svg --embed TECHNICAL.md --check

@@ -108,21 +108,55 @@ func GroupCollapseWarning(before, after, depth, groupCount int) string {
 }
 
 func ForbidViolationReport(vs []Violation) string {
+	rulesFile := false
+	for _, v := range vs {
+		rulesFile = rulesFile || v.Breaks != ""
+	}
+	return RuleViolationReport(vs, rulesFile)
+}
+
+// RuleViolationReport lists violations. With a rules file (rulesMode), the
+// header names architecture rules and counts edges, adding the violation
+// count when one edge breaks several rules, whichever rules were broken (V3);
+// without one it is the --forbid report it always was.
+func RuleViolationReport(vs []Violation, rulesMode bool) string {
 	if len(vs) == 0 {
 		return ""
 	}
 	lines := make([]string, len(vs))
+	what := "a --forbid rule"
+	if rulesMode {
+		what = "an architecture rule"
+	}
+	edges := map[string]bool{}
 	for i, v := range vs {
-		lines[i] = fmt.Sprintf("  %s -> %s (weight %d) breaks --forbid '%s'", v.From, v.To, v.Weight, v.Rule)
+		breaks := "--forbid '" + v.Rule + "'"
+		if v.Breaks != "" {
+			breaks = v.Breaks
+		}
+		lines[i] = fmt.Sprintf("  %s -> %s (weight %d) breaks %s", v.From, v.To, v.Weight, breaks)
+		edges[drawnEdgeKey(v.From, v.To)] = true
 		if v.SeenBy != "" {
 			lines[i] += " — seen by " + v.SeenBy
 		}
 	}
-	return fmt.Sprintf("codeshot: %d file edge(s) break a --forbid rule:\n%s", len(vs), strings.Join(lines, "\n"))
+	count := fmt.Sprintf("%d file edge(s) break %s", len(vs), what)
+	if rulesMode && len(edges) != len(vs) {
+		// A rules file makes one edge breaking two rules likely (F4); a
+		// --forbid-only report stays as it always was.
+		count = fmt.Sprintf("%d file edge(s) break %s (%d violations)", len(edges), what, len(vs))
+	}
+	return fmt.Sprintf("codeshot: %s:\n%s", count, strings.Join(lines, "\n"))
 }
 
 // HiddenViolationNote counts violating drawn edges --max-render leaves out.
 func HiddenViolationNote(fileEdges []FileEdge, violating map[string]bool, maxRender int) string {
+	return HiddenRuleViolationNote(fileEdges, violating, maxRender, "a --forbid rule")
+}
+
+// HiddenRuleViolationNote is HiddenViolationNote naming the kind of rule
+// ("an architecture rule" with a rules file, F8).
+func HiddenRuleViolationNote(fileEdges []FileEdge, violating map[string]bool, maxRender int, what string) string {
 	keep := TopFilesByWeight(fileEdges, maxRender)
 	if keep == nil || len(violating) == 0 {
 		return ""
@@ -136,7 +170,7 @@ func HiddenViolationNote(fileEdges []FileEdge, violating map[string]bool, maxRen
 	if hidden == 0 {
 		return ""
 	}
-	return fmt.Sprintf("codeshot: %d edge(s) that break a --forbid rule fall outside --max-render %d and aren't drawn; they're listed above.", hidden, maxRender)
+	return fmt.Sprintf("codeshot: %d edge(s) that break %s fall outside --max-render %d and aren't drawn; they're listed above.", hidden, what, maxRender)
 }
 
 // IndexHealthWarning warns when codegraph's index was left mid-build, which

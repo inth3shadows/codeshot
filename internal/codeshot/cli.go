@@ -40,7 +40,7 @@ const (
 )
 
 const usage = `Usage: codeshot <symbol> [--source codegraph|snapshot:<file>|scip[:<file>]] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]
-   or: codeshot --architecture [--source codegraph|snapshot:<file>|scip[:<file>][,...]] [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--format <fmt>] [--embed <file.md> [--check]]
+   or: codeshot --architecture [--source codegraph|snapshot:<file>|scip[:<file>][,...]] [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--rules <file>] [--format <fmt>] [--embed <file.md> [--check]]
    or: codeshot --diff [--diff-ref <range>] [--source codegraph|snapshot:<file>|scip[:<file>]] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]`
 
 type optSpec struct {
@@ -51,7 +51,7 @@ var options = map[string]optSpec{
 	"version": {boolean: true}, "path": {}, "out": {}, "limit": {}, "max-render": {},
 	"format": {}, "depth": {}, "max-depth-nodes": {}, "architecture": {boolean: true},
 	"max-symbols": {}, "group-depth": {}, "diff": {boolean: true}, "diff-ref": {},
-	"embed": {}, "check": {boolean: true}, "forbid": {multiple: true}, "source": {},
+	"embed": {}, "check": {boolean: true}, "forbid": {multiple: true}, "source": {}, "rules": {},
 }
 
 // parsed holds flag values; a string flag absent from str was not given.
@@ -380,6 +380,20 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	if len(rules) > 0 && !arch {
 		return 0, &Exit{Code: 1, Stderr: "codeshot: --forbid only applies with --architecture (its rules are about file-to-file edges)"}
 	}
+	// --rules: a rules file (layers, forbid, allow), read and validated here,
+	// before any graph work, so a mistake in it fails fast.
+	var rulesFile *Rules
+	if v, ok := p.str["rules"]; ok {
+		if v == "" {
+			return 0, &Exit{Code: 1, Stderr: "codeshot: --rules must not be empty"}
+		}
+		if !arch {
+			return 0, &Exit{Code: 1, Stderr: "codeshot: --rules only applies with --architecture (its rules are about file-to-file edges)"}
+		}
+		if rulesFile, err = ReadRules(v); err != nil {
+			return 0, &Exit{Code: 1, Stderr: "codeshot: " + err.Error()}
+		}
+	}
 	embedFile, hasEmbed := p.str["embed"]
 	if hasEmbed && embedFile == "" {
 		return 0, &Exit{Code: 1, Stderr: "codeshot: --embed must not be empty"}
@@ -560,7 +574,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		case scipIdx != nil:
 			src = ScipSource{Index: scipIdx}
 		}
-		ap := ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules, Tooltips: tooltips}
+		ap := ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules, Rules: rulesFile, Tooltips: tooltips}
 		var dot string
 		var violations []Violation
 		if multi != nil {

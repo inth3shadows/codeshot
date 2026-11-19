@@ -1,0 +1,33 @@
+# codeshot's own architecture rules, checked in CI:
+#   codeshot --architecture --path . --max-symbols 5000 --rules .codeshot.yaml ...
+version: 1
+
+# Top to bottom: a layer may use itself and any layer below it, never one above.
+layers:
+  - name: cli
+    paths: [cmd/]
+  - name: core
+    paths: [internal/codeshot/]
+  - name: sources
+    paths: [internal/codegraph/, internal/scipindex/, internal/snapshot/]
+
+forbid:
+  # Each source reader stands alone; internal/codeshot is the only place they meet.
+  - from: internal/scipindex/
+    to: internal/codegraph/
+    reason: source readers stay independent
+  - from: internal/scipindex/
+    to: internal/snapshot/
+    reason: source readers stay independent
+  - from: internal/snapshot/
+    to: internal/codegraph/
+    reason: source readers stay independent
+  - from: internal/snapshot/
+    to: internal/scipindex/
+    reason: source readers stay independent
+  - from: internal/codegraph/
+    to: internal/scipindex/
+    reason: source readers stay independent
+  - from: internal/codegraph/
+    to: internal/snapshot/
+    reason: source readers stay independent

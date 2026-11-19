@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -198,15 +199,25 @@ func TopFilesByWeight(fileEdges []FileEdge, maxRender int) map[string]bool {
 
 func drawnEdgeKey(from, to string) string { return from + "\x00" + to }
 
-// ForbidRule is one --forbid FROM->TO rule. A side ending in "/" is a
-// directory prefix; anything else is an exact file.
-type ForbidRule struct{ From, To, Raw string }
+// ForbidRule is one FROM->TO rule, from a --forbid flag or a rules file. A
+// side ending in "/" is a directory prefix; anything else is an exact file. A
+// rules-file side may also be a pattern (Glob); a flag's side is literal.
+type ForbidRule struct {
+	From, To, Raw string
+	// Breaks words the violation for a rules-file rule ("forbid 'a/->b/' in
+	// .codeshot.yaml (reason)"); empty for a --forbid flag.
+	Breaks string
+	// Glob: the sides are rules-file patterns (globRuleSideMatches). A
+	// --forbid flag's sides are literal, as they always were (F1).
+	Glob bool
+}
 
 // Violation is a file edge a rule forbids.
 type Violation struct {
 	Rule, From, To string
 	Weight         int
 	SeenBy         string // multi-source: "codegraph 3, scip-go 5"
+	Breaks         string // rules file: what the edge breaks; empty for a --forbid flag
 }
 
 // ParseForbidRule parses FROM->TO; ok=false when malformed.
@@ -215,8 +226,7 @@ func ParseForbidRule(raw string) (ForbidRule, bool) {
 	if len(parts) != 2 {
 		return ForbidRule{}, false
 	}
-	clean := func(s string) string { return strings.TrimPrefix(strings.TrimSpace(s), "./") }
-	from, to := clean(parts[0]), clean(parts[1])
+	from, to := trimRuleSide(parts[0]), trimRuleSide(parts[1])
 	if from == "" || to == "" {
 		return ForbidRule{}, false
 	}
@@ -230,26 +240,66 @@ func pathMatchesRuleSide(side, filePath string) bool {
 	return filePath == side
 }
 
+// hasRulePattern: a rules-file side with pattern characters (or an escape),
+// matched by globRuleSideMatches rather than the literal rule.
+func hasRulePattern(side string) bool { return strings.ContainsAny(side, "*?[\\") }
+
+// trimRuleSide is the clean-up every rule side gets: spaces and a leading "./".
+func trimRuleSide(s string) string { return strings.TrimPrefix(strings.TrimSpace(s), "./") }
+
+// ruleMatches applies a rule's sides to an edge, literally or as patterns.
+func ruleMatches(r ForbidRule, from, to string) bool {
+	if r.Glob {
+		return globRuleSideMatches(r.From, from) && globRuleSideMatches(r.To, to)
+	}
+	return pathMatchesRuleSide(r.From, from) && pathMatchesRuleSide(r.To, to)
+}
+
+// globRuleSideMatches matches a rules-file side: path.Match segment by
+// segment ('*' stays within one segment, '\' escapes), a directory side
+// against the file's leading directories. A side with no pattern characters
+// is the literal prefix/exact rule.
+func globRuleSideMatches(side, filePath string) bool {
+	if !hasRulePattern(side) {
+		return pathMatchesRuleSide(side, filePath)
+	}
+	sides := strings.Split(strings.TrimSuffix(side, "/"), "/")
+	segs := strings.Split(filePath, "/")
+	if strings.HasSuffix(side, "/") {
+		if len(segs) <= len(sides) {
+			return false
+		}
+		segs = segs[:len(sides)]
+	} else if len(segs) != len(sides) {
+		return false
+	}
+	for i := range sides {
+		if ok, _ := path.Match(sides[i], segs[i]); !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // ForbiddenEdges lists every file edge a rule forbids, heaviest first. Run on
 // per-file edges before --group-depth/--max-render: a view must not hide one.
 func ForbiddenEdges(fileEdges []FileEdge, rules []ForbidRule) []Violation {
+	hits := forbiddenEdges(fileEdges, rules)
+	sortViolations(hits)
+	return hits
+}
+
+// forbiddenEdges is ForbiddenEdges unsorted, for RuleViolations to add to
+// and sort once (V8).
+func forbiddenEdges(fileEdges []FileEdge, rules []ForbidRule) []Violation {
 	var hits []Violation
 	for _, r := range rules {
 		for _, e := range fileEdges {
-			if pathMatchesRuleSide(r.From, e.From) && pathMatchesRuleSide(r.To, e.To) {
-				hits = append(hits, Violation{Rule: r.Raw, From: e.From, To: e.To, Weight: e.Weight, SeenBy: seenList(e.Seen, nil)})
+			if ruleMatches(r, e.From, e.To) {
+				hits = append(hits, Violation{Rule: r.Raw, From: e.From, To: e.To, Weight: e.Weight, SeenBy: seenList(e.Seen, nil), Breaks: r.Breaks})
 			}
 		}
 	}
-	sort.SliceStable(hits, func(a, b int) bool {
-		if hits[a].Weight != hits[b].Weight {
-			return hits[a].Weight > hits[b].Weight
-		}
-		if hits[a].From != hits[b].From {
-			return hits[a].From < hits[b].From
-		}
-		return hits[a].To < hits[b].To
-	})
 	return hits
 }
 
@@ -452,7 +502,8 @@ func collectFileEdges(symbols []Node, repoPath string) ([]SymbolEdge, error) {
 type ArchParams struct {
 	MaxSymbols, MaxRender, GroupDepth int
 	Forbid                            []ForbidRule
-	Tooltips                          bool // svg: per-source edge weights (multi-source only)
+	Rules                             *Rules // --rules; nil when not given
+	Tooltips                          bool   // svg: per-source edge weights (multi-source only)
 }
 
 // ArchSource is where --architecture's graph comes from: every symbol in
@@ -559,8 +610,11 @@ func sourceFileEdges(src ArchSource, maxSymbols int, label string, stderr io.Wri
 // and multi-source runs: --forbid, --group-depth rollup, warnings and DOT.
 // sources is nil for a single source; emptyGraph warns about a blank diagram.
 func finishArchitecture(rawFileEdges []FileEdge, p ArchParams, sources []string, emptyGraph func(), stderr io.Writer) (string, []Violation, error) {
-	violations := ForbiddenEdges(rawFileEdges, p.Forbid)
-	warn(stderr, ForbidViolationReport(violations))
+	violations, err := RuleViolations(rawFileEdges, p.Forbid, p.Rules)
+	if err != nil {
+		return "", nil, err
+	}
+	warn(stderr, RuleViolationReport(violations, p.Rules != nil))
 
 	// Rolled up after aggregation, so probing stays file-exact and
 	// --group-depth is a pure view over the same data.
@@ -591,7 +645,11 @@ func finishArchitecture(rawFileEdges []FileEdge, p ArchParams, sources []string,
 	warn(stderr, RenderTruncationNote(kind, len(files), p.MaxRender))
 
 	violating := ViolatingDrawnKeys(violations, p.GroupDepth)
-	warn(stderr, HiddenViolationNote(fileEdges, violating, p.MaxRender))
+	what := "a --forbid rule"
+	if p.Rules != nil {
+		what = "an architecture rule"
+	}
+	warn(stderr, HiddenRuleViolationNote(fileEdges, violating, p.MaxRender, what))
 	return BuildArchitectureDot(fileEdges, ArchOptions{MaxRender: p.MaxRender, Violating: violating, Sources: sources, Tooltips: p.Tooltips}), violations, nil
 }
 
