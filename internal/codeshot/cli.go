@@ -40,7 +40,7 @@ const (
 )
 
 const usage = `Usage: codeshot <symbol> [--source codegraph|snapshot:<file>|scip[:<file>]] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--format <fmt>] [--depth <n>] [--max-depth-nodes <n>] [--embed <file.md> [--check]]
-   or: codeshot --architecture [--source codegraph|snapshot:<file>|scip[:<file>][,...]] [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--rules <file>] [--format <fmt>] [--embed <file.md> [--check]]
+   or: codeshot --architecture [--source codegraph|snapshot:<file>|scip[:<file>][,...]] [--path <repoPath>] [--out <file.png>] [--max-render <n>] [--max-symbols <n>] [--group-depth <n>] [--forbid <from->to>]... [--rules <file>] [--sarif <file>] [--format <fmt>] [--embed <file.md> [--check]]
    or: codeshot --diff [--diff-ref <range>] [--source codegraph|snapshot:<file>|scip[:<file>]] [--path <repoPath>] [--out <file.png>] [--limit <n>] [--max-render <n>] [--max-symbols <n>] [--format <fmt>] [--embed <file.md> [--check]]`
 
 type optSpec struct {
@@ -51,7 +51,7 @@ var options = map[string]optSpec{
 	"version": {boolean: true}, "path": {}, "out": {}, "limit": {}, "max-render": {},
 	"format": {}, "depth": {}, "max-depth-nodes": {}, "architecture": {boolean: true},
 	"max-symbols": {}, "group-depth": {}, "diff": {boolean: true}, "diff-ref": {},
-	"embed": {}, "check": {boolean: true}, "forbid": {multiple: true}, "source": {}, "rules": {},
+	"embed": {}, "check": {boolean: true}, "forbid": {multiple: true}, "source": {}, "rules": {}, "sarif": {},
 }
 
 // parsed holds flag values; a string flag absent from str was not given.
@@ -394,6 +394,26 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 			return 0, &Exit{Code: 1, Stderr: "codeshot: " + err.Error()}
 		}
 	}
+	// --sarif: the rule violations as SARIF 2.1.0, for code-scanning alerts.
+	sarifFile, hasSARIF := p.str["sarif"]
+	if hasSARIF {
+		if sarifFile == "" {
+			return 0, &Exit{Code: 1, Stderr: "codeshot: --sarif must not be empty"}
+		}
+		if !arch {
+			return 0, &Exit{Code: 1, Stderr: "codeshot: --sarif only applies with --architecture (it reports --forbid and --rules violations)"}
+		}
+		// An empty log closes every open alert, so a run that checks no
+		// rule must not write one (F6).
+		if len(rules) == 0 && rulesFile == nil {
+			return 0, &Exit{Code: 1, Stderr: "codeshot: --sarif needs --forbid or --rules: with no rule checked it would upload an empty log and close every open alert"}
+		}
+		// V3: a rules file with no forbid rule and fewer than two layers
+		// can't flag anything either.
+		if len(rules) == 0 && len(rulesFile.Forbid) == 0 && len(rulesFile.Layers) < 2 {
+			return 0, &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: --sarif needs a rule to check: '%s' has no forbid rule and fewer than two layers, so the log would be empty and close every open alert", rulesFile.File)}
+		}
+	}
 	embedFile, hasEmbed := p.str["embed"]
 	if hasEmbed && embedFile == "" {
 		return 0, &Exit{Code: 1, Stderr: "codeshot: --embed must not be empty"}
@@ -574,7 +594,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		case scipIdx != nil:
 			src = ScipSource{Index: scipIdx}
 		}
-		ap := ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules, Rules: rulesFile, Tooltips: tooltips}
+		ap := ArchParams{MaxSymbols: maxSymbols, MaxRender: maxRender, GroupDepth: groupDepth, Forbid: rules, Rules: rulesFile, Tooltips: tooltips, SiteLines: hasSARIF}
 		var dot string
 		var violations []Violation
 		if multi != nil {
@@ -610,6 +630,13 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		if err != nil {
 			return 0, err
+		}
+		// Written before the diagram, so a failing --check still leaves CI
+		// its findings, and with zero violations, so fixed alerts close.
+		if hasSARIF {
+			if err := WriteSARIF(sarifFile, violations, versionString()); err != nil {
+				return 0, err
+			}
 		}
 		out.MarkerID = archMarkerID
 		var notes []string

@@ -130,11 +130,7 @@ func RuleViolationReport(vs []Violation, rulesMode bool) string {
 	}
 	edges := map[string]bool{}
 	for i, v := range vs {
-		breaks := "--forbid '" + v.Rule + "'"
-		if v.Breaks != "" {
-			breaks = v.Breaks
-		}
-		lines[i] = fmt.Sprintf("  %s -> %s (weight %d) breaks %s", v.From, v.To, v.Weight, breaks)
+		lines[i] = "  " + violationLine(v)
 		edges[drawnEdgeKey(v.From, v.To)] = true
 		if v.SeenBy != "" {
 			lines[i] += " — seen by " + v.SeenBy
@@ -367,4 +363,23 @@ func RootGuessWarning(relativeToPath bool, prefix string) string {
 		how = "start at --path, so they were given the '" + prefix + "' prefix"
 	}
 	return fmt.Sprintf("codeshot: none of its files are on disk under --path or codegraph's index root, so its paths were taken to %s; if the same file shows up twice, it guessed wrong.", how)
+}
+
+// violationLine is one violation as the report words it, before any
+// multi-source provenance.
+func violationLine(v Violation) string {
+	breaks := "--forbid '" + v.Rule + "'"
+	if v.Breaks != "" {
+		breaks = v.Breaks
+	}
+	return fmt.Sprintf("%s -> %s (weight %d) breaks %s", v.From, v.To, v.Weight, breaks)
+}
+
+// violationText is violationLine with the sources that saw the edge, the
+// message --sarif gives each result.
+func violationText(v Violation) string {
+	if v.SeenBy != "" {
+		return violationLine(v) + " — seen by " + v.SeenBy
+	}
+	return violationLine(v)
 }

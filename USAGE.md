@@ -153,6 +153,50 @@ overlap or a bad pattern fails at once, naming the entry. (Layers whose paths
 are patterns are checked for overlap file by file instead.) This repo checks its own
 [`.codeshot.yaml`](.codeshot.yaml) in CI.
 
+#### Code-scanning alerts with `--sarif`
+
+`--sarif <file>` also writes the violations as [SARIF
+2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html), the
+format GitHub code scanning reads, so each one shows up as an alert on the line
+of the pull request that added it:
+
+```yaml
+jobs:
+  architecture:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write      # upload-sarif needs it
+    steps:
+      - uses: actions/checkout@v4
+      # ... install codeshot, codegraph and graphviz, build the index ...
+      - run: codeshot --architecture --path . --rules .codeshot.yaml --sarif codeshot.sarif --format svg --out arch.svg
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()              # upload even when the rules failed the step
+        with:
+          sarif_file: codeshot.sarif
+          category: codeshot
+```
+
+Each result sits in the depending file, at the first line where it calls or
+refers to the other file (the smallest line codegraph, the snapshot or the
+SCIP index records; the calling function's first line when only that is
+known), with the depended-on file as a related location. When no source knows
+a line, the result points at line 1 of the file. codeshot sets the alert's
+fingerprint (`primaryLocationLineHash`, which GitHub uses to track an alert)
+from the rule and the two files, not the line, the rules file's name or a
+rule's `reason`, so moving the call or rewording a reason doesn't open a new
+alert. (upload-sarif logs a warning per result that the fingerprint differs
+from the one it would compute from the line's text; it keeps codeshot's.) The file is written on every run, with an empty list when nothing
+breaks a rule (which is what closes fixed alerts), and also with `--check`.
+`--sarif` needs a rule to check (a `--forbid` flag, or a rules file with a
+forbid rule or at least two layers): a run that checks none would upload an
+empty list and close every open alert. For the same reason, a `--sarif` run
+whose scan `--max-symbols` cut writes no file and exits 1, naming the
+`--max-symbols` to rerun with: a partial list would close the alerts of
+violations past the cut. Paths are the ones in the diagram, so run from the repository
+root (`--path .`) for them to match what GitHub checked out.
+
 ### Drawing from another tool's graph
 
 `--source snapshot:<file>` draws the architecture from a graph-assay snapshot
