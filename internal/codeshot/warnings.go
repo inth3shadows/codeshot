@@ -112,13 +112,18 @@ func ForbidViolationReport(vs []Violation) string {
 		return ""
 	}
 	lines := make([]string, len(vs))
+	what := "a --forbid rule"
 	for i, v := range vs {
 		lines[i] = fmt.Sprintf("  %s -> %s (weight %d) breaks --forbid '%s'", v.From, v.To, v.Weight, v.Rule)
+		if v.Breaks != "" {
+			lines[i] = fmt.Sprintf("  %s -> %s (weight %d) breaks %s", v.From, v.To, v.Weight, v.Breaks)
+			what = "an architecture rule"
+		}
 		if v.SeenBy != "" {
 			lines[i] += " — seen by " + v.SeenBy
 		}
 	}
-	return fmt.Sprintf("codeshot: %d file edge(s) break a --forbid rule:\n%s", len(vs), strings.Join(lines, "\n"))
+	return fmt.Sprintf("codeshot: %d file edge(s) break %s:\n%s", len(vs), what, strings.Join(lines, "\n"))
 }
 
 // HiddenViolationNote counts violating drawn edges --max-render leaves out.

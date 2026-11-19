@@ -6,6 +6,7 @@ toolchain go1.26.5
 
 require (
 	github.com/scip-code/scip/bindings/go/scip v0.10.0
+	go.yaml.in/yaml/v3 v3.0.6
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.61.1
 )

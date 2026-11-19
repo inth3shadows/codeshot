@@ -93,6 +93,57 @@ checked on every per-file edge, even ones `--group-depth` merges or
 `--max-render` leaves out of the picture. They can only see calls the scan
 found, so raise `--limit`/`--max-symbols` if Codeshot warns the scan was cut.
 
+A side may also use `*`, `?` and `[...]` wildcards, matched one path segment at
+a time: `internal/*/db/` is every `db/` directory one level under `internal/`,
+and `pkg/*_test.go` is every test file directly in `pkg/`. `**` isn't
+supported; a side ending in `/` already covers everything below it.
+
+#### A rules file
+
+For more than a couple of rules, put them in a file and pass `--rules`:
+
+```bash
+codeshot --architecture --path . --rules .codeshot.yaml --out arch.svg --format svg
+```
+
+```yaml
+version: 1
+
+# Top to bottom: a layer may use itself and any layer below it, never one above.
+layers:
+  - name: ui
+    paths: [src/ui/]
+  - name: services
+    paths: [src/services/]
+  - name: db
+    paths: [src/db/, "src/*/storage/"]
+
+forbid:
+  - from: src/services/billing/
+    to: src/services/auth/
+    reason: billing calls auth through its API only
+
+allow:                      # exceptions to the layers and every forbid rule
+  - from: src/db/migrations/seed.go
+    to: src/services/
+```
+
+- **layers** — an edge from a lower layer to a higher one breaks the rule
+  (`db` calling into `ui` here). Layer paths are directories; a file in no
+  layer isn't checked against the layers, and a file in two layers is an
+  error.
+- **forbid** — like `--forbid`, with an optional `reason` printed next to
+  each violation.
+- **allow** — an edge an allow rule matches is never a violation, whether a
+  layer, a forbid rule in the file or a `--forbid` flag would flag it.
+
+Each violation names what it breaks (`breaks the layers in .codeshot.yaml
+('db' may not depend on 'services', a layer above it)`), and is drawn red, as
+with `--forbid`. `--forbid` flags still work beside the file. The file is read
+and checked before any graph work: a typo in a key, a missing `version: 1` or a
+bad pattern fails at once, naming the entry. This repo checks its own
+[`.codeshot.yaml`](.codeshot.yaml) in CI.
+
 ### Drawing from another tool's graph
 
 `--source snapshot:<file>` draws the architecture from a graph-assay snapshot
