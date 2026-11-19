@@ -58,10 +58,19 @@ Generated diagrams are easy; trusted ones aren't. Tools like madge, pyan and go-
 
 ## Install
 
-Download a binary for your platform from [Releases](https://github.com/inth3shadows/codeshot/releases) (checksums in `checksums.txt`), or build from source with Go 1.26+:
+Download a binary for your platform from [Releases](https://github.com/inth3shadows/codeshot/releases), or build from source with Go 1.26+:
 
 ```bash
 go install github.com/inth3shadows/codeshot/cmd/codeshot@latest
+```
+
+From v0.5.0 on, every release archive comes with a signed record of the workflow run that built it ([build provenance](https://slsa.dev/provenance/), keyless through Sigstore) and a [CycloneDX](https://cyclonedx.org/) SBOM, `codeshot_<version>.cdx.json`, attested for the same archives. To check a download with the [GitHub CLI](https://cli.github.com/):
+
+```bash
+sha256sum -c checksums.txt --ignore-missing    # the archive is the one published
+gh attestation verify codeshot_0.5.0_linux_amd64.tar.gz --repo inth3shadows/codeshot
+gh attestation verify codeshot_0.5.0_linux_amd64.tar.gz --repo inth3shadows/codeshot \
+  --predicate-type https://cyclonedx.org/bom   # the SBOM attestation
 ```
 
 Codeshot is a single static binary; it needs no Node of its own. `codeshot --version` prints the release version for release binaries and `go install ...@vX.Y.Z`, and `dev` for any other build.

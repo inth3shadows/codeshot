@@ -1,21 +1,27 @@
 name: Release
 # Fires when a version tag is pushed (e.g. `v0.4.0`). Cross-compiles static
-# binaries (CGO_ENABLED=0; the SQLite driver is pure Go), writes SHA-256
-# checksums, and publishes them as a GitHub Release with generated notes.
+# binaries (CGO_ENABLED=0; the SQLite driver is pure Go), writes a CycloneDX
+# SBOM and SHA-256 checksums, attests build provenance and the SBOM for every
+# archive (keyless, through Sigstore with this workflow's OIDC token), and
+# publishes them as a GitHub Release with generated notes.
 # The tag is the single source of the version: it is stamped into the binary
 # with -ldflags, so `codeshot --version` can never disagree with the release.
+# Verify a download: `gh attestation verify <archive> --repo inth3shadows/codeshot`.
 on:
   push:
     tags:
       - "v*"
 
-permissions:
-  contents: write # create the GitHub Release + upload assets; nothing more
+permissions: {}
 
 jobs:
   release:
     name: Build + publish GitHub Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release + upload assets
+      id-token: write # the OIDC token Sigstore signs the attestations with
+      attestations: write # store the provenance and SBOM attestations
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -29,8 +35,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y graphviz && go test ./...
 
       - name: Cross-compile
+        id: build
         run: |
           version="${GITHUB_REF_NAME#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
           mkdir -p dist
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
             os="${target%/*}"; arch="${target#*/}"
@@ -47,9 +55,26 @@ jobs:
               tar -C dist -czf "dist/$name.tar.gz" "$name"
             fi
           done
-          (cd dist && sha256sum *.tar.gz *.zip > checksums.txt)
+          # One SBOM for the module (all six builds share its dependencies),
+          # pinned through the Go checksum database. The tag checkout gives it
+          # the version.
+          go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0 \
+            mod -licenses -json -output "dist/codeshot_${version}.cdx.json"
+          (cd dist && sha256sum *.tar.gz *.zip *.cdx.json > checksums.txt)
+
+      # Provenance for every archive and the SBOM, in one attestation over the
+      # checksums file; then the SBOM itself, bound to the same subjects.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
+      - name: Attest the SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-checksums: dist/checksums.txt
+          sbom-path: dist/codeshot_${{ steps.build.outputs.version }}.cdx.json
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.zip dist/checksums.txt --generate-notes --title "${GITHUB_REF_NAME}"
+        run: gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.zip dist/*.cdx.json dist/checksums.txt --generate-notes --title "${GITHUB_REF_NAME}"
