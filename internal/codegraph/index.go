@@ -163,3 +163,62 @@ func nullable(s sql.NullString) string {
 // ErrNoIdentity means the enumerated symbols lack qualifiedName (codegraph
 // before 1.6.0), so they can't be matched to index rows.
 var ErrNoIdentity = errors.New("symbols carry no qualifiedName")
+
+// FilePair is a (from file, to file) dependency.
+type FilePair struct{ From, To string }
+
+// ReadSiteLines returns, for every pair of files with a callee edge between
+// them (imports and file-kind targets aside, as --architecture draws), the
+// smallest line in From of such an edge: the edge's own line, or the calling
+// node's start line when codegraph stored none. Read-only, with the same
+// immutable retry as ReadIndexRows.
+func ReadSiteLines(dbPath string) (map[FilePair]int, error) {
+	lines, err := readSiteLines(indexURI(dbPath, false))
+	if err != nil && !IsSchemaError(err) && walIsEmpty(dbPath) {
+		if retry, rerr := readSiteLines(indexURI(dbPath, true)); rerr == nil {
+			return retry, nil
+		}
+	}
+	return lines, err
+}
+
+func readSiteLines(uri string) (map[FilePair]int, error) {
+	db, err := sql.Open("sqlite", uri)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = db.Close() }()
+	var kinds []string
+	for _, k := range CalleeEdgeKinds {
+		if k != "imports" {
+			kinds = append(kinds, k)
+		}
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(kinds)), ", ")
+	args := make([]any, len(kinds))
+	for i, k := range kinds {
+		args[i] = k
+	}
+	rows, err := db.Query(`SELECT s.file_path, t.file_path, MIN(COALESCE(e.line, s.start_line))
+	   FROM edges e
+	   JOIN nodes s ON s.id = e.source
+	   JOIN nodes t ON t.id = e.target
+	  WHERE e.kind IN (`+placeholders+`) AND t.kind != 'file' AND s.file_path != t.file_path
+	  GROUP BY s.file_path, t.file_path`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[FilePair]int{}
+	for rows.Next() {
+		var from, to sql.NullString
+		var line sql.NullInt64
+		if err := rows.Scan(&from, &to, &line); err != nil {
+			return nil, err
+		}
+		if from.Valid && to.Valid && line.Valid && line.Int64 > 0 {
+			out[FilePair{From: from.String, To: to.String}] = int(line.Int64)
+		}
+	}
+	return out, rows.Err()
+}

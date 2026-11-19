@@ -99,3 +99,38 @@ func TestReadIndexRowsClassifiesSchemaErrors(t *testing.T) {
 		t.Errorf("corrupt file: err = %v, IsSchemaError = %v; want a non-schema error", err, IsSchemaError(err))
 	}
 }
+
+// ReadSiteLines: the smallest edge line per file pair, the caller's start
+// line when the edge has none; imports, file targets and same-file edges
+// are left out.
+func TestReadSiteLinesTakesTheFirstCallSitePerFilePair(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), ".codegraph", "codegraph.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`CREATE TABLE nodes (id TEXT PRIMARY KEY, kind TEXT, name TEXT, qualified_name TEXT NOT NULL, file_path TEXT, start_line INTEGER)`,
+		`CREATE TABLE edges (source TEXT, target TEXT, kind TEXT, line INTEGER)`,
+		`INSERT INTO nodes VALUES ('a1','function','A1','A1','a.go',3), ('a2','function','A2','A2','a.go',40),
+		  ('b','function','B','B','b.go',1), ('c','function','C','C','c.go',1), ('f','file','d.go','d.go','d.go',1)`,
+		`INSERT INTO edges VALUES ('a2','b','calls',44), ('a1','b','calls',12), ('a1','b','imports',1),
+		  ('a2','c','calls',NULL), ('a1','f','calls',2), ('a1','a2','calls',5)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = db.Close()
+	got, err := ReadSiteLines(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[FilePair]int{{From: "a.go", To: "b.go"}: 12, {From: "a.go", To: "c.go"}: 40}
+	if len(got) != len(want) || got[FilePair{"a.go", "b.go"}] != 12 || got[FilePair{"a.go", "c.go"}] != 40 {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}

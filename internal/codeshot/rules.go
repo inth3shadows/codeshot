@@ -250,6 +250,7 @@ func RuleViolations(fileEdges []FileEdge, flags []ForbidRule, rules *Rules) ([]V
 		hits = append(hits, Violation{
 			Rule: lf + "->" + lt, From: e.From, To: e.To, Weight: e.Weight, SeenBy: seenList(e.Seen, nil),
 			Breaks: fmt.Sprintf("the layers in %s ('%s' may not depend on '%s', a layer above it)", rules.File, lf, lt),
+			Kind:   "layers",
 		})
 	}
 	var kept []Violation

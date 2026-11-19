@@ -193,3 +193,58 @@ func TestParseSkipsOutOfRootPathsBeforeTheCleanCheck(t *testing.T) {
 		t.Errorf("err %v", err)
 	}
 }
+
+// RefLines: the first non-import, non-definition reference line (1-based)
+// from one document to a symbol another defines.
+func TestRefLinesTakeTheFirstReferencePerFilePair(t *testing.T) {
+	at := func(sym string, roles scip.SymbolRole, line int32) *scip.Occurrence {
+		return &scip.Occurrence{Symbol: sym, SymbolRoles: int32(roles), Range: []int32{line, 0, 4}}
+	}
+	x, err := Parse(encode(t, &scip.Index{
+		Metadata: &scip.Metadata{ToolInfo: &scip.ToolInfo{Name: "scip-go"}},
+		Documents: []*scip.Document{
+			{RelativePath: "a/a.go", Occurrences: []*scip.Occurrence{
+				at(pkgB, scip.SymbolRole_Import, 2),
+				at(funcA, scip.SymbolRole_Definition, 5),
+				at(funcB, 0, 20),
+				at(typeB, 0, 9),
+				at(funcA, 0, 1),
+				at("local 3", 0, 0),
+			}},
+			{RelativePath: "b/b.go", Occurrences: []*scip.Occurrence{
+				at(pkgB, scip.SymbolRole_Definition, 0),
+				at(funcB, scip.SymbolRole_Definition, 3),
+				at(typeB, scip.SymbolRole_Definition, 7),
+			}},
+		},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := x.RefLines()
+	if len(got) != 1 || got[[2]string{"a/a.go", "b/b.go"}] != 10 {
+		t.Errorf("got %v, want a/a.go -> b/b.go at line 10 (typeB at 0-based 9)", got)
+	}
+}
+
+// scip-go 0.2.8 writes only the typed range (single_line_range); RefLines
+// must read it (it found no line at all on a real index before).
+func TestRefLinesReadTheTypedRangeScipGoWrites(t *testing.T) {
+	typed := func(sym string, roles scip.SymbolRole, line int32) *scip.Occurrence {
+		return &scip.Occurrence{Symbol: sym, SymbolRoles: int32(roles),
+			TypedRange: &scip.Occurrence_SingleLineRange{SingleLineRange: &scip.SingleLineRange{Line: line, StartCharacter: 0, EndCharacter: 4}}}
+	}
+	x, err := Parse(encode(t, &scip.Index{
+		Metadata: &scip.Metadata{ToolInfo: &scip.ToolInfo{Name: "scip-go"}},
+		Documents: []*scip.Document{
+			{RelativePath: "a/a.go", Occurrences: []*scip.Occurrence{typed(funcB, 0, 6)}},
+			{RelativePath: "b/b.go", Occurrences: []*scip.Occurrence{typed(funcB, scip.SymbolRole_Definition, 3)}},
+		},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := x.RefLines()[[2]string{"a/a.go", "b/b.go"}]; got != 7 {
+		t.Errorf("got line %d, want 7", got)
+	}
+}

@@ -186,3 +186,58 @@ func (x *Index) FileEdges(from map[string]bool) []FileEdge {
 	})
 	return out
 }
+
+// RefLines returns, for each (from, to) pair FileEdges draws, the smallest
+// 1-based line in from of a reference to a symbol defined in to, by the same
+// rules: no definitions, imports, locals or namespaces.
+func (x *Index) RefLines() map[[2]string]int {
+	definedIn := map[string][]string{}
+	for _, d := range x.Docs {
+		for _, sym := range d.Defs {
+			definedIn[sym] = append(definedIn[sym], d.Path)
+		}
+	}
+	ns := map[string]bool{}
+	out := map[[2]string]int{}
+	for _, d := range x.Docs {
+		raw := x.raw[d.Path]
+		if raw == nil {
+			continue
+		}
+		for _, o := range raw.GetOccurrences() {
+			sym := o.GetSymbol()
+			if sym == "" || scip.IsLocalSymbol(sym) {
+				continue
+			}
+			// SourceRange reads the typed range fields as well as the
+			// deprecated packed one; scip-go 0.2.8 writes only the typed.
+			r, ok := o.SourceRange()
+			if !ok {
+				continue
+			}
+			roles := o.GetSymbolRoles()
+			if roles&int32(scip.SymbolRole_Definition) != 0 || roles&int32(scip.SymbolRole_Import) != 0 {
+				continue
+			}
+			isNS, ok := ns[sym]
+			if !ok {
+				isNS = isNamespace(sym)
+				ns[sym] = isNS
+			}
+			if isNS {
+				continue
+			}
+			line := int(r.Start.Line) + 1
+			for _, f := range definedIn[sym] {
+				if f == d.Path {
+					continue
+				}
+				k := [2]string{d.Path, f}
+				if cur, ok := out[k]; !ok || line < cur {
+					out[k] = line
+				}
+			}
+		}
+	}
+	return out
+}

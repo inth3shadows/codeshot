@@ -218,6 +218,8 @@ type Violation struct {
 	Weight         int
 	SeenBy         string // multi-source: "codegraph 3, scip-go 5"
 	Breaks         string // rules file: what the edge breaks; empty for a --forbid flag
+	Kind           string // "layers" for a layer violation; "" for a forbid rule or flag
+	Line           int    // --sarif: first call-site line in From; 0 when unknown or not asked
 }
 
 // ParseForbidRule parses FROM->TO; ok=false when malformed.
@@ -504,6 +506,7 @@ type ArchParams struct {
 	Forbid                            []ForbidRule
 	Rules                             *Rules // --rules; nil when not given
 	Tooltips                          bool   // svg: per-source edge weights (multi-source only)
+	SiteLines                         bool   // --sarif: look up each violation's first call-site line
 }
 
 // ArchSource is where --architecture's graph comes from: every symbol in
@@ -542,7 +545,11 @@ func RunArchitectureMode(src ArchSource, p ArchParams, stderr io.Writer) (string
 	if err != nil {
 		return "", nil, err
 	}
-	return finishArchitecture(rawFileEdges, p, nil, func() { warn(stderr, src.EmptyGraphWarning()) }, stderr)
+	dot, vs, err := finishArchitecture(rawFileEdges, p, nil, func() { warn(stderr, src.EmptyGraphWarning()) }, stderr)
+	if err == nil && p.SiteLines {
+		fillSiteLines(vs, []LabeledSource{{Src: src}}, stderr)
+	}
+	return dot, vs, err
 }
 
 // LabeledSource is one entry of a multi-source --source list: the source and
@@ -580,7 +587,11 @@ func RunMultiArchitectureMode(srcs []LabeledSource, p ArchParams, stderr io.Writ
 			warn(stderr, labelWarning(s.Label, s.Src.EmptyGraphWarning()))
 		}
 	}
-	return finishArchitecture(union, p, labels, emptyGraph, stderr)
+	dot, vs, err := finishArchitecture(union, p, labels, emptyGraph, stderr)
+	if err == nil && p.SiteLines {
+		fillSiteLines(vs, srcs, stderr)
+	}
+	return dot, vs, err
 }
 
 // sourceFileEdges enumerates one source's symbols, applies --max-symbols and

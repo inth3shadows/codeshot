@@ -1,0 +1,214 @@
+package codeshot
+
+import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/inth3shadows/codeshot/internal/codegraph"
+	"github.com/inth3shadows/codeshot/internal/snapshot"
+)
+
+// decodeSARIF reads back what BuildSARIF wrote, as generic JSON.
+func decodeSARIF(t *testing.T, data []byte) map[string]any {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, data)
+	}
+	return m
+}
+
+func sarifResults(t *testing.T, m map[string]any) []any {
+	t.Helper()
+	runs := m["runs"].([]any)
+	if len(runs) != 1 {
+		t.Fatalf("runs: %d", len(runs))
+	}
+	res, ok := runs[0].(map[string]any)["results"].([]any)
+	if !ok {
+		t.Fatalf("results is not a list: %v", runs[0].(map[string]any)["results"])
+	}
+	return res
+}
+
+func TestBuildSARIFWritesOneResultPerViolation(t *testing.T) {
+	vs := []Violation{
+		{Rule: "a/->b/", From: "a/x.go", To: "b/y.go", Weight: 3, Line: 12, SeenBy: "codegraph 3, scip-go 1"},
+		{Rule: "core->cli", From: "core/c.go", To: "cmd/m.go", Weight: 1, Kind: "layers",
+			Breaks: "the layers in .codeshot.yaml ('core' may not depend on 'cli', a layer above it)"},
+	}
+	data, err := BuildSARIF(vs, "1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := decodeSARIF(t, data)
+	if m["version"] != "2.1.0" || m["$schema"] != "https://json.schemastore.org/sarif-2.1.0.json" {
+		t.Errorf("header: %v %v", m["version"], m["$schema"])
+	}
+	driver := m["runs"].([]any)[0].(map[string]any)["tool"].(map[string]any)["driver"].(map[string]any)
+	if driver["name"] != "codeshot" || driver["version"] != "1.2.3" {
+		t.Errorf("driver: %v", driver)
+	}
+	rules := driver["rules"].([]any)
+	if len(rules) != 2 || rules[0].(map[string]any)["id"] != "codeshot/forbid" || rules[1].(map[string]any)["id"] != "codeshot/layers" {
+		t.Errorf("rules: %v", rules)
+	}
+	res := sarifResults(t, m)
+	if len(res) != 2 {
+		t.Fatalf("results: %d", len(res))
+	}
+	r0, r1 := res[0].(map[string]any), res[1].(map[string]any)
+	if r0["ruleId"] != "codeshot/forbid" || r0["ruleIndex"] != 0.0 || r1["ruleId"] != "codeshot/layers" || r1["ruleIndex"] != 1.0 {
+		t.Errorf("rule ids: %v %v / %v %v", r0["ruleId"], r0["ruleIndex"], r1["ruleId"], r1["ruleIndex"])
+	}
+	loc := func(r map[string]any) (string, float64) {
+		pl := r["locations"].([]any)[0].(map[string]any)["physicalLocation"].(map[string]any)
+		return pl["artifactLocation"].(map[string]any)["uri"].(string), pl["region"].(map[string]any)["startLine"].(float64)
+	}
+	if uri, line := loc(r0); uri != "a/x.go" || line != 12 {
+		t.Errorf("first: %s:%v, want a/x.go:12", uri, line)
+	}
+	if uri, line := loc(r1); uri != "core/c.go" || line != 1 {
+		t.Errorf("second: %s:%v, want core/c.go:1 (line unknown)", uri, line)
+	}
+	wantMatch(t, `^a/x\.go -> b/y\.go \(weight 3\) breaks --forbid 'a/->b/' — seen by codegraph 3, scip-go 1$`, r0["message"].(map[string]any)["text"].(string))
+	wantMatch(t, `breaks the layers in \.codeshot\.yaml`, r1["message"].(map[string]any)["text"].(string))
+	rel := r0["relatedLocations"].([]any)[0].(map[string]any)["physicalLocation"].(map[string]any)["artifactLocation"].(map[string]any)["uri"]
+	if rel != "b/y.go" {
+		t.Errorf("related: %v", rel)
+	}
+	fp := func(r map[string]any) string {
+		return r["partialFingerprints"].(map[string]any)["codeshotEdge/v1"].(string)
+	}
+	if fp(r0) == fp(r1) || len(fp(r0)) != 32 {
+		t.Errorf("fingerprints: %q %q", fp(r0), fp(r1))
+	}
+	// The fingerprint ignores the line, so an alert survives the call moving.
+	moved := vs[0]
+	moved.Line = 99
+	again, _ := BuildSARIF([]Violation{moved}, "1.2.3")
+	if fp(sarifResults(t, decodeSARIF(t, again))[0].(map[string]any)) != fp(r0) {
+		t.Error("fingerprint changed with the line")
+	}
+}
+
+// Zero violations still write a log, with an empty results list (not null),
+// so an upload closes alerts that were fixed.
+func TestBuildSARIFWithNoViolationsHasAnEmptyResultsList(t *testing.T) {
+	data, err := BuildSARIF(nil, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"results": []`) {
+		t.Errorf("want an empty results list:\n%s", data)
+	}
+	if len(sarifResults(t, decodeSARIF(t, data))) != 0 {
+		t.Error("results not empty")
+	}
+}
+
+func TestSnapshotSiteLinesTakeTheSmallestDrawnKindLine(t *testing.T) {
+	l := func(n int) *int { return &n }
+	snap := &snapshot.Snapshot{
+		Nodes: []snapshot.Node{
+			{ID: "1", Kind: "function", Name: "A", File: "a.go"},
+			{ID: "2", Kind: "function", Name: "B", File: "b.go"},
+			{ID: "3", Kind: "file", Name: "c.go", File: "c.go"},
+			{ID: "4", Kind: "function", Name: "A2", File: "a.go"},
+		},
+		Edges: []snapshot.Edge{
+			{Kind: "calls", Src: "1", Dst: "2", Line: l(30)},
+			{Kind: "calls", Src: "4", Dst: "2", Line: l(8)},
+			{Kind: "imports", Src: "1", Dst: "2", Line: l(1)},
+			{Kind: "calls", Src: "1", Dst: "3", Line: l(2)},
+			{Kind: "calls", Src: "1", Dst: "4", Line: l(3)},
+			{Kind: "overrides", Src: "1", Dst: "2", Line: l(4)},
+			{Kind: "calls", Src: "2", Dst: "1"},
+		},
+	}
+	got, _ := SnapshotSource{Snap: snap}.SiteLines()
+	if len(got) != 1 || got[codegraph.FilePair{From: "a.go", To: "b.go"}] != 8 {
+		t.Errorf("got %v, want only a.go -> b.go at 8", got)
+	}
+}
+
+type linedSource struct {
+	edgesSource
+	lines map[codegraph.FilePair]int
+}
+
+func (s linedSource) SiteLines() (map[codegraph.FilePair]int, error) { return s.lines, nil }
+
+func TestFillSiteLinesTakesTheSmallestLineAcrossSourcesAndRebases(t *testing.T) {
+	a := linedSource{lines: map[codegraph.FilePair]int{{From: "sub/a.go", To: "sub/b.go"}: 9}}
+	b := prefixedSource{Src: linedSource{lines: map[codegraph.FilePair]int{{From: "a.go", To: "b.go"}: 4, {From: "./c.go", To: "b.go"}: 7}}, Prefix: "sub/"}
+	vs := []Violation{{From: "sub/a.go", To: "sub/b.go"}, {From: "sub/c.go", To: "sub/b.go"}, {From: "x.go", To: "y.go"}}
+	var stderr strings.Builder
+	fillSiteLines(vs, []LabeledSource{{Label: "cg", Src: a}, {Label: "snap", Src: b}}, &stderr)
+	if vs[0].Line != 4 || vs[1].Line != 7 || vs[2].Line != 0 {
+		t.Errorf("lines: %d %d %d, want 4 7 0", vs[0].Line, vs[1].Line, vs[2].Line)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr: %s", stderr.String())
+	}
+}
+
+const sarifSnapshot = `{"schema":"graph-assay/snapshot@1","subject":{"name":"t"},
+ "capabilities":{"siteLines":true,"siteColumns":false,"unresolved":false,"provenance":false},
+ "files":[],"unresolved":[],
+ "nodes":[{"id":"1","kind":"function","name":"A","qname":"A","file":"src/a.go","start":1,"end":20},
+          {"id":"2","kind":"function","name":"B","qname":"B","file":"lib/b.go","start":1,"end":2}],
+ "edges":[{"kind":"calls","src":"1","dst":"2","line":14}]}`
+
+// End to end from a snapshot: the violation lands on its call-site line,
+// the run still exits 1 after writing both files, and a clean run writes an
+// empty log.
+func TestCLISarifWritesViolationsAtTheirCallSite(t *testing.T) {
+	requireBins(t, "dot")
+	dot, _ := exec.LookPath("dot")
+	t.Setenv("PATH", filepath.Dir(dot))
+	if _, err := exec.LookPath("codegraph"); err == nil {
+		t.Skip("codegraph shares a directory with dot; cannot hide it")
+	}
+	dir := t.TempDir()
+	snap := "snapshot:" + writeSnapshotFile(t, sarifSnapshot)
+	sarif := filepath.Join(dir, "out.sarif")
+	code, _, stderr := runCLI("--architecture", "--source", snap, "--forbid", "src/->lib/", "--sarif", sarif, "--format", "dot", "--out", filepath.Join(dir, "a.dot"))
+	if code != 1 {
+		t.Fatalf("exit %d, want 1; stderr: %s", code, stderr)
+	}
+	data, err := os.ReadFile(sarif)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := sarifResults(t, decodeSARIF(t, data))
+	if len(res) != 1 {
+		t.Fatalf("results: %d", len(res))
+	}
+	pl := res[0].(map[string]any)["locations"].([]any)[0].(map[string]any)["physicalLocation"].(map[string]any)
+	if pl["artifactLocation"].(map[string]any)["uri"] != "src/a.go" || pl["region"].(map[string]any)["startLine"] != 14.0 {
+		t.Errorf("location: %v", pl)
+	}
+
+	clean := filepath.Join(dir, "clean.sarif")
+	if code, _, stderr := runCLI("--architecture", "--source", snap, "--forbid", "lib/->src/", "--sarif", clean, "--format", "dot", "--out", filepath.Join(dir, "b.dot")); code != 0 {
+		t.Fatalf("clean run: exit %d; stderr: %s", code, stderr)
+	}
+	data, _ = os.ReadFile(clean)
+	if len(sarifResults(t, decodeSARIF(t, data))) != 0 {
+		t.Error("clean run wrote results")
+	}
+}
+
+func TestCLISarifIsArchitectureOnly(t *testing.T) {
+	wantRejected(t, `--sarif only applies with --architecture`, "Foo", "--sarif", "x.sarif")
+	wantRejected(t, `--sarif only applies with --architecture`, "--diff", "--sarif", "x.sarif")
+	wantRejected(t, `--sarif must not be empty`, "--architecture", "--sarif", "")
+	if !strings.Contains(usage, "[--sarif <file>]") {
+		t.Error("usage does not mention --sarif")
+	}
+}

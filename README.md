@@ -123,6 +123,11 @@ so the scan takes about a second. Flags specific to this mode:
   instead of a list of flags. See
   [USAGE.md](USAGE.md#a-rules-file) and this repo's own
   [`.codeshot.yaml`](.codeshot.yaml).
+- `--sarif <file>` — the `--forbid` and `--rules` violations as SARIF 2.1.0,
+  for GitHub code scanning: each is an alert at the first line in the
+  depending file that calls into the other. Written on every run, also when
+  nothing breaks a rule. See
+  [USAGE.md](USAGE.md#code-scanning-alerts-with---sarif).
 - `--source snapshot:<file>` — draw from a
   [graph-assay](https://github.com/inth3shadows/graph-assay) snapshot
   (`graph-assay/snapshot@1` JSON) instead of the codegraph index under `--path`.
