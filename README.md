@@ -67,11 +67,17 @@ go install github.com/inth3shadows/codeshot/cmd/codeshot@latest
 From v0.5.0 on, every release archive comes with a signed record of the workflow run that built it ([build provenance](https://slsa.dev/provenance/), keyless through Sigstore) and a [CycloneDX](https://cyclonedx.org/) SBOM, `codeshot_<version>.cdx.json`, attested for the same archives. To check a download with the [GitHub CLI](https://cli.github.com/):
 
 ```bash
-sha256sum -c checksums.txt --ignore-missing    # the archive is the one published
-gh attestation verify codeshot_0.5.0_linux_amd64.tar.gz --repo inth3shadows/codeshot
+sha256sum -c checksums.txt --ignore-missing   # Linux; on macOS: shasum -a 256 -c checksums.txt --ignore-missing
 gh attestation verify codeshot_0.5.0_linux_amd64.tar.gz --repo inth3shadows/codeshot \
-  --predicate-type https://cyclonedx.org/bom   # the SBOM attestation
+  --signer-workflow inth3shadows/codeshot/.github/workflows/release.yml --source-ref refs/tags/v0.5.0
+gh attestation verify codeshot_0.5.0_linux_amd64.tar.gz --repo inth3shadows/codeshot \
+  --signer-workflow inth3shadows/codeshot/.github/workflows/release.yml --source-ref refs/tags/v0.5.0 \
+  --predicate-type https://cyclonedx.org/bom    # the SBOM attestation
 ```
+
+`--signer-workflow` and `--source-ref` accept only an attestation made by the
+release workflow for that tag, not one any other workflow in the repo could
+make.
 
 Codeshot is a single static binary; it needs no Node of its own. `codeshot --version` prints the release version for release binaries and `go install ...@vX.Y.Z`, and `dev` for any other build.
 

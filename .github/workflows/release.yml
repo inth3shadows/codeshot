@@ -1,12 +1,14 @@
 name: Release
 # Fires when a version tag is pushed (e.g. `v0.4.0`). Cross-compiles static
-# binaries (CGO_ENABLED=0; the SQLite driver is pure Go), writes a CycloneDX
-# SBOM and SHA-256 checksums, attests build provenance and the SBOM for every
-# archive (keyless, through Sigstore with this workflow's OIDC token), and
-# publishes them as a GitHub Release with generated notes.
+# binaries (CGO_ENABLED=0; the SQLite driver is pure Go) and writes a CycloneDX
+# SBOM and SHA-256 checksums in one job; a second job, which runs no build or
+# test code, attests build provenance and the SBOM for every archive (keyless,
+# through Sigstore with its OIDC token) and publishes them as a GitHub Release
+# with generated notes.
 # The tag is the single source of the version: it is stamped into the binary
 # with -ldflags, so `codeshot --version` can never disagree with the release.
-# Verify a download: `gh attestation verify <archive> --repo inth3shadows/codeshot`.
+# Verify a download: `gh attestation verify <archive> --repo inth3shadows/codeshot
+#   --signer-workflow inth3shadows/codeshot/.github/workflows/release.yml`.
 on:
   push:
     tags:
@@ -15,13 +17,16 @@ on:
 permissions: {}
 
 jobs:
-  release:
-    name: Build + publish GitHub Release
+  # Runs the tests, the build and the SBOM tool, so it gets no signing
+  # permission: code here can't mint the OIDC token the attestations are
+  # signed with (F1). It hands the release files to the publish job.
+  build:
+    name: Test, build + SBOM
     runs-on: ubuntu-latest
     permissions:
-      contents: write # create the GitHub Release + upload assets
-      id-token: write # the OIDC token Sigstore signs the attestations with
-      attestations: write # store the provenance and SBOM attestations
+      contents: read
+    outputs:
+      version: ${{ steps.build.outputs.version }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -38,6 +43,12 @@ jobs:
         id: build
         run: |
           version="${GITHUB_REF_NAME#v}"
+          # A release tag is v<semver>: anything else would name the archives
+          # one way and give the SBOM a pseudo-version (F6).
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::tag ${GITHUB_REF_NAME} is not v<major>.<minor>.<patch>[-<pre>]"
+            exit 1
+          fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           mkdir -p dist
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
@@ -58,23 +69,59 @@ jobs:
           # One SBOM for the module (all six builds share its dependencies),
           # pinned through the Go checksum database. The tag checkout gives it
           # the version.
+          # -std lists the Go standard library compiled into every binary (F2).
           go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0 \
-            mod -licenses -json -output "dist/codeshot_${version}.cdx.json"
+            mod -licenses -std -json -output "dist/codeshot_${version}.cdx.json"
           (cd dist && sha256sum *.tar.gz *.zip *.cdx.json > checksums.txt)
 
+      - name: Hand the release files to the publish job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-files
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.cdx.json
+            dist/checksums.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  # Signs and publishes; runs no build, test or third-party build code.
+  publish:
+    name: Attest + publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release + upload assets
+      id-token: write # the OIDC token Sigstore signs the attestations with
+      attestations: write # store the provenance and SBOM attestations
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: dist
+      - name: Check the files arrived intact
+        run: cd dist && sha256sum -c checksums.txt
+
       # Provenance for every archive and the SBOM, in one attestation over the
-      # checksums file; then the SBOM itself, bound to the same subjects.
+      # checksums file; then the SBOM, attested for the archives it describes.
+      # actions/attest directly: attest-build-provenance and attest-sbom are
+      # wrappers around it, and attest-sbom is deprecated (F5).
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
+          create-storage-record: false
       - name: Attest the SBOM
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-checksums: dist/checksums.txt
-          sbom-path: dist/codeshot_${{ steps.build.outputs.version }}.cdx.json
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+          sbom-path: dist/codeshot_${{ needs.build.outputs.version }}.cdx.json
+          create-storage-record: false
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.zip dist/*.cdx.json dist/checksums.txt --generate-notes --title "${GITHUB_REF_NAME}"
+        run: gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.zip dist/*.cdx.json dist/checksums.txt --repo "${GITHUB_REPOSITORY}" --generate-notes --title "${GITHUB_REF_NAME}"
