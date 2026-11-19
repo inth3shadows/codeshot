@@ -2,6 +2,7 @@ package codeshot
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,9 +83,9 @@ func TestBuildSARIFWritesOneResultPerViolation(t *testing.T) {
 		t.Errorf("related: %v", rel)
 	}
 	fp := func(r map[string]any) string {
-		return r["partialFingerprints"].(map[string]any)["codeshotEdge/v1"].(string)
+		return r["partialFingerprints"].(map[string]any)["primaryLocationLineHash"].(string)
 	}
-	if fp(r0) == fp(r1) || len(fp(r0)) != 32 {
+	if fp(r0) == fp(r1) || len(fp(r0)) != 34 {
 		t.Errorf("fingerprints: %q %q", fp(r0), fp(r1))
 	}
 	// The fingerprint ignores the line, so an alert survives the call moving.
@@ -210,5 +211,126 @@ func TestCLISarifIsArchitectureOnly(t *testing.T) {
 	wantRejected(t, `--sarif must not be empty`, "--architecture", "--sarif", "")
 	if !strings.Contains(usage, "[--sarif <file>]") {
 		t.Error("usage does not mention --sarif")
+	}
+}
+
+// F1: GitHub keys alerts by primaryLocationLineHash; codeshot's own hash
+// goes there, differs for two rules on one edge, ignores the line, and an
+// exact duplicate result is written once.
+func TestSARIFFingerprintIsThePrimaryLocationLineHash(t *testing.T) {
+	flag := Violation{Rule: "src/->lib/", From: "src/a.go", To: "lib/b.go", Weight: 1, Line: 3}
+	file := flag
+	file.Breaks = "forbid 'src/->lib/' in r.yaml"
+	data, err := BuildSARIF([]Violation{flag, file, flag}, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := sarifResults(t, decodeSARIF(t, data))
+	if len(res) != 2 {
+		t.Fatalf("results: %d, want 2 (the exact duplicate dropped)", len(res))
+	}
+	fp := func(r any) string {
+		v, _ := r.(map[string]any)["partialFingerprints"].(map[string]any)["primaryLocationLineHash"].(string)
+		return v
+	}
+	if fp(res[0]) == "" || fp(res[0]) == fp(res[1]) {
+		t.Errorf("fingerprints: %q %q", fp(res[0]), fp(res[1]))
+	}
+	wantMatch(t, `^[0-9a-f]{32}:1$`, fp(res[0]))
+}
+
+// F2: uris are percent-encoded per segment; an absolute path is a file URI.
+func TestSARIFURIsAreEncoded(t *testing.T) {
+	data, err := BuildSARIF([]Violation{{Rule: "a->b", From: "src/a b#c%20d é.go", To: "/abs/x [1].go"}}, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := sarifResults(t, decodeSARIF(t, data))[0].(map[string]any)
+	uri := r["locations"].([]any)[0].(map[string]any)["physicalLocation"].(map[string]any)["artifactLocation"].(map[string]any)["uri"]
+	rel := r["relatedLocations"].([]any)[0].(map[string]any)["physicalLocation"].(map[string]any)["artifactLocation"].(map[string]any)["uri"]
+	if uri != "src/a%20b%23c%2520d%20%C3%A9.go" {
+		t.Errorf("uri: %v", uri)
+	}
+	if rel != "file:///abs/x%20%5B1%5D.go" {
+		t.Errorf("related uri: %v", rel)
+	}
+}
+
+// A3: every rule has help text.
+func TestSARIFRulesHaveHelpText(t *testing.T) {
+	data, _ := BuildSARIF(nil, "dev")
+	rules := decodeSARIF(t, data)["runs"].([]any)[0].(map[string]any)["tool"].(map[string]any)["driver"].(map[string]any)["rules"].([]any)
+	for _, r := range rules {
+		h, _ := r.(map[string]any)["help"].(map[string]any)
+		if h == nil || h["text"] == "" || h["text"] == nil {
+			t.Errorf("%v: no help.text", r.(map[string]any)["id"])
+		}
+	}
+}
+
+// F4: a snapshot edge without a line falls back to its caller's start line,
+// as codegraph does; a real line wins.
+func TestSnapshotSiteLinesFallBackToTheCallersStart(t *testing.T) {
+	l := func(n int) *int { return &n }
+	snap := &snapshot.Snapshot{
+		Nodes: []snapshot.Node{
+			{ID: "1", Kind: "function", Name: "A", File: "a.go", Start: 40},
+			{ID: "2", Kind: "function", Name: "B", File: "b.go", Start: 1},
+			{ID: "3", Kind: "function", Name: "C", File: "c.go", Start: 1},
+		},
+		Edges: []snapshot.Edge{
+			{Kind: "references", Src: "1", Dst: "2"},
+			{Kind: "calls", Src: "1", Dst: "2", Line: l(55)},
+			{Kind: "calls", Src: "1", Dst: "3"},
+		},
+	}
+	got, _ := SnapshotSource{Snap: snap}.SiteLines()
+	if got[codegraph.FilePair{From: "a.go", To: "b.go"}] != 55 || got[codegraph.FilePair{From: "a.go", To: "c.go"}] != 40 {
+		t.Errorf("got %v, want a->b 55, a->c 40", got)
+	}
+}
+
+type failingLiner struct{ edgesSource }
+
+func (failingLiner) SiteLines() (map[codegraph.FilePair]int, error) {
+	return nil, errors.New("SQL logic error: no such column: e.line (1)")
+}
+
+// A4: the warning names what failed, without a dangling "its".
+func TestSiteLinesWarningNamesTheSource(t *testing.T) {
+	vs := []Violation{{From: "a.go", To: "b.go"}}
+	var stderr strings.Builder
+	fillSiteLines(vs, []LabeledSource{{Src: failingLiner{}}}, &stderr)
+	wantMatch(t, `^codeshot: --sarif: no line numbers from the graph source \(the codegraph index has no line columns; a newer codegraph build writes them\); results point at line 1 of each file\.`, stderr.String())
+}
+
+// F6 + T: --sarif needs rules; a write failure stops the run before the
+// diagram; a stale --check still leaves the SARIF file.
+func TestCLISarifNeedsRulesAndFailsCleanly(t *testing.T) {
+	wantRejected(t, `--sarif needs --forbid or --rules`, "--architecture", "--sarif", "x.sarif")
+	requireBins(t, "dot")
+	dir := t.TempDir()
+	snap := "snapshot:" + writeSnapshotFile(t, sarifSnapshot)
+	out := filepath.Join(dir, "a.dot")
+	code, _, stderr := runCLI("--architecture", "--source", snap, "--forbid", "src/->lib/", "--sarif", filepath.Join(dir, "missing", "x.sarif"), "--format", "dot", "--out", out)
+	if code != 1 {
+		t.Errorf("write failure: exit %d, want 1", code)
+	}
+	wantMatch(t, `could not write --sarif file`, stderr)
+	if _, err := os.Stat(out); err == nil {
+		t.Error("the diagram was written after the SARIF write failed")
+	}
+
+	doc := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(doc, []byte("# Doc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sarif := filepath.Join(dir, "check.sarif")
+	code, _, _ = runCLI("--architecture", "--source", snap, "--forbid", "src/->lib/", "--sarif", sarif, "--format", "svg", "--embed", doc, "--check")
+	if code != 1 {
+		t.Errorf("stale --check: exit %d, want 1", code)
+	}
+	if data, err := os.ReadFile(sarif); err != nil || len(sarifResults(t, decodeSARIF(t, data))) != 1 {
+		t.Errorf("stale --check: SARIF not written with its one result (%v)", err)
 	}
 }

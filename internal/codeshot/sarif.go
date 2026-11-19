@@ -6,8 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
+	"path"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/inth3shadows/codeshot/internal/codegraph"
 	"github.com/inth3shadows/codeshot/internal/snapshot"
@@ -29,16 +33,25 @@ func (s CodegraphSource) SiteLines() (map[codegraph.FilePair]int, error) {
 	return codegraph.ReadSiteLines(idx)
 }
 
+// keepMin records line for k unless a smaller one is already there.
+func keepMin(m map[codegraph.FilePair]int, k codegraph.FilePair, line int) {
+	if cur, ok := m[k]; !ok || line < cur {
+		m[k] = line
+	}
+}
+
 // SiteLines: the smallest line of a drawn-kind edge (not imports, not to a
-// file node) between nodes in two files; a snapshot's line is optional.
+// file node) between nodes in two files, as codegraph's ReadSiteLines: a
+// real edge line wins, and a pair whose edges carry none falls back to the
+// smallest caller start (a snapshot's line is optional, F4).
 func (s SnapshotSource) SiteLines() (map[codegraph.FilePair]int, error) {
 	byID := make(map[string]snapshot.Node, len(s.Snap.Nodes))
 	for _, n := range s.Snap.Nodes {
 		byID[n.ID] = n
 	}
-	out := map[codegraph.FilePair]int{}
+	lines, starts := map[codegraph.FilePair]int{}, map[codegraph.FilePair]int{}
 	for _, e := range s.Snap.Edges {
-		if e.Line == nil || *e.Line < 1 || e.Kind == "imports" || !slices.Contains(codegraph.CalleeEdgeKinds, e.Kind) {
+		if e.Kind == "imports" || !slices.Contains(codegraph.CalleeEdgeKinds, e.Kind) {
 			continue
 		}
 		src, dst := byID[e.Src], byID[e.Dst]
@@ -46,11 +59,18 @@ func (s SnapshotSource) SiteLines() (map[codegraph.FilePair]int, error) {
 			continue
 		}
 		k := codegraph.FilePair{From: src.File, To: dst.File}
-		if cur, ok := out[k]; !ok || *e.Line < cur {
-			out[k] = *e.Line
+		if e.Line != nil && *e.Line > 0 {
+			keepMin(lines, k, *e.Line)
+		} else if src.Start > 0 {
+			keepMin(starts, k, src.Start)
 		}
 	}
-	return out, nil
+	for k, start := range starts {
+		if _, ok := lines[k]; !ok {
+			lines[k] = start
+		}
+	}
+	return lines, nil
 }
 
 func (s ScipSource) SiteLines() (map[codegraph.FilePair]int, error) {
@@ -73,10 +93,7 @@ func (p prefixedSource) SiteLines() (map[codegraph.FilePair]int, error) {
 	}
 	out := make(map[codegraph.FilePair]int, len(lines))
 	for k, line := range lines {
-		r := codegraph.FilePair{From: p.rebase(k.From), To: p.rebase(k.To)}
-		if cur, ok := out[r]; !ok || line < cur {
-			out[r] = line
-		}
+		keepMin(out, codegraph.FilePair{From: p.rebase(k.From), To: p.rebase(k.To)}, line)
 	}
 	return out, nil
 }
@@ -96,18 +113,46 @@ func fillSiteLines(vs []Violation, srcs []LabeledSource, stderr io.Writer) {
 		}
 		lines, err := sl.SiteLines()
 		if err != nil {
-			warn(stderr, labelWarning(s.Label, fmt.Sprintf("codeshot: --sarif: could not read line numbers (%v); its findings point at line 1 of the file.", err)))
+			warn(stderr, siteLinesWarning(s.Label, err))
 			continue
 		}
 		for k, line := range lines {
-			if cur, ok := best[k]; !ok || line < cur {
-				best[k] = line
-			}
+			keepMin(best, k, line)
 		}
 	}
 	for i := range vs {
 		vs[i].Line = best[codegraph.FilePair{From: vs[i].From, To: vs[i].To}]
 	}
+}
+
+// siteLinesWarning: a source gave no line numbers (A4). An index from a
+// codegraph build without the line columns is said plainly.
+func siteLinesWarning(label string, err error) string {
+	what := "the graph source"
+	if label != "" {
+		what = label
+	}
+	why := err.Error()
+	if codegraph.IsSchemaError(err) {
+		why = "the codegraph index has no line columns; a newer codegraph build writes them"
+	}
+	return fmt.Sprintf("codeshot: --sarif: no line numbers from %s (%s); results point at line 1 of each file.", what, why)
+}
+
+// sarifURI is a path as a SARIF artifact URI (F2): each segment
+// percent-encoded, so a space, '#', '%' or a non-ASCII name survives a URI
+// parser; an absolute path becomes a file URI.
+func sarifURI(p string) string {
+	slash := filepath.ToSlash(p)
+	segs := strings.Split(slash, "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	enc := strings.Join(segs, "/")
+	if path.IsAbs(slash) {
+		return "file://" + enc
+	}
+	return enc
 }
 
 // SARIF rule ids, one per kind of rule.
@@ -143,8 +188,14 @@ type sarifRule struct {
 	Name             string       `json:"name"`
 	ShortDescription sarifText    `json:"shortDescription"`
 	FullDescription  sarifText    `json:"fullDescription"`
+	Help             sarifHelp    `json:"help"`
 	HelpURI          string       `json:"helpUri"`
 	DefaultConfig    sarifDefault `json:"defaultConfiguration"`
+}
+
+type sarifHelp struct {
+	Text     string `json:"text"`
+	Markdown string `json:"markdown"`
 }
 
 type sarifDefault struct {
@@ -196,18 +247,27 @@ func BuildSARIF(vs []Violation, version string) ([]byte, error) {
 			ID: sarifForbidRule, Name: "ForbiddenDependency",
 			ShortDescription: sarifText{"A file depends on a file a forbid rule keeps it from."},
 			FullDescription:  sarifText{"A --forbid flag or a forbid rule in the --rules file says files matching FROM may not depend on files matching TO, and codeshot's graph has such an edge."},
-			HelpURI:          "https://github.com/inth3shadows/codeshot/blob/master/USAGE.md#enforcing-architecture-rules",
-			DefaultConfig:    sarifDefault{"error"},
+			Help: sarifHelp{
+				Text:     "Remove the dependency, move the code so the rule allows it, or add an allow exception to the --rules file if the dependency is intended.",
+				Markdown: "Remove the dependency, move the code so the rule allows it, or add an `allow` exception to the `--rules` file if the dependency is intended. See [Enforcing architecture rules](https://github.com/inth3shadows/codeshot/blob/master/USAGE.md#enforcing-architecture-rules).",
+			},
+			HelpURI:       "https://github.com/inth3shadows/codeshot/blob/master/USAGE.md#enforcing-architecture-rules",
+			DefaultConfig: sarifDefault{"error"},
 		},
 		{
 			ID: sarifLayersRule, Name: "LayerViolation",
 			ShortDescription: sarifText{"A file in a lower layer depends on a higher layer."},
 			FullDescription:  sarifText{"The --rules file orders layers top to bottom; a layer may use itself and the layers below it, and this edge goes from a lower layer to a higher one."},
-			HelpURI:          "https://github.com/inth3shadows/codeshot/blob/master/USAGE.md#a-rules-file",
-			DefaultConfig:    sarifDefault{"error"},
+			Help: sarifHelp{
+				Text:     "A lower layer may not use a higher one. Move the code into the right layer, invert the dependency, or add an allow exception to the --rules file.",
+				Markdown: "A lower layer may not use a higher one. Move the code into the right layer, invert the dependency, or add an `allow` exception to the `--rules` file. See [A rules file](https://github.com/inth3shadows/codeshot/blob/master/USAGE.md#a-rules-file).",
+			},
+			HelpURI:       "https://github.com/inth3shadows/codeshot/blob/master/USAGE.md#a-rules-file",
+			DefaultConfig: sarifDefault{"error"},
 		},
 	}
 	results := make([]sarifResult, 0, len(vs))
+	seen := map[string]bool{}
 	for _, v := range vs {
 		id, idx := sarifForbidRule, 0
 		if v.Kind == "layers" {
@@ -217,21 +277,29 @@ func BuildSARIF(vs []Violation, version string) ([]byte, error) {
 		if line < 1 {
 			line = 1
 		}
-		sum := sha256.Sum256([]byte(id + "\x00" + v.Rule + "\x00" + v.From + "\x00" + v.To))
+		// GitHub keys alerts by primaryLocationLineHash and upload-sarif keeps
+		// one that is given (F1): the rule, its wording and the two files,
+		// never the line, so moving the call keeps the alert.
+		sum := sha256.Sum256([]byte(id + "\x00" + v.Rule + "\x00" + v.Breaks + "\x00" + v.From + "\x00" + v.To))
+		fp := hex.EncodeToString(sum[:16]) + ":1"
+		if seen[fp] {
+			continue // the same rule twice on one edge is one result
+		}
+		seen[fp] = true
 		related := 1
 		results = append(results, sarifResult{
 			RuleID: id, RuleIndex: idx, Level: "error",
 			Message: sarifText{violationText(v)},
 			Locations: []sarifLocation{{PhysicalLocation: sarifPhysical{
-				ArtifactLocation: sarifArtifact{URI: v.From},
+				ArtifactLocation: sarifArtifact{URI: sarifURI(v.From)},
 				Region:           &sarifRegion{StartLine: line},
 			}}},
 			RelatedLocations: []sarifLocation{{
 				ID:               &related,
-				PhysicalLocation: sarifPhysical{ArtifactLocation: sarifArtifact{URI: v.To}},
+				PhysicalLocation: sarifPhysical{ArtifactLocation: sarifArtifact{URI: sarifURI(v.To)}},
 				Message:          &sarifText{"the file it depends on"},
 			}},
-			PartialFingerprints: map[string]string{"codeshotEdge/v1": hex.EncodeToString(sum[:16])},
+			PartialFingerprints: map[string]string{"primaryLocationLineHash": fp},
 		})
 	}
 	log := sarifLog{

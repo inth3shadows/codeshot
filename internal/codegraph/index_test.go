@@ -134,3 +134,39 @@ func TestReadSiteLinesTakesTheFirstCallSitePerFilePair(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+// F3: a real call line beats the caller's start line, whatever the order,
+// and a 0 is no line.
+func TestReadSiteLinesPrefersARealCallLineAndIgnoresZero(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), ".codegraph", "codegraph.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`CREATE TABLE nodes (id TEXT PRIMARY KEY, kind TEXT, name TEXT, qualified_name TEXT NOT NULL, file_path TEXT, start_line INTEGER)`,
+		`CREATE TABLE edges (source TEXT, target TEXT, kind TEXT, line INTEGER)`,
+		`INSERT INTO nodes VALUES ('a1','function','A1','A1','a.go',40), ('a0','file','a.go','a.go','a.go',0),
+		  ('b','function','B','B','b.go',1), ('c','function','C','C','c.go',1), ('d','function','D','D','d.go',1)`,
+		`INSERT INTO edges VALUES ('a1','b','calls',55), ('a1','b','references',NULL),
+		  ('a0','c','calls',0), ('a1','c','calls',12),
+		  ('a1','d','references',NULL)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = db.Close()
+	got, err := ReadSiteLines(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for pair, want := range map[FilePair]int{{"a.go", "b.go"}: 55, {"a.go", "c.go"}: 12, {"a.go", "d.go"}: 40} {
+		if got[pair] != want {
+			t.Errorf("%v: got %d, want %d", pair, got[pair], want)
+		}
+	}
+}

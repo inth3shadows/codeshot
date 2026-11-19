@@ -169,9 +169,10 @@ type FilePair struct{ From, To string }
 
 // ReadSiteLines returns, for every pair of files with a callee edge between
 // them (imports and file-kind targets aside, as --architecture draws), the
-// smallest line in From of such an edge: the edge's own line, or the calling
-// node's start line when codegraph stored none. Read-only, with the same
-// immutable retry as ReadIndexRows.
+// smallest line in From of such an edge. A real edge line wins; only a pair
+// whose edges carry no line falls back to the smallest calling node's start
+// line. 0 counts as no line. Read-only, with the same immutable retry as
+// ReadIndexRows.
 func ReadSiteLines(dbPath string) (map[FilePair]int, error) {
 	lines, err := readSiteLines(indexURI(dbPath, false))
 	if err != nil && !IsSchemaError(err) && walIsEmpty(dbPath) {
@@ -199,7 +200,8 @@ func readSiteLines(uri string) (map[FilePair]int, error) {
 	for i, k := range kinds {
 		args[i] = k
 	}
-	rows, err := db.Query(`SELECT s.file_path, t.file_path, MIN(COALESCE(e.line, s.start_line))
+	rows, err := db.Query(`SELECT s.file_path, t.file_path,
+	        MIN(CASE WHEN e.line > 0 THEN e.line END), MIN(CASE WHEN s.start_line > 0 THEN s.start_line END)
 	   FROM edges e
 	   JOIN nodes s ON s.id = e.source
 	   JOIN nodes t ON t.id = e.target
@@ -212,11 +214,14 @@ func readSiteLines(uri string) (map[FilePair]int, error) {
 	out := map[FilePair]int{}
 	for rows.Next() {
 		var from, to sql.NullString
-		var line sql.NullInt64
-		if err := rows.Scan(&from, &to, &line); err != nil {
+		var line, start sql.NullInt64
+		if err := rows.Scan(&from, &to, &line, &start); err != nil {
 			return nil, err
 		}
-		if from.Valid && to.Valid && line.Valid && line.Int64 > 0 {
+		if !line.Valid {
+			line = start
+		}
+		if from.Valid && to.Valid && line.Valid {
 			out[FilePair{From: from.String, To: to.String}] = int(line.Int64)
 		}
 	}

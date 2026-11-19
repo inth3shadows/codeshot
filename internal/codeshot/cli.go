@@ -403,6 +403,11 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		if !arch {
 			return 0, &Exit{Code: 1, Stderr: "codeshot: --sarif only applies with --architecture (it reports --forbid and --rules violations)"}
 		}
+		// An empty log closes every open alert, so a run that checks no
+		// rule must not write one (F6).
+		if len(rules) == 0 && rulesFile == nil {
+			return 0, &Exit{Code: 1, Stderr: "codeshot: --sarif needs --forbid or --rules: with no rule checked it would upload an empty log and close every open alert"}
+		}
 	}
 	embedFile, hasEmbed := p.str["embed"]
 	if hasEmbed && embedFile == "" {

@@ -180,12 +180,15 @@ jobs:
 
 Each result sits in the depending file, at the first line where it calls or
 refers to the other file (the smallest line codegraph, the snapshot or the
-SCIP index records), with the depended-on file as a related location. When no
-source knows a line, the result points at line 1 of the file. The alert's
-fingerprint comes from the rule and the two files, not the line, so moving the
-call doesn't open a new alert. The file is written on every run, with an empty
-list when nothing breaks a rule (which is what closes fixed alerts), and also
-with `--check`. Paths are the ones in the diagram, so run from the repository
+SCIP index records; the calling function's first line when only that is
+known), with the depended-on file as a related location. When no source knows
+a line, the result points at line 1 of the file. codeshot sets the alert's
+fingerprint (`primaryLocationLineHash`, which GitHub uses to track an alert)
+from the rule and the two files, not the line, so moving the call doesn't open
+a new alert. The file is written on every run, with an empty list when nothing
+breaks a rule (which is what closes fixed alerts), and also with `--check`.
+`--sarif` needs `--forbid` or `--rules`: a run that checks no rule would
+upload an empty list and close every open alert. Paths are the ones in the diagram, so run from the repository
 root (`--path .`) for them to match what GitHub checked out.
 
 ### Drawing from another tool's graph
