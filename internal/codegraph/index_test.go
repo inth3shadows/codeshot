@@ -130,7 +130,7 @@ func TestReadSiteLinesTakesTheFirstCallSitePerFilePair(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[FilePair]int{{From: "a.go", To: "b.go"}: 12, {From: "a.go", To: "c.go"}: 40}
-	if len(got) != len(want) || got[FilePair{"a.go", "b.go"}] != 12 || got[FilePair{"a.go", "c.go"}] != 40 {
+	if len(got) != len(want) || got[FilePair{"a.go", "b.go"}] != (SiteLine{12, true}) || got[FilePair{"a.go", "c.go"}] != (SiteLine{40, false}) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
@@ -164,9 +164,40 @@ func TestReadSiteLinesPrefersARealCallLineAndIgnoresZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for pair, want := range map[FilePair]int{{"a.go", "b.go"}: 55, {"a.go", "c.go"}: 12, {"a.go", "d.go"}: 40} {
+	for pair, want := range map[FilePair]SiteLine{{"a.go", "b.go"}: {55, true}, {"a.go", "c.go"}: {12, true}, {"a.go", "d.go"}: {40, false}} {
 		if got[pair] != want {
-			t.Errorf("%v: got %d, want %d", pair, got[pair], want)
+			t.Errorf("%v: got %v, want %v", pair, got[pair], want)
 		}
+	}
+}
+
+// V6: an index with node start lines but no edge line column still gives
+// the start-line fallback.
+func TestReadSiteLinesFallsBackWhenEdgesHaveNoLineColumn(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), ".codegraph", "codegraph.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`CREATE TABLE nodes (id TEXT PRIMARY KEY, kind TEXT, name TEXT, qualified_name TEXT NOT NULL, file_path TEXT, start_line INTEGER)`,
+		`CREATE TABLE edges (source TEXT, target TEXT, kind TEXT)`,
+		`INSERT INTO nodes VALUES ('a','function','A','A','a.go',7), ('b','function','B','B','b.go',1)`,
+		`INSERT INTO edges VALUES ('a','b','calls')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = db.Close()
+	got, err := ReadSiteLines(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[FilePair{"a.go", "b.go"}] != (SiteLine{7, false}) {
+		t.Errorf("got %v, want a.go -> b.go at start line 7", got)
 	}
 }

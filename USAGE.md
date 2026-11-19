@@ -184,11 +184,17 @@ SCIP index records; the calling function's first line when only that is
 known), with the depended-on file as a related location. When no source knows
 a line, the result points at line 1 of the file. codeshot sets the alert's
 fingerprint (`primaryLocationLineHash`, which GitHub uses to track an alert)
-from the rule and the two files, not the line, so moving the call doesn't open
-a new alert. The file is written on every run, with an empty list when nothing
+from the rule and the two files, not the line, the rules file's name or a
+rule's `reason`, so moving the call or rewording a reason doesn't open a new
+alert. (upload-sarif logs a warning per result that the fingerprint differs
+from the one it would compute from the line's text; it keeps codeshot's.) The file is written on every run, with an empty list when nothing
 breaks a rule (which is what closes fixed alerts), and also with `--check`.
-`--sarif` needs `--forbid` or `--rules`: a run that checks no rule would
-upload an empty list and close every open alert. Paths are the ones in the diagram, so run from the repository
+`--sarif` needs a rule to check (a `--forbid` flag, or a rules file with a
+forbid rule or at least two layers): a run that checks none would upload an
+empty list and close every open alert. For the same reason, a `--sarif` run
+whose scan `--max-symbols` cut writes no file and exits 1, naming the
+`--max-symbols` to rerun with: a partial list would close the alerts of
+violations past the cut. Paths are the ones in the diagram, so run from the repository
 root (`--path .`) for them to match what GitHub checked out.
 
 ### Drawing from another tool's graph

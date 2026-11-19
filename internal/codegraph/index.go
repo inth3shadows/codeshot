@@ -167,23 +167,38 @@ var ErrNoIdentity = errors.New("symbols carry no qualifiedName")
 // FilePair is a (from file, to file) dependency.
 type FilePair struct{ From, To string }
 
+// SiteLine is a dependency's first line in its From file. Exact: a call or
+// reference line; otherwise the calling node's start line, a fallback.
+type SiteLine struct {
+	Line  int
+	Exact bool
+}
+
 // ReadSiteLines returns, for every pair of files with a callee edge between
 // them (imports and file-kind targets aside, as --architecture draws), the
 // smallest line in From of such an edge. A real edge line wins; only a pair
 // whose edges carry no line falls back to the smallest calling node's start
-// line. 0 counts as no line. Read-only, with the same immutable retry as
+// line. 0 counts as no line. An index whose edges table has no line column
+// still gives the fallback. Read-only, with the same immutable retry as
 // ReadIndexRows.
-func ReadSiteLines(dbPath string) (map[FilePair]int, error) {
-	lines, err := readSiteLines(indexURI(dbPath, false))
+func ReadSiteLines(dbPath string) (map[FilePair]SiteLine, error) {
+	read := func(uri string) (map[FilePair]SiteLine, error) {
+		lines, err := readSiteLines(uri, "e.line")
+		if IsSchemaError(err) && strings.Contains(err.Error(), "line") {
+			lines, err = readSiteLines(uri, "NULL") // V6: no edges.line
+		}
+		return lines, err
+	}
+	lines, err := read(indexURI(dbPath, false))
 	if err != nil && !IsSchemaError(err) && walIsEmpty(dbPath) {
-		if retry, rerr := readSiteLines(indexURI(dbPath, true)); rerr == nil {
+		if retry, rerr := read(indexURI(dbPath, true)); rerr == nil {
 			return retry, nil
 		}
 	}
 	return lines, err
 }
 
-func readSiteLines(uri string) (map[FilePair]int, error) {
+func readSiteLines(uri, edgeLine string) (map[FilePair]SiteLine, error) {
 	db, err := sql.Open("sqlite", uri)
 	if err != nil {
 		return nil, err
@@ -201,7 +216,7 @@ func readSiteLines(uri string) (map[FilePair]int, error) {
 		args[i] = k
 	}
 	rows, err := db.Query(`SELECT s.file_path, t.file_path,
-	        MIN(CASE WHEN e.line > 0 THEN e.line END), MIN(CASE WHEN s.start_line > 0 THEN s.start_line END)
+	        MIN(CASE WHEN `+edgeLine+` > 0 THEN `+edgeLine+` END), MIN(CASE WHEN s.start_line > 0 THEN s.start_line END)
 	   FROM edges e
 	   JOIN nodes s ON s.id = e.source
 	   JOIN nodes t ON t.id = e.target
@@ -211,18 +226,22 @@ func readSiteLines(uri string) (map[FilePair]int, error) {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	out := map[FilePair]int{}
+	out := map[FilePair]SiteLine{}
 	for rows.Next() {
 		var from, to sql.NullString
 		var line, start sql.NullInt64
 		if err := rows.Scan(&from, &to, &line, &start); err != nil {
 			return nil, err
 		}
-		if !line.Valid {
-			line = start
+		if !from.Valid || !to.Valid {
+			continue
 		}
-		if from.Valid && to.Valid && line.Valid {
-			out[FilePair{From: from.String, To: to.String}] = int(line.Int64)
+		k := FilePair{From: from.String, To: to.String}
+		switch {
+		case line.Valid:
+			out[k] = SiteLine{Line: int(line.Int64), Exact: true}
+		case start.Valid:
+			out[k] = SiteLine{Line: int(start.Int64)}
 		}
 	}
 	return out, rows.Err()

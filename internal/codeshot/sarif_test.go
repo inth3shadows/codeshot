@@ -132,17 +132,24 @@ func TestSnapshotSiteLinesTakeTheSmallestDrawnKindLine(t *testing.T) {
 		},
 	}
 	got, _ := SnapshotSource{Snap: snap}.SiteLines()
-	if len(got) != 1 || got[codegraph.FilePair{From: "a.go", To: "b.go"}] != 8 {
+	if len(got) != 1 || got[codegraph.FilePair{From: "a.go", To: "b.go"}] != (codegraph.SiteLine{Line: 8, Exact: true}) {
 		t.Errorf("got %v, want only a.go -> b.go at 8", got)
 	}
 }
 
 type linedSource struct {
 	edgesSource
-	lines map[codegraph.FilePair]int
+	lines   map[codegraph.FilePair]int
+	inexact bool // the lines are start-line fallbacks
 }
 
-func (s linedSource) SiteLines() (map[codegraph.FilePair]int, error) { return s.lines, nil }
+func (s linedSource) SiteLines() (map[codegraph.FilePair]codegraph.SiteLine, error) {
+	out := map[codegraph.FilePair]codegraph.SiteLine{}
+	for k, l := range s.lines {
+		out[k] = codegraph.SiteLine{Line: l, Exact: !s.inexact}
+	}
+	return out, nil
+}
 
 func TestFillSiteLinesTakesTheSmallestLineAcrossSourcesAndRebases(t *testing.T) {
 	a := linedSource{lines: map[codegraph.FilePair]int{{From: "sub/a.go", To: "sub/b.go"}: 9}}
@@ -214,20 +221,23 @@ func TestCLISarifIsArchitectureOnly(t *testing.T) {
 	}
 }
 
-// F1: GitHub keys alerts by primaryLocationLineHash; codeshot's own hash
-// goes there, differs for two rules on one edge, ignores the line, and an
-// exact duplicate result is written once.
+// F1/V1: GitHub keys alerts by primaryLocationLineHash; codeshot's own hash
+// goes there, from the rule id, the rule and the two files only: not the
+// line, not the rules-file path as typed, not the reason. The same rule
+// twice on one edge (a flag and the file) is one result; a layer violation
+// on that edge is another.
 func TestSARIFFingerprintIsThePrimaryLocationLineHash(t *testing.T) {
 	flag := Violation{Rule: "src/->lib/", From: "src/a.go", To: "lib/b.go", Weight: 1, Line: 3}
 	file := flag
-	file.Breaks = "forbid 'src/->lib/' in r.yaml"
-	data, err := BuildSARIF([]Violation{flag, file, flag}, "dev")
+	file.Breaks = "forbid 'src/->lib/' in r.yaml (why)"
+	layer := Violation{Rule: "src->lib", From: "src/a.go", To: "lib/b.go", Weight: 1, Kind: "layers", Breaks: "the layers in r.yaml (...)"}
+	data, err := BuildSARIF([]Violation{flag, file, flag, layer}, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
 	res := sarifResults(t, decodeSARIF(t, data))
 	if len(res) != 2 {
-		t.Fatalf("results: %d, want 2 (the exact duplicate dropped)", len(res))
+		t.Fatalf("results: %d, want 2 (the forbid once, the layer once)", len(res))
 	}
 	fp := func(r any) string {
 		v, _ := r.(map[string]any)["partialFingerprints"].(map[string]any)["primaryLocationLineHash"].(string)
@@ -237,6 +247,13 @@ func TestSARIFFingerprintIsThePrimaryLocationLineHash(t *testing.T) {
 		t.Errorf("fingerprints: %q %q", fp(res[0]), fp(res[1]))
 	}
 	wantMatch(t, `^[0-9a-f]{32}:1$`, fp(res[0]))
+	// The rules file spelt ./r.yaml, a reworded reason: the same alert.
+	moved := file
+	moved.Breaks = "forbid 'src/->lib/' in ./r.yaml (reworded)"
+	again, _ := BuildSARIF([]Violation{moved}, "dev")
+	if fp(sarifResults(t, decodeSARIF(t, again))[0]) != fp(res[0]) {
+		t.Error("the fingerprint depends on the rules-file path or the reason")
+	}
 }
 
 // F2: uris are percent-encoded per segment; an absolute path is a file URI.
@@ -253,6 +270,12 @@ func TestSARIFURIsAreEncoded(t *testing.T) {
 	}
 	if rel != "file:///abs/x%20%5B1%5D.go" {
 		t.Errorf("related uri: %v", rel)
+	}
+	// V5: a ':' in the first segment is not a scheme; a drive path is absolute.
+	for p, want := range map[string]string{"a:b.go": "a%3Ab.go", "x/a:b.go": "x/a:b.go", "C:/repo/a.go": "file:///C:/repo/a.go", `C:\repo\a.go`: "file:///C:/repo/a.go"} {
+		if got := sarifURI(p); got != want {
+			t.Errorf("sarifURI(%q) = %q, want %q", p, got, want)
+		}
 	}
 }
 
@@ -285,14 +308,14 @@ func TestSnapshotSiteLinesFallBackToTheCallersStart(t *testing.T) {
 		},
 	}
 	got, _ := SnapshotSource{Snap: snap}.SiteLines()
-	if got[codegraph.FilePair{From: "a.go", To: "b.go"}] != 55 || got[codegraph.FilePair{From: "a.go", To: "c.go"}] != 40 {
+	if got[codegraph.FilePair{From: "a.go", To: "b.go"}] != (codegraph.SiteLine{Line: 55, Exact: true}) || got[codegraph.FilePair{From: "a.go", To: "c.go"}] != (codegraph.SiteLine{Line: 40}) {
 		t.Errorf("got %v, want a->b 55, a->c 40", got)
 	}
 }
 
 type failingLiner struct{ edgesSource }
 
-func (failingLiner) SiteLines() (map[codegraph.FilePair]int, error) {
+func (failingLiner) SiteLines() (map[codegraph.FilePair]codegraph.SiteLine, error) {
 	return nil, errors.New("SQL logic error: no such column: e.line (1)")
 }
 
@@ -332,5 +355,46 @@ func TestCLISarifNeedsRulesAndFailsCleanly(t *testing.T) {
 	}
 	if data, err := os.ReadFile(sarif); err != nil || len(sarifResults(t, decodeSARIF(t, data))) != 1 {
 		t.Errorf("stale --check: SARIF not written with its one result (%v)", err)
+	}
+}
+
+// V11: across sources, a real call line beats another source's fallback
+// start line, whichever is smaller.
+func TestFillSiteLinesPrefersAnExactLineAcrossSources(t *testing.T) {
+	a := linedSource{lines: map[codegraph.FilePair]int{{From: "a.go", To: "b.go"}: 40}, inexact: true}
+	b := linedSource{lines: map[codegraph.FilePair]int{{From: "a.go", To: "b.go"}: 55}}
+	vs := []Violation{{From: "a.go", To: "b.go"}}
+	fillSiteLines(vs, []LabeledSource{{Label: "x", Src: a}, {Label: "y", Src: b}}, &strings.Builder{})
+	if vs[0].Line != 55 {
+		t.Errorf("line %d, want 55 (exact beats a start-line fallback)", vs[0].Line)
+	}
+}
+
+// V10: in a list, the warning is about what that one source alone knew.
+func TestSiteLinesWarningInAListSaysOnlyThatSourcesResults(t *testing.T) {
+	var stderr strings.Builder
+	fillSiteLines([]Violation{{From: "a.go", To: "b.go"}}, []LabeledSource{{Label: "codegraph", Src: failingLiner{}}, {Label: "scip-go", Src: linedSource{}}}, &stderr)
+	wantMatch(t, `^codeshot: codegraph: --sarif: no line numbers from codegraph \(.*\); results only it knows of point at line 1 of their file\.`, stderr.String())
+}
+
+// V2: a --sarif run on a graph --max-symbols cut writes nothing and fails.
+// V3: a rules file that checks nothing is refused with --sarif.
+func TestCLISarifRefusesACutGraphAndARulesFileThatChecksNothing(t *testing.T) {
+	requireBins(t, "dot")
+	dir := t.TempDir()
+	snap := "snapshot:" + writeSnapshotFile(t, sarifSnapshot)
+	sarif, out := filepath.Join(dir, "x.sarif"), filepath.Join(dir, "a.dot")
+	code, _, stderr := runCLI("--architecture", "--source", snap, "--forbid", "src/->lib/", "--max-symbols", "1", "--sarif", sarif, "--format", "dot", "--out", out)
+	if code != 1 {
+		t.Errorf("cut graph: exit %d, want 1", code)
+	}
+	wantMatch(t, `--sarif: the scan stopped at --max-symbols 1`, stderr)
+	for _, f := range []string{sarif, out} {
+		if _, err := os.Stat(f); err == nil {
+			t.Errorf("%s written for a cut graph", f)
+		}
+	}
+	for _, body := range []string{"version: 1\n", "version: 1\nallow:\n  - {from: a/, to: b/}\n", "version: 1\nlayers:\n  - {name: only, paths: [a/]}\n"} {
+		wantRejected(t, `--sarif needs a rule to check`, "--architecture", "--rules", writeRulesFile(t, body), "--sarif", sarif)
 	}
 }

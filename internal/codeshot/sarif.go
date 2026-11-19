@@ -22,10 +22,10 @@ import (
 // for every file pair it knows. Asked only when --sarif needs line numbers
 // for violations, so the diagram path never pays for it.
 type SiteLiner interface {
-	SiteLines() (map[codegraph.FilePair]int, error)
+	SiteLines() (map[codegraph.FilePair]codegraph.SiteLine, error)
 }
 
-func (s CodegraphSource) SiteLines() (map[codegraph.FilePair]int, error) {
+func (s CodegraphSource) SiteLines() (map[codegraph.FilePair]codegraph.SiteLine, error) {
 	idx, err := codegraph.FindIndex(s.RepoPath)
 	if err != nil {
 		return nil, err
@@ -33,10 +33,12 @@ func (s CodegraphSource) SiteLines() (map[codegraph.FilePair]int, error) {
 	return codegraph.ReadSiteLines(idx)
 }
 
-// keepMin records line for k unless a smaller one is already there.
-func keepMin(m map[codegraph.FilePair]int, k codegraph.FilePair, line int) {
-	if cur, ok := m[k]; !ok || line < cur {
-		m[k] = line
+// keepBest records l for k unless a better one is there: an exact line
+// beats a start-line fallback (V11), then the smaller line wins.
+func keepBest(m map[codegraph.FilePair]codegraph.SiteLine, k codegraph.FilePair, l codegraph.SiteLine) {
+	cur, ok := m[k]
+	if !ok || l.Exact && !cur.Exact || l.Exact == cur.Exact && l.Line < cur.Line {
+		m[k] = l
 	}
 }
 
@@ -44,12 +46,12 @@ func keepMin(m map[codegraph.FilePair]int, k codegraph.FilePair, line int) {
 // file node) between nodes in two files, as codegraph's ReadSiteLines: a
 // real edge line wins, and a pair whose edges carry none falls back to the
 // smallest caller start (a snapshot's line is optional, F4).
-func (s SnapshotSource) SiteLines() (map[codegraph.FilePair]int, error) {
+func (s SnapshotSource) SiteLines() (map[codegraph.FilePair]codegraph.SiteLine, error) {
 	byID := make(map[string]snapshot.Node, len(s.Snap.Nodes))
 	for _, n := range s.Snap.Nodes {
 		byID[n.ID] = n
 	}
-	lines, starts := map[codegraph.FilePair]int{}, map[codegraph.FilePair]int{}
+	out := map[codegraph.FilePair]codegraph.SiteLine{}
 	for _, e := range s.Snap.Edges {
 		if e.Kind == "imports" || !slices.Contains(codegraph.CalleeEdgeKinds, e.Kind) {
 			continue
@@ -60,29 +62,24 @@ func (s SnapshotSource) SiteLines() (map[codegraph.FilePair]int, error) {
 		}
 		k := codegraph.FilePair{From: src.File, To: dst.File}
 		if e.Line != nil && *e.Line > 0 {
-			keepMin(lines, k, *e.Line)
+			keepBest(out, k, codegraph.SiteLine{Line: *e.Line, Exact: true})
 		} else if src.Start > 0 {
-			keepMin(starts, k, src.Start)
+			keepBest(out, k, codegraph.SiteLine{Line: src.Start})
 		}
 	}
-	for k, start := range starts {
-		if _, ok := lines[k]; !ok {
-			lines[k] = start
-		}
-	}
-	return lines, nil
+	return out, nil
 }
 
-func (s ScipSource) SiteLines() (map[codegraph.FilePair]int, error) {
-	out := map[codegraph.FilePair]int{}
+func (s ScipSource) SiteLines() (map[codegraph.FilePair]codegraph.SiteLine, error) {
+	out := map[codegraph.FilePair]codegraph.SiteLine{}
 	for k, line := range s.Index.RefLines() {
-		out[codegraph.FilePair{From: k[0], To: k[1]}] = line
+		out[codegraph.FilePair{From: k[0], To: k[1]}] = codegraph.SiteLine{Line: line, Exact: true}
 	}
 	return out, nil
 }
 
 // SiteLines rebases the inner source's pairs the way FileEdges does.
-func (p prefixedSource) SiteLines() (map[codegraph.FilePair]int, error) {
+func (p prefixedSource) SiteLines() (map[codegraph.FilePair]codegraph.SiteLine, error) {
 	sl, ok := p.Src.(SiteLiner)
 	if !ok {
 		return nil, nil
@@ -91,9 +88,9 @@ func (p prefixedSource) SiteLines() (map[codegraph.FilePair]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[codegraph.FilePair]int, len(lines))
-	for k, line := range lines {
-		keepMin(out, codegraph.FilePair{From: p.rebase(k.From), To: p.rebase(k.To)}, line)
+	out := make(map[codegraph.FilePair]codegraph.SiteLine, len(lines))
+	for k, l := range lines {
+		keepBest(out, codegraph.FilePair{From: p.rebase(k.From), To: p.rebase(k.To)}, l)
 	}
 	return out, nil
 }
@@ -105,7 +102,7 @@ func fillSiteLines(vs []Violation, srcs []LabeledSource, stderr io.Writer) {
 	if len(vs) == 0 {
 		return
 	}
-	best := map[codegraph.FilePair]int{}
+	best := map[codegraph.FilePair]codegraph.SiteLine{}
 	for _, s := range srcs {
 		sl, ok := s.Src.(SiteLiner)
 		if !ok {
@@ -116,12 +113,12 @@ func fillSiteLines(vs []Violation, srcs []LabeledSource, stderr io.Writer) {
 			warn(stderr, siteLinesWarning(s.Label, err))
 			continue
 		}
-		for k, line := range lines {
-			keepMin(best, k, line)
+		for k, l := range lines {
+			keepBest(best, k, l)
 		}
 	}
 	for i := range vs {
-		vs[i].Line = best[codegraph.FilePair{From: vs[i].From, To: vs[i].To}]
+		vs[i].Line = best[codegraph.FilePair{From: vs[i].From, To: vs[i].To}].Line
 	}
 }
 
@@ -136,6 +133,10 @@ func siteLinesWarning(label string, err error) string {
 	if codegraph.IsSchemaError(err) {
 		why = "the codegraph index has no line columns; a newer codegraph build writes them"
 	}
+	if label != "" {
+		// Another source may know those lines (V10).
+		return labelWarning(label, fmt.Sprintf("codeshot: --sarif: no line numbers from %s (%s); results only it knows of point at line 1 of their file.", what, why))
+	}
 	return fmt.Sprintf("codeshot: --sarif: no line numbers from %s (%s); results point at line 1 of each file.", what, why)
 }
 
@@ -143,16 +144,30 @@ func siteLinesWarning(label string, err error) string {
 // percent-encoded, so a space, '#', '%' or a non-ASCII name survives a URI
 // parser; an absolute path becomes a file URI.
 func sarifURI(p string) string {
-	slash := filepath.ToSlash(p)
+	slash := strings.ReplaceAll(filepath.ToSlash(p), "\\", "/")
+	drive := len(slash) >= 3 && slash[1] == ':' && slash[2] == '/' &&
+		(slash[0] >= 'A' && slash[0] <= 'Z' || slash[0] >= 'a' && slash[0] <= 'z')
 	segs := strings.Split(slash, "/")
 	for i, s := range segs {
+		if i == 0 && drive {
+			continue // "C:" stays as is in file:///C:/...
+		}
 		segs[i] = url.PathEscape(s)
 	}
 	enc := strings.Join(segs, "/")
-	if path.IsAbs(slash) {
+	switch {
+	case drive:
+		return "file:///" + enc // V5: a Windows drive path is absolute
+	case path.IsAbs(slash):
 		return "file://" + enc
 	}
-	return enc
+	// V5: a ':' in a relative path's first segment would read as a scheme.
+	first, rest, _ := strings.Cut(enc, "/")
+	first = strings.ReplaceAll(first, ":", "%3A")
+	if rest != "" {
+		return first + "/" + rest
+	}
+	return first
 }
 
 // SARIF rule ids, one per kind of rule.
@@ -278,9 +293,11 @@ func BuildSARIF(vs []Violation, version string) ([]byte, error) {
 			line = 1
 		}
 		// GitHub keys alerts by primaryLocationLineHash and upload-sarif keeps
-		// one that is given (F1): the rule, its wording and the two files,
-		// never the line, so moving the call keeps the alert.
-		sum := sha256.Sum256([]byte(id + "\x00" + v.Rule + "\x00" + v.Breaks + "\x00" + v.From + "\x00" + v.To))
+		// one that is given (F1): the rule and the two files, never the line,
+		// so moving the call keeps the alert.
+		// Not Breaks: it holds the --rules path as typed and the reason, and
+		// a rename or a reworded reason must not reopen every alert (V1).
+		sum := sha256.Sum256([]byte(id + "\x00" + v.Rule + "\x00" + v.From + "\x00" + v.To))
 		fp := hex.EncodeToString(sum[:16]) + ":1"
 		if seen[fp] {
 			continue // the same rule twice on one edge is one result

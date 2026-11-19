@@ -541,7 +541,7 @@ func (s CodegraphSource) EmptyGraphWarning() string { return EmptyArchitectureWa
 
 // RunArchitectureMode builds the file-level graph and checks --forbid rules.
 func RunArchitectureMode(src ArchSource, p ArchParams, stderr io.Writer) (string, []Violation, error) {
-	rawFileEdges, err := sourceFileEdges(src, p.MaxSymbols, "", stderr)
+	rawFileEdges, err := sourceFileEdges(src, p.MaxSymbols, "", p.SiteLines, stderr)
 	if err != nil {
 		return "", nil, err
 	}
@@ -568,7 +568,7 @@ func RunMultiArchitectureMode(srcs []LabeledSource, p ArchParams, stderr io.Writ
 	perSource := make([][]FileEdge, len(srcs))
 	for i, s := range srcs {
 		labels[i] = s.Label
-		edges, err := sourceFileEdges(s.Src, p.MaxSymbols, s.Label, stderr)
+		edges, err := sourceFileEdges(s.Src, p.MaxSymbols, s.Label, p.SiteLines, stderr)
 		if err != nil {
 			return "", nil, labelError(s.Label, err)
 		}
@@ -597,10 +597,15 @@ func RunMultiArchitectureMode(srcs []LabeledSource, p ArchParams, stderr io.Writ
 // sourceFileEdges enumerates one source's symbols, applies --max-symbols and
 // aggregates its callee edges into file edges. A non-empty label prefixes the
 // budget warning (multi-source runs).
-func sourceFileEdges(src ArchSource, maxSymbols int, label string, stderr io.Writer) ([]FileEdge, error) {
+func sourceFileEdges(src ArchSource, maxSymbols int, label string, refuseCut bool, stderr io.Writer) ([]FileEdge, error) {
 	symbols, err := src.Symbols()
 	if err != nil {
 		return nil, err
+	}
+	if len(symbols) > maxSymbols && refuseCut {
+		// V2: a partial log would close the alerts of violations past the
+		// cut, which are still in the code.
+		return nil, &Exit{Code: 1, Stderr: labelWarning(label, fmt.Sprintf("codeshot: --sarif: the scan stopped at --max-symbols %d of %d, and a partial log would close the alerts of violations past the cut; rerun with --max-symbols %d or more. No SARIF file was written.", maxSymbols, len(symbols), len(symbols)))}
 	}
 	if len(symbols) > maxSymbols {
 		symbols = symbols[:maxSymbols]

@@ -408,6 +408,11 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		if len(rules) == 0 && rulesFile == nil {
 			return 0, &Exit{Code: 1, Stderr: "codeshot: --sarif needs --forbid or --rules: with no rule checked it would upload an empty log and close every open alert"}
 		}
+		// V3: a rules file with no forbid rule and fewer than two layers
+		// can't flag anything either.
+		if len(rules) == 0 && len(rulesFile.Forbid) == 0 && len(rulesFile.Layers) < 2 {
+			return 0, &Exit{Code: 1, Stderr: fmt.Sprintf("codeshot: --sarif needs a rule to check: '%s' has no forbid rule and fewer than two layers, so the log would be empty and close every open alert", rulesFile.File)}
+		}
 	}
 	embedFile, hasEmbed := p.str["embed"]
 	if hasEmbed && embedFile == "" {
