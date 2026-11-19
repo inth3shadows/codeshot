@@ -93,11 +93,6 @@ checked on every per-file edge, even ones `--group-depth` merges or
 `--max-render` leaves out of the picture. They can only see calls the scan
 found, so raise `--limit`/`--max-symbols` if Codeshot warns the scan was cut.
 
-A side may also use `*`, `?` and `[...]` wildcards, matched one path segment at
-a time: `internal/*/db/` is every `db/` directory one level under `internal/`,
-and `pkg/*_test.go` is every test file directly in `pkg/`. `**` isn't
-supported; a side ending in `/` already covers everything below it.
-
 #### A rules file
 
 For more than a couple of rules, put them in a file and pass `--rules`:
@@ -137,11 +132,23 @@ allow:                      # exceptions to the layers and every forbid rule
 - **allow** — an edge an allow rule matches is never a violation, whether a
   layer, a forbid rule in the file or a `--forbid` flag would flag it.
 
+In the file, a side (and a layer path) may use `*`, `?` and `[...]`
+wildcards, matched one path segment at a time: `src/*/storage/` is every
+`storage/` directory one level under `src/`, and `pkg/*_test.go` is every test
+file directly in `pkg/`. A backslash makes the next character literal, so a
+Next.js route directory is `app/\[slug\]/`. `**` isn't supported; a side
+ending in `/` already covers everything below it. `--forbid` flags don't take
+wildcards: their sides are matched exactly as written, as they always were.
+
 Each violation names what it breaks (`breaks the layers in .codeshot.yaml
 ('db' may not depend on 'services', a layer above it)`), and is drawn red, as
-with `--forbid`. `--forbid` flags still work beside the file. The file is read
-and checked before any graph work: a typo in a key, a missing `version: 1` or a
-bad pattern fails at once, naming the entry. This repo checks its own
+with `--forbid`. An edge that breaks two rules is listed once per rule, and the
+count says so (`2 file edge(s) break an architecture rule (3 violations)`).
+`--forbid` flags still work beside the file. The file is read and checked
+before any graph work: a typo in a key, a missing `version: 1`, a second YAML
+document (`---`), a side starting with `/`, two layers whose directories
+overlap or a bad pattern fails at once, naming the entry. (Layers whose paths
+are patterns are checked for overlap file by file instead.) This repo checks its own
 [`.codeshot.yaml`](.codeshot.yaml) in CI.
 
 ### Drawing from another tool's graph

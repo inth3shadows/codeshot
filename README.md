@@ -115,12 +115,12 @@ so the scan takes about a second. Flags specific to this mode:
   the run exits 1 after the diagram is written, so CI fails with the picture as
   evidence. Rules
   are checked on the per-file edges, before `--group-depth` and `--max-render`,
-  so neither can hide a violation. A side may use `*`, `?` and `[...]`
-  wildcards within one path segment (`internal/*/db/`).
+  so neither can hide a violation.
 - `--rules <file>` — a YAML rules file: ordered `layers` (a lower layer may
   not depend on a higher one), `forbid` rules with an optional `reason`, and
-  `allow` exceptions. Checked like `--forbid`, so CI runs one command instead
-  of a list of flags. See
+  `allow` exceptions. Its sides may use `*`, `?` and `[...]` within one path
+  segment (`internal/*/db/`). Checked like `--forbid`, so CI runs one command
+  instead of a list of flags. See
   [USAGE.md](USAGE.md#a-rules-file) and this repo's own
   [`.codeshot.yaml`](.codeshot.yaml).
 - `--source snapshot:<file>` — draw from a

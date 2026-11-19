@@ -199,13 +199,17 @@ func TopFilesByWeight(fileEdges []FileEdge, maxRender int) map[string]bool {
 
 func drawnEdgeKey(from, to string) string { return from + "\x00" + to }
 
-// ForbidRule is one --forbid FROM->TO rule. A side ending in "/" is a
-// directory prefix; anything else is an exact file.
+// ForbidRule is one FROM->TO rule, from a --forbid flag or a rules file. A
+// side ending in "/" is a directory prefix; anything else is an exact file. A
+// rules-file side may also be a pattern (Glob); a flag's side is literal.
 type ForbidRule struct {
 	From, To, Raw string
 	// Breaks words the violation for a rules-file rule ("forbid 'a/->b/' in
 	// .codeshot.yaml (reason)"); empty for a --forbid flag.
 	Breaks string
+	// Glob: the sides are rules-file patterns (globRuleSideMatches). A
+	// --forbid flag's sides are literal, as they always were (F1).
+	Glob bool
 }
 
 // Violation is a file edge a rule forbids.
@@ -222,8 +226,7 @@ func ParseForbidRule(raw string) (ForbidRule, bool) {
 	if len(parts) != 2 {
 		return ForbidRule{}, false
 	}
-	clean := func(s string) string { return strings.TrimPrefix(strings.TrimSpace(s), "./") }
-	from, to := clean(parts[0]), clean(parts[1])
+	from, to := trimRuleSide(parts[0]), trimRuleSide(parts[1])
 	if from == "" || to == "" {
 		return ForbidRule{}, false
 	}
@@ -231,14 +234,31 @@ func ParseForbidRule(raw string) (ForbidRule, bool) {
 }
 
 func pathMatchesRuleSide(side, filePath string) bool {
-	if !strings.ContainsAny(side, "*?[") {
-		if strings.HasSuffix(side, "/") {
-			return strings.HasPrefix(filePath, side)
-		}
-		return filePath == side
+	if strings.HasSuffix(side, "/") {
+		return strings.HasPrefix(filePath, side)
 	}
-	// A glob matches segment by segment (path.Match: '*' stays within one
-	// segment). A directory side matches the file's leading directories.
+	return filePath == side
+}
+
+// trimRuleSide is the clean-up every rule side gets: spaces and a leading "./".
+func trimRuleSide(s string) string { return strings.TrimPrefix(strings.TrimSpace(s), "./") }
+
+// ruleMatches applies a rule's sides to an edge, literally or as patterns.
+func ruleMatches(r ForbidRule, from, to string) bool {
+	if r.Glob {
+		return globRuleSideMatches(r.From, from) && globRuleSideMatches(r.To, to)
+	}
+	return pathMatchesRuleSide(r.From, from) && pathMatchesRuleSide(r.To, to)
+}
+
+// globRuleSideMatches matches a rules-file side: path.Match segment by
+// segment ('*' stays within one segment, '\' escapes), a directory side
+// against the file's leading directories. A side with no pattern characters
+// is the literal prefix/exact rule.
+func globRuleSideMatches(side, filePath string) bool {
+	if !strings.ContainsAny(side, "*?[\\") {
+		return pathMatchesRuleSide(side, filePath)
+	}
 	sides := strings.Split(strings.TrimSuffix(side, "/"), "/")
 	segs := strings.Split(filePath, "/")
 	if strings.HasSuffix(side, "/") {
@@ -263,7 +283,7 @@ func ForbiddenEdges(fileEdges []FileEdge, rules []ForbidRule) []Violation {
 	var hits []Violation
 	for _, r := range rules {
 		for _, e := range fileEdges {
-			if pathMatchesRuleSide(r.From, e.From) && pathMatchesRuleSide(r.To, e.To) {
+			if ruleMatches(r, e.From, e.To) {
 				hits = append(hits, Violation{Rule: r.Raw, From: e.From, To: e.To, Weight: e.Weight, SeenBy: seenList(e.Seen, nil), Breaks: r.Breaks})
 			}
 		}
@@ -614,7 +634,11 @@ func finishArchitecture(rawFileEdges []FileEdge, p ArchParams, sources []string,
 	warn(stderr, RenderTruncationNote(kind, len(files), p.MaxRender))
 
 	violating := ViolatingDrawnKeys(violations, p.GroupDepth)
-	warn(stderr, HiddenViolationNote(fileEdges, violating, p.MaxRender))
+	what := "a --forbid rule"
+	if p.Rules != nil {
+		what = "an architecture rule"
+	}
+	warn(stderr, HiddenRuleViolationNote(fileEdges, violating, p.MaxRender, what))
 	return BuildArchitectureDot(fileEdges, ArchOptions{MaxRender: p.MaxRender, Violating: violating, Sources: sources, Tooltips: p.Tooltips}), violations, nil
 }
 

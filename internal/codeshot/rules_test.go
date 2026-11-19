@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -82,8 +83,8 @@ func TestRuleSideGlobsMatchSegmentBySegment(t *testing.T) {
 		{"pkg/a.go", "pkg/a.go", true},
 		{"pkg/[ab].go", "pkg/c.go", false},
 	} {
-		if got := pathMatchesRuleSide(c.side, c.file); got != c.want {
-			t.Errorf("pathMatchesRuleSide(%q, %q) = %v, want %v", c.side, c.file, got, c.want)
+		if got := globRuleSideMatches(c.side, c.file); got != c.want {
+			t.Errorf("globRuleSideMatches(%q, %q) = %v, want %v", c.side, c.file, got, c.want)
 		}
 	}
 }
@@ -125,7 +126,9 @@ func TestRuleViolationsChecksLayersForbidAndAllow(t *testing.T) {
 }
 
 func TestRuleViolationsRefusesAFileInTwoLayers(t *testing.T) {
-	r, err := ParseRules("r.yaml", []byte("version: 1\nlayers:\n  - {name: a, paths: [pkg/]}\n  - {name: b, paths: [pkg/sub/]}\n"))
+	// A pattern layer path can't be checked for overlap when the file is
+	// read; the overlap is caught file by file.
+	r, err := ParseRules("r.yaml", []byte("version: 1\nlayers:\n  - {name: a, paths: [pkg/]}\n  - {name: b, paths: [\"p*/sub/\"]}\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,4 +205,109 @@ func TestCLIRulesIsArchitectureOnlyAndValidatedFirst(t *testing.T) {
 	if !strings.Contains(usage, "[--rules <file>]") {
 		t.Error("usage does not mention --rules")
 	}
+}
+
+// F1/F2: --forbid flags match literally, as before rules files existed: a
+// bracketed directory (Next.js app/[slug]/) is a directory, not a pattern.
+func TestForbidFlagSidesStayLiteral(t *testing.T) {
+	edges := []FileEdge{
+		{From: "app/[slug]/page.tsx", To: "lib/db/x.ts", Weight: 1},
+		{From: "app/s/page.tsx", To: "lib/db/x.ts", Weight: 1},
+		{From: "cmd/[a.go", To: "lib/db/x.ts", Weight: 1},
+	}
+	for raw, want := range map[string][]string{
+		"app/[slug]/->lib/db/": {"app/[slug]/page.tsx"},
+		"cmd/[->lib/db/":       nil, // "cmd/[" is an exact file, and there is none
+		"cmd/*->lib/db/":       nil,
+	} {
+		r, ok := ParseForbidRule(raw)
+		if !ok {
+			t.Fatalf("%q: not parsed", raw)
+		}
+		var got []string
+		for _, v := range ForbiddenEdges(edges, []ForbidRule{r}) {
+			got = append(got, v.From)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("--forbid %q: got %v, want %v", raw, got, want)
+		}
+	}
+}
+
+// R2: in a rules file a side is a pattern, and '\' escapes a literal bracket.
+func TestRulesFileEscapesALiteralBracket(t *testing.T) {
+	r, err := ParseRules("r.yaml", []byte("version: 1\nforbid:\n  - {from: 'app/\\[slug\\]/', to: lib/db/}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := RuleViolations([]FileEdge{
+		{From: "app/[slug]/page.tsx", To: "lib/db/x.ts", Weight: 1},
+		{From: "app/s/page.tsx", To: "lib/db/x.ts", Weight: 1},
+	}, nil, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].From != "app/[slug]/page.tsx" {
+		t.Errorf("got %+v, want only app/[slug]/page.tsx", got)
+	}
+}
+
+// F3, F5, F6, F7: refused when the file is read, before any graph work.
+func TestParseRulesRefusesOverlapsDocumentsFloatsAndAbsolutePaths(t *testing.T) {
+	for body, pattern := range map[string]string{
+		"version: 1\nlayers:\n  - {name: a, paths: [internal/]}\n  - {name: b, paths: [internal/src/x/]}\n": `layers 'a' and 'b' overlap: 'internal/' contains 'internal/src/x/'`,
+		"version: 1\nlayers:\n  - {name: a, paths: [x/]}\n  - {name: b, paths: [x/]}\n":                     `layers 'a' and 'b' overlap: 'x/' contains 'x/'`,
+		"version: 1\nlayers:\n  - {name: a, paths: [x/]}\n---\nforbid: []\n":                                `more than one YAML document`,
+		"version: 1.9\n": `version must be the integer 1, got '1\.9'`,
+		"version: 1.0\n": `version must be the integer 1, got '1\.0'`,
+		"version: 1\nforbid:\n  - {from: /cmd/, to: x/}\n": `forbid\[0\] from: '/cmd/' starts with '/'; sides are relative to the repo root`,
+	} {
+		_, err := ParseRules("r.yaml", []byte(body))
+		if err == nil {
+			t.Errorf("%q: no error", body)
+			continue
+		}
+		wantMatch(t, pattern, err.Error())
+	}
+	// Overlap within one layer is fine.
+	if _, err := ParseRules("r.yaml", []byte("version: 1\nlayers:\n  - {name: a, paths: [x/, x/y/]}\n")); err != nil {
+		t.Errorf("same-layer overlap: %v", err)
+	}
+}
+
+// F4: one edge breaking two rules is one edge; the header gives both counts.
+func TestReportCountsEdgesAndViolationsApartInRulesMode(t *testing.T) {
+	r, err := ParseRules("r.yaml", []byte("version: 1\nlayers:\n  - {name: cli, paths: [cmd/]}\n  - {name: core, paths: [core/]}\nforbid:\n  - {from: core/, to: cmd/}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	vs, err := RuleViolations([]FileEdge{{From: "core/a.go", To: "cmd/m.go", Weight: 2}}, nil, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantMatch(t, `^codeshot: 1 file edge\(s\) break an architecture rule \(2 violations\):`, ForbidViolationReport(vs))
+}
+
+// F8: the hidden-violation note says what kind of rule.
+func TestHiddenViolationNoteNamesRulesFileViolations(t *testing.T) {
+	edges := []FileEdge{{From: "a", To: "b", Weight: 5}, {From: "c", To: "d", Weight: 1}, {From: "a", To: "e", Weight: 4}}
+	violating := ViolatingDrawnKeys([]Violation{{From: "c", To: "d"}}, 0)
+	wantMatch(t, `^codeshot: 1 edge\(s\) that break an architecture rule fall outside --max-render 2`, HiddenRuleViolationNote(edges, violating, 2, "an architecture rule"))
+}
+
+// T: rules on a two-source union and under --group-depth: provenance in the
+// report and the group edge drawn red.
+func TestCLIRulesWithTwoSourcesAndGroupDepth(t *testing.T) {
+	requireBins(t, "dot")
+	rules := writeRulesFile(t, "version: 1\nlayers:\n  - {name: lib, paths: [lib/]}\n  - {name: src, paths: [src/]}\n")
+	src := "snapshot:" + writeSnapshotFile(t, cliSnapshot) + ",snapshot:" + writeSnapshotFile(t, cliSnapshotU)
+	out := filepath.Join(t.TempDir(), "arch.gv")
+	code, _, stderr := runCLI("--architecture", "--source", src, "--rules", rules, "--group-depth", "1", "--format", "canon", "--out", out)
+	if code != 1 {
+		t.Fatalf("exit %d, want 1; stderr: %s", code, stderr)
+	}
+	wantMatch(t, `src/a\.go -> lib/b\.go \(weight 1\) breaks the layers in .*'src' may not depend on 'lib'.* — seen by snapshot-t 1, snapshot-u 1`, stderr)
+	wantMatch(t, `src/a\.go -> lib/c\.go \(weight 1\) breaks the layers .* — seen by snapshot-u 1`, stderr)
+	got, _ := os.ReadFile(out)
+	wantMatch(t, `"src/" -> "lib/"[^;]*#dc2626`, string(got))
 }

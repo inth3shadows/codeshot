@@ -29,7 +29,7 @@ type Layer struct {
 }
 
 type rulesFile struct {
-	Version *int        `yaml:"version"`
+	Version yaml.Node   `yaml:"version"`
 	Layers  []layerSpec `yaml:"layers"`
 	Forbid  []ruleSpec  `yaml:"forbid"`
 	Allow   []ruleSpec  `yaml:"allow"`
@@ -70,11 +70,21 @@ func ParseRules(file string, data []byte) (*Rules, error) {
 		}
 		return nil, bad("%v", err)
 	}
-	if rf.Version == nil {
-		return nil, bad("missing 'version: 1'")
+	// One document only: rules after a stray '---' would be dropped (F5).
+	var more yaml.Node
+	if err := dec.Decode(&more); !errors.Is(err, io.EOF) {
+		return nil, bad("has more than one YAML document ('---'); put every rule in one")
 	}
-	if *rf.Version != 1 {
-		return nil, bad("version is %d; this codeshot reads version 1", *rf.Version)
+	v := rf.Version
+	switch {
+	case v.Kind == 0 || v.Tag == "!!null":
+		return nil, bad("missing 'version: 1'")
+	case v.Kind != yaml.ScalarNode || v.Tag != "!!int":
+		return nil, bad("version must be the integer 1, got '%s'", v.Value) // F6: 1.9 is not 1
+	}
+	var version int
+	if err := v.Decode(&version); err != nil || version != 1 {
+		return nil, bad("version is %s; this codeshot reads version 1", v.Value)
 	}
 	r := &Rules{File: file}
 	names := map[string]bool{}
@@ -104,6 +114,26 @@ func ParseRules(file string, data []byte) (*Rules, error) {
 		}
 		r.Layers = append(r.Layers, layer)
 	}
+	// Two layers claiming one directory (F3): decidable here for plain
+	// directory paths; a pattern path is checked file by file later.
+	for i, a := range r.Layers {
+		for _, b := range r.Layers[i+1:] {
+			for _, pa := range a.Paths {
+				for _, pb := range b.Paths {
+					if strings.ContainsAny(pa+pb, "*?[\\") {
+						continue
+					}
+					outer, inner := pa, pb
+					if strings.HasPrefix(pa, pb) {
+						outer, inner = pb, pa
+					}
+					if strings.HasPrefix(inner, outer) {
+						return nil, bad("layers '%s' and '%s' overlap: '%s' contains '%s'; a file can be in one layer only", a.Name, b.Name, outer, inner)
+					}
+				}
+			}
+		}
+	}
 	rules := func(key string, specs []ruleSpec) ([]ForbidRule, error) {
 		var out []ForbidRule
 		for i, s := range specs {
@@ -120,7 +150,7 @@ func ParseRules(file string, data []byte) (*Rules, error) {
 			if reason := strings.TrimSpace(s.Reason); reason != "" {
 				breaks += " (" + reason + ")"
 			}
-			out = append(out, ForbidRule{From: from, To: to, Raw: raw, Breaks: breaks})
+			out = append(out, ForbidRule{From: from, To: to, Raw: raw, Breaks: breaks, Glob: true})
 		}
 		return out, nil
 	}
@@ -136,9 +166,12 @@ func ParseRules(file string, data []byte) (*Rules, error) {
 
 // cleanRuleSide trims a rule side as --forbid does and checks its glob.
 func cleanRuleSide(s string) (string, error) {
-	side := strings.TrimPrefix(strings.TrimSpace(s), "./")
+	side := trimRuleSide(s)
 	if side == "" {
 		return "", errors.New("is empty")
+	}
+	if strings.HasPrefix(side, "/") {
+		return "", fmt.Errorf("'%s' starts with '/'; sides are relative to the repo root", s) // F7
 	}
 	if strings.Contains(side, "**") {
 		return "", fmt.Errorf("'%s' uses '**', which isn't supported; '*' matches within one path segment, and a side ending in '/' already covers every file below it", s)
@@ -167,7 +200,7 @@ func RuleViolations(fileEdges []FileEdge, flags []ForbidRule, rules *Rules) ([]V
 		found := -1
 		for i, l := range rules.Layers {
 			for _, p := range l.Paths {
-				if pathMatchesRuleSide(p, file) {
+				if globRuleSideMatches(p, file) {
 					if found >= 0 && found != i {
 						return 0, fmt.Errorf("rules file '%s': '%s' is in two layers, '%s' and '%s'; a file can be in one layer only", rules.File, file, rules.Layers[found].Name, l.Name)
 					}
@@ -201,7 +234,7 @@ func RuleViolations(fileEdges []FileEdge, flags []ForbidRule, rules *Rules) ([]V
 	for _, v := range hits {
 		allowed := false
 		for _, a := range rules.Allow {
-			if pathMatchesRuleSide(a.From, v.From) && pathMatchesRuleSide(a.To, v.To) {
+			if ruleMatches(a, v.From, v.To) {
 				allowed = true
 				break
 			}
