@@ -71,14 +71,31 @@ func ParseRules(file string, data []byte) (*Rules, error) {
 		return nil, bad("%v", err)
 	}
 	// One document only: rules after a stray '---' would be dropped (F5).
-	var more yaml.Node
-	if err := dec.Decode(&more); !errors.Is(err, io.EOF) {
-		return nil, bad("has more than one YAML document ('---'); put every rule in one")
+	// An empty trailing document drops nothing (V2); a syntax error in a
+	// later one is reported as itself.
+	for {
+		var more yaml.Node
+		err := dec.Decode(&more)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, bad("%v", err)
+		}
+		if !emptyDocument(&more) {
+			return nil, bad("has more than one YAML document ('---'); put every rule in one")
+		}
 	}
 	v := rf.Version
 	switch {
 	case v.Kind == 0 || v.Tag == "!!null":
 		return nil, bad("missing 'version: 1'")
+	case v.Kind == yaml.SequenceNode:
+		return nil, bad("version must be the integer 1, not a list")
+	case v.Kind == yaml.MappingNode:
+		return nil, bad("version must be the integer 1, not a map")
+	case v.Tag == "!!str":
+		return nil, bad("version must be the integer 1, not the string '%s'", v.Value) // V4
 	case v.Kind != yaml.ScalarNode || v.Tag != "!!int":
 		return nil, bad("version must be the integer 1, got '%s'", v.Value) // F6: 1.9 is not 1
 	}
@@ -120,7 +137,7 @@ func ParseRules(file string, data []byte) (*Rules, error) {
 		for _, b := range r.Layers[i+1:] {
 			for _, pa := range a.Paths {
 				for _, pb := range b.Paths {
-					if strings.ContainsAny(pa+pb, "*?[\\") {
+					if hasRulePattern(pa) || hasRulePattern(pb) {
 						continue
 					}
 					outer, inner := pa, pb
@@ -146,11 +163,16 @@ func ParseRules(file string, data []byte) (*Rules, error) {
 				return nil, bad("%s[%d] to: %v", key, i, err)
 			}
 			raw := from + "->" + to
-			breaks := fmt.Sprintf("forbid '%s' in %s", raw, file)
-			if reason := strings.TrimSpace(s.Reason); reason != "" {
-				breaks += " (" + reason + ")"
+			rule := ForbidRule{From: from, To: to, Raw: raw, Glob: true}
+			// An allow's reason is a note for readers; only a forbid rule's
+			// is printed (V6).
+			if key == "forbid" {
+				rule.Breaks = fmt.Sprintf("forbid '%s' in %s", raw, file)
+				if reason := strings.TrimSpace(s.Reason); reason != "" {
+					rule.Breaks += " (" + reason + ")"
+				}
 			}
-			out = append(out, ForbidRule{From: from, To: to, Raw: raw, Breaks: breaks, Glob: true})
+			out = append(out, rule)
 		}
 		return out, nil
 	}
@@ -191,7 +213,7 @@ func RuleViolations(fileEdges []FileEdge, flags []ForbidRule, rules *Rules) ([]V
 	if rules == nil {
 		return ForbiddenEdges(fileEdges, flags), nil
 	}
-	hits := ForbiddenEdges(fileEdges, append(append([]ForbidRule{}, flags...), rules.Forbid...))
+	hits := forbiddenEdges(fileEdges, append(append([]ForbidRule{}, flags...), rules.Forbid...))
 	layerOf := map[string]int{}
 	lookup := func(file string) (int, error) {
 		if i, ok := layerOf[file]; ok {
@@ -258,4 +280,20 @@ func sortViolations(hits []Violation) {
 		}
 		return hits[a].To < hits[b].To
 	})
+}
+
+// emptyDocument is a YAML document with nothing in it ("---" and comments).
+func emptyDocument(n *yaml.Node) bool {
+	if n.Kind == 0 {
+		return true
+	}
+	if n.Kind == yaml.DocumentNode {
+		for _, c := range n.Content {
+			if c.Kind != yaml.ScalarNode || c.Tag != "!!null" || c.Value != "" {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }

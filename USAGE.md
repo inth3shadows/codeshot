@@ -111,7 +111,7 @@ layers:
   - name: services
     paths: [src/services/]
   - name: db
-    paths: [src/db/, "src/*/storage/"]
+    paths: [src/db/, "lib/*/storage/"]
 
 forbid:
   - from: src/services/billing/
@@ -130,11 +130,12 @@ allow:                      # exceptions to the layers and every forbid rule
 - **forbid** — like `--forbid`, with an optional `reason` printed next to
   each violation.
 - **allow** — an edge an allow rule matches is never a violation, whether a
-  layer, a forbid rule in the file or a `--forbid` flag would flag it.
+  layer, a forbid rule in the file or a `--forbid` flag would flag it. An
+  allow may carry a `reason` too, as a note for readers; it isn't printed.
 
 In the file, a side (and a layer path) may use `*`, `?` and `[...]`
-wildcards, matched one path segment at a time: `src/*/storage/` is every
-`storage/` directory one level under `src/`, and `pkg/*_test.go` is every test
+wildcards, matched one path segment at a time: `lib/*/storage/` is every
+`storage/` directory one level under `lib/`, and `pkg/*_test.go` is every test
 file directly in `pkg/`. A backslash makes the next character literal, so a
 Next.js route directory is `app/\[slug\]/`. `**` isn't supported; a side
 ending in `/` already covers everything below it. `--forbid` flags don't take
@@ -144,6 +145,7 @@ Each violation names what it breaks (`breaks the layers in .codeshot.yaml
 ('db' may not depend on 'services', a layer above it)`), and is drawn red, as
 with `--forbid`. An edge that breaks two rules is listed once per rule, and the
 count says so (`2 file edge(s) break an architecture rule (3 violations)`).
+An empty trailing `---` is fine.
 `--forbid` flags still work beside the file. The file is read and checked
 before any graph work: a typo in a key, a missing `version: 1`, a second YAML
 document (`---`), a side starting with `/`, two layers whose directories

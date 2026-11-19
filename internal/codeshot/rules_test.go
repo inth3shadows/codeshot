@@ -311,3 +311,115 @@ func TestCLIRulesWithTwoSourcesAndGroupDepth(t *testing.T) {
 	got, _ := os.ReadFile(out)
 	wantMatch(t, `"src/" -> "lib/"[^;]*#dc2626`, string(got))
 }
+
+// V1: the rules-file example in USAGE.md works as written: it parses, and no
+// file its layers could hold is claimed by two of them.
+func TestUsageRulesExampleIsConsistent(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join(repoRoot(t), "USAGE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(doc)
+	i := strings.Index(s, "```yaml\nversion: 1")
+	if i < 0 {
+		t.Fatal("no rules-file example in USAGE.md")
+	}
+	body := s[i+len("```yaml\n"):]
+	body = body[:strings.Index(body, "```")]
+	r, err := ParseRules("USAGE.md example", []byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One file under every layer path, with each pattern segment filled in.
+	var edges []FileEdge
+	for _, l := range r.Layers {
+		for _, p := range l.Paths {
+			for _, sub := range []string{"services", "ui", "db", "x"} {
+				f := strings.ReplaceAll(p, "*", sub) + "f.go"
+				edges = append(edges, FileEdge{From: f, To: f + ".x", Weight: 1})
+			}
+		}
+	}
+	if _, err := RuleViolations(edges, nil, r); err != nil {
+		t.Errorf("the USAGE.md example fails on its own layout: %v", err)
+	}
+}
+
+// V2: an empty trailing document is harmless; a syntax error after the first
+// document is reported as itself.
+func TestParseRulesAcceptsAnEmptyTrailingDocumentAndReportsLaterSyntaxErrors(t *testing.T) {
+	for _, body := range []string{"version: 1\n---\n", "version: 1\n---", "version: 1\n---\n# note\n", "---\nversion: 1\n---\n"} {
+		if _, err := ParseRules("r.yaml", []byte(body)); err != nil {
+			t.Errorf("%q: %v", body, err)
+		}
+	}
+	_, err := ParseRules("r.yaml", []byte("version: 1\n---\nforbid: [\n"))
+	if err == nil {
+		t.Fatal("no error")
+	}
+	wantNoMatch(t, `more than one YAML document`, err.Error())
+}
+
+// V4: a version of the wrong type says which type.
+func TestParseRulesNamesTheWrongVersionType(t *testing.T) {
+	for body, pattern := range map[string]string{
+		"version: \"1\"\n":  `version must be the integer 1, not the string '1'`,
+		"version: [1]\n":    `version must be the integer 1, not a list`,
+		"version: {a: 1}\n": `version must be the integer 1, not a map`,
+	} {
+		_, err := ParseRules("r.yaml", []byte(body))
+		if err == nil {
+			t.Errorf("%q: no error", body)
+			continue
+		}
+		wantMatch(t, pattern, err.Error())
+	}
+}
+
+// V3: with --rules, the header and the hidden note agree, and the header
+// counts edges, even when only --forbid flags were broken.
+func TestRulesModeReportCountsEdgesEvenForFlagOnlyViolations(t *testing.T) {
+	r, err := ParseRules("r.yaml", []byte("version: 1\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags := []ForbidRule{{From: "app/", To: "lib/", Raw: "app/->lib/"}, {From: "app/", To: "lib/db/", Raw: "app/->lib/db/"}}
+	vs, err := RuleViolations([]FileEdge{{From: "app/a.go", To: "lib/db/x.go", Weight: 1}}, flags, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantMatch(t, `^codeshot: 1 file edge\(s\) break an architecture rule \(2 violations\):`, RuleViolationReport(vs, true))
+	// Without --rules: unchanged.
+	wantMatch(t, `^codeshot: 2 file edge\(s\) break a --forbid rule:`, RuleViolationReport(vs, false))
+}
+
+// V6: an allow rule's reason is a note for readers, not a 'forbid' label.
+func TestAllowRulesCarryNoForbidLabel(t *testing.T) {
+	r, err := ParseRules("r.yaml", []byte("version: 1\nallow:\n  - {from: a/, to: b/, reason: legacy}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Allow[0].Breaks != "" {
+		t.Errorf("allow Breaks = %q, want empty", r.Allow[0].Breaks)
+	}
+}
+
+// V12: a leading '/' is refused on every kind of side, and a plain path
+// beside a pattern path in another layer is not a parse-time overlap.
+func TestParseRulesRefusesAbsoluteSidesEverywhereAndSkipsPatternOverlap(t *testing.T) {
+	for body, pattern := range map[string]string{
+		"version: 1\nforbid:\n  - {from: a/, to: /b/}\n":     `forbid\[0\] to: '/b/' starts with '/'`,
+		"version: 1\nallow:\n  - {from: /a/, to: b/}\n":      `allow\[0\] from: '/a/' starts with '/'`,
+		"version: 1\nlayers:\n  - {name: a, paths: [/a/]}\n": `layer 'a': '/a/' starts with '/'`,
+	} {
+		_, err := ParseRules("r.yaml", []byte(body))
+		if err == nil {
+			t.Errorf("%q: no error", body)
+			continue
+		}
+		wantMatch(t, pattern, err.Error())
+	}
+	if _, err := ParseRules("r.yaml", []byte("version: 1\nlayers:\n  - {name: a, paths: [internal/]}\n  - {name: b, paths: [\"internal/*/x/\"]}\n")); err != nil {
+		t.Errorf("plain vs pattern: %v", err)
+	}
+}

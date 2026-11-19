@@ -108,16 +108,31 @@ func GroupCollapseWarning(before, after, depth, groupCount int) string {
 }
 
 func ForbidViolationReport(vs []Violation) string {
+	rulesFile := false
+	for _, v := range vs {
+		rulesFile = rulesFile || v.Breaks != ""
+	}
+	return RuleViolationReport(vs, rulesFile)
+}
+
+// RuleViolationReport lists violations. With a rules file (rulesMode), the
+// header names architecture rules and counts edges, adding the violation
+// count when one edge breaks several rules, whichever rules were broken (V3);
+// without one it is the --forbid report it always was.
+func RuleViolationReport(vs []Violation, rulesMode bool) string {
 	if len(vs) == 0 {
 		return ""
 	}
 	lines := make([]string, len(vs))
 	what := "a --forbid rule"
+	if rulesMode {
+		what = "an architecture rule"
+	}
 	edges := map[string]bool{}
 	for i, v := range vs {
 		breaks := "--forbid '" + v.Rule + "'"
 		if v.Breaks != "" {
-			breaks, what = v.Breaks, "an architecture rule"
+			breaks = v.Breaks
 		}
 		lines[i] = fmt.Sprintf("  %s -> %s (weight %d) breaks %s", v.From, v.To, v.Weight, breaks)
 		edges[drawnEdgeKey(v.From, v.To)] = true
@@ -126,7 +141,7 @@ func ForbidViolationReport(vs []Violation) string {
 		}
 	}
 	count := fmt.Sprintf("%d file edge(s) break %s", len(vs), what)
-	if what != "a --forbid rule" && len(edges) != len(vs) {
+	if rulesMode && len(edges) != len(vs) {
 		// A rules file makes one edge breaking two rules likely (F4); a
 		// --forbid-only report stays as it always was.
 		count = fmt.Sprintf("%d file edge(s) break %s (%d violations)", len(edges), what, len(vs))

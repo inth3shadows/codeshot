@@ -240,6 +240,10 @@ func pathMatchesRuleSide(side, filePath string) bool {
 	return filePath == side
 }
 
+// hasRulePattern: a rules-file side with pattern characters (or an escape),
+// matched by globRuleSideMatches rather than the literal rule.
+func hasRulePattern(side string) bool { return strings.ContainsAny(side, "*?[\\") }
+
 // trimRuleSide is the clean-up every rule side gets: spaces and a leading "./".
 func trimRuleSide(s string) string { return strings.TrimPrefix(strings.TrimSpace(s), "./") }
 
@@ -256,7 +260,7 @@ func ruleMatches(r ForbidRule, from, to string) bool {
 // against the file's leading directories. A side with no pattern characters
 // is the literal prefix/exact rule.
 func globRuleSideMatches(side, filePath string) bool {
-	if !strings.ContainsAny(side, "*?[\\") {
+	if !hasRulePattern(side) {
 		return pathMatchesRuleSide(side, filePath)
 	}
 	sides := strings.Split(strings.TrimSuffix(side, "/"), "/")
@@ -280,6 +284,14 @@ func globRuleSideMatches(side, filePath string) bool {
 // ForbiddenEdges lists every file edge a rule forbids, heaviest first. Run on
 // per-file edges before --group-depth/--max-render: a view must not hide one.
 func ForbiddenEdges(fileEdges []FileEdge, rules []ForbidRule) []Violation {
+	hits := forbiddenEdges(fileEdges, rules)
+	sortViolations(hits)
+	return hits
+}
+
+// forbiddenEdges is ForbiddenEdges unsorted, for RuleViolations to add to
+// and sort once (V8).
+func forbiddenEdges(fileEdges []FileEdge, rules []ForbidRule) []Violation {
 	var hits []Violation
 	for _, r := range rules {
 		for _, e := range fileEdges {
@@ -288,7 +300,6 @@ func ForbiddenEdges(fileEdges []FileEdge, rules []ForbidRule) []Violation {
 			}
 		}
 	}
-	sortViolations(hits)
 	return hits
 }
 
@@ -603,7 +614,7 @@ func finishArchitecture(rawFileEdges []FileEdge, p ArchParams, sources []string,
 	if err != nil {
 		return "", nil, err
 	}
-	warn(stderr, ForbidViolationReport(violations))
+	warn(stderr, RuleViolationReport(violations, p.Rules != nil))
 
 	// Rolled up after aggregation, so probing stays file-exact and
 	// --group-depth is a pure view over the same data.
